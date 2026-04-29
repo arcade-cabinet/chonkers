@@ -160,6 +160,11 @@ export function unpackPositionKey(key: PositionKey): {
 	row: number;
 	height: number;
 } {
+	if (typeof key !== "bigint") {
+		throw new TypeError(
+			`unpackPositionKey: key must be bigint (got ${typeof key})`,
+		);
+	}
 	if (key < 0n || key > POSITION_KEY_MAX) {
 		throw new Error(
 			`unpackPositionKey: key out of 21-bit range: ${key.toString()}`,

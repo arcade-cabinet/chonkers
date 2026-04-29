@@ -34,4 +34,11 @@ describe("positionKey", () => {
 		expect(() => unpackPositionKey(-1n)).toThrow(/21-bit/);
 		expect(() => unpackPositionKey(0x200000n)).toThrow(/21-bit/);
 	});
+
+	it("rejects unpackPositionKey calls with non-bigint keys", () => {
+		expect(() => unpackPositionKey(0 as unknown as bigint)).toThrow(TypeError);
+		expect(() => unpackPositionKey(undefined as unknown as bigint)).toThrow(
+			TypeError,
+		);
+	});
 });
