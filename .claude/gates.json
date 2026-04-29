@@ -1,5 +1,5 @@
 {
-	"$comment": "Per-repo commit-gate rules for chonkers. Aligned with the PRD architecture: src/{persistence,schema,engine,ai,store,analytics,sim,audio,design} as pure-TS packages; app/{canvas,screens,components,input,hooks,boot,css} as the React layer. Tests co-located in __tests__/ within each package. See docs/ARCHITECTURE.md and docs/plans/*.prq.md for the full picture.",
+	"$comment": "Per-repo commit-gate rules for chonkers. Aligned with the PRD architecture: src/{persistence,schema,engine,ai,store,analytics,sim,audio,design} as pure-TS packages; app/{canvas,screens,components,input,hooks,boot,css} as the React layer. Tests co-located in __tests__/ within each package. See docs/ARCHITECTURE.md and docs/plans/*.prq.md for the full picture. Many rules below are PREVENTIVE — they fire only when a future commit introduces a violation. The fact that no current src/ files import 'react' or call Math.random() doesn't mean the rules are unused; it means the rules have been protecting the boundary from being crossed since they were authored.",
 	"coverage_rules": [
 		{
 			"when_changed": ["src/engine/**"],

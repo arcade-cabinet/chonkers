@@ -42,7 +42,7 @@ Every column shape is justified by a downstream consumer in the chonkers logic P
 
 ### Generic runner
 
-```
+```text
 src/schema/
 ├── runner/
 │   ├── types.ts                  # Migration, MigrationFile, MigrationResult
@@ -398,7 +398,7 @@ config:
 
 ## Execution order
 
-```
+```text
 A1, A2 (docs in parallel; no code deps)
    ↓
 B1 (test setup)

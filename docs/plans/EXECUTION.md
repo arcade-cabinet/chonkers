@@ -94,14 +94,25 @@ EOF
 
 ### 4. Review feedback cycle
 
-Poll the PR state every 60 seconds until ready-to-merge OR STOP_FAIL. See [AUTONOMY.md](./AUTONOMY.md) for the GraphQL specifics. Summary:
+Poll the PR state every 60 seconds until ready-to-merge OR STOP_FAIL. See [AUTONOMY.md](./AUTONOMY.md) for the GraphQL specifics.
+
+**Bounded polling.** The executor MUST cap each polling phase to prevent indefinite hangs:
+
+- **CI poll:** max 30 minutes (30 iterations at 60s). If CI hasn't completed in 30 min, halt — something is stuck (runner outage, infinite-loop test, etc.). Document in `.agent-state/HALT.md` per AUTONOMY.md STOP_FAIL category 1.
+- **Review-feedback poll:** max 24 hours total (the executor doesn't expect human reviewers; bots respond within minutes). If 24h elapses with reviews still pending, halt — reviewer infrastructure is broken.
+- **Auto-merge convergence poll:** max 60 minutes (CI + auto-merge typically resolves in under 10 min; 60 min is generous). If auto-merge doesn't fire in 60 min after gates went green, halt — merge gate misconfiguration.
+- **Per-thread address-and-resolve cycle:** max 3 attempts. If the same thread keeps reopening after addressing, halt — feedback loop with the reviewer needs human input.
+
+Each bound is documented as a STOP_FAIL trigger in AUTONOMY.md. The executor never falls into an indefinite loop.
+
+Summary of operations within the loop:
 
 - **CI checks:** poll via `gh pr checks <number> --json state,name,conclusion`. If any check is failing, the executor:
   - Reads the failure logs (`gh run view <run-id> --log-failed`).
   - Diagnoses + fixes in code.
   - Commits + pushes the fix on the same branch.
-  - Re-runs the polling loop.
-- **Review comments (line-level):** poll via `gh api repos/{owner}/{repo}/pulls/{number}/comments`. For each unresolved comment:
+  - Re-runs the polling loop (counts toward the 30-min cap).
+- **Review comments (line-level):** poll via `gh api "repos/{owner}/{repo}/pulls/{number}/comments"` (the `gh api` CLI auto-resolves `{owner}/{repo}` against the current repo's `origin` remote — documented behavior, see AUTONOMY.md). For each unresolved comment:
   - Read the comment body + the line context.
   - Address inline (write the code change).
   - Commit with a message referencing the comment thread.

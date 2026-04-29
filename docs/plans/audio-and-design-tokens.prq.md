@@ -3,7 +3,7 @@
 **Created:** 2026-04-29
 **Status:** ACTIVE
 **Owner:** jbogaty
-**Acceptance:** A typed audio bus over Howler exposing role-keyed playback, reading volume + mute settings from `kv` (Capacitor Preferences). All six committed clips wired with role-correct triggering. `src/design/` tokens, Radix Theme config, and framer-motion variant library reconciled with the visual shell's needs.
+**Acceptance:** A typed audio bus over Howler exposing role-keyed playback, reading volume + mute settings from `kv` (Capacitor Preferences). All seven committed clips wired with role-correct triggering. `src/design/` tokens, Radix Theme config, and framer-motion variant library reconciled with the visual shell's needs.
 
 **Prerequisite:** [persistence.prq.md](./persistence.prq.md) merged. `kv` is the only persistence touchpoint here.
 
@@ -26,7 +26,7 @@ A nice side effect: this PRD is small enough to ship in a day or two, providing 
 
 Land:
 
-1. **`src/audio/`** — Howler-backed audio bus. Six clips: `ambient`, `move`, `chonk`, `split`, `sting`, `win`, `lose`. Role-keyed dispatch (`audio.play('chonk')`). Reads volume + mute from `kv` namespace `'settings'` keys `'volume'` (number 0..1) and `'muted'` (boolean). Ducking helper that lowers ambient under sting + voice. Loop control for ambient. Tested in browser tier with real Howler instances.
+1. **`src/audio/`** — Howler-backed audio bus. Seven clips: `ambient`, `move`, `chonk`, `split`, `sting`, `win`, `lose`. Role-keyed dispatch (`audio.play('chonk')`). Reads volume + mute from `kv` namespace `'settings'` keys `'volume'` (number 0..1) and `'muted'` (boolean). Ducking helper that lowers ambient under sting + voice. Loop control for ambient. Tested in browser tier with real Howler instances.
 
 2. **`src/design/tokens.ts` reconciliation** — verify the existing tokens file (`wood.boardMain`, `wood.boardHome`, `wood.pieceRed`, `wood.pieceWhite`, `ink.*`, `accent.*`, `surface.*`, `font.*`, `motion.*`, `board.*`) covers everything the visual shell will reference. Add tokens for `app/components/SplitRadial.tsx` slice states (idle / hovered / selected / hold-ready / committed) and for `app/components/TurnBadge.tsx` colour banding. Document each token's consumer.
 
@@ -290,7 +290,7 @@ DESIGN.md already exists. Reconcile to ensure:
 
 - The tokens table matches `src/design/tokens.ts` exactly post-additions.
 - The motion section references `src/design/motion.ts` variants by name.
-- The audio section enumerates the six committed clips and their role mapping.
+- The audio section enumerates the seven committed clips and their role mapping.
 
 ### Update `src/audio/README.md` (new)
 
@@ -313,7 +313,7 @@ Inline package README. Tokens / theme / motion documented at a glance.
 **Acceptance criteria:**
 - Tokens table matches final `src/design/tokens.ts`
 - Motion section references the variant library by name
-- Audio section enumerates six clips + role table
+- Audio section enumerates seven clips + role table
 
 #### A2. Author `src/audio/README.md`
 
@@ -361,7 +361,7 @@ Inline package README. Tokens / theme / motion documented at a glance.
 
 #### C2. Write `src/audio/__tests__/audioBus.test.ts`
 
-**Description:** Tests for the bus. Asserts: `init()` preloads all six Howls; `play(role)` triggers the right Howl; `setVolume` clamps to [0, 1] and persists to `kv`; `setMuted` stops in-flight playback and persists; subsequent `getAudioBus()` returns the same instance; `init()` is idempotent.
+**Description:** Tests for the bus. Asserts: `init()` preloads all seven Howls; `play(role)` triggers the right Howl; `setVolume` clamps to [0, 1] and persists to `kv`; `setMuted` stops in-flight playback and persists; subsequent `getAudioBus()` returns the same instance; `init()` is idempotent.
 
 **Files:** `src/audio/__tests__/audioBus.test.ts`
 

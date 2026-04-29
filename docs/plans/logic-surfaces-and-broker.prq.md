@@ -961,7 +961,7 @@ config:
 
 ## Execution order (dependency-resolved)
 
-```
+```text
 A1 → A2 → A3 → A4 → A5 → A6 → A7 → A8 → A9 → A10
        ↓ (docs are reference, B can start in parallel after A1-A3)
 B1
@@ -986,17 +986,27 @@ D13, D14 (search + profiles impl)
        ↓
 D6 (decide test) → D15 (decide impl)
        ↓
-D16 (ai barrel)
+D16 (snapshot test) → D17 (snapshot impl — dumpAiState/loadAiState)
        ↓
-E1 (persistence test) → E2-E6 (persistence impl)
+D18 (ai barrel including snapshot exports)
        ↓
-F1, F2, F3 (sim test files — engine + ai + persistence all real)
+E1, E2, E3, E4 (store test files — real persistence + schema)
        ↓
-F5, F6, F7, F8 (sim impl)
+E5, E6, E7, E8 (store impl) + E9 (store types) in parallel
+       ↓
+E10 (store barrel)
+       ↓
+E11, E12 (analytics test files — real store + persistence)
+       ↓
+E13 (analytics types) → E14 (queries) → E15 (propositions) → E16 (analytics barrel)
+       ↓
+F1, F2, F2a, F3 (sim test files — engine + ai + store + persistence + schema all real)
+       ↓
+F5, F6, F7, F8 (sim impl) + F8a (save/resume coordinator)
        ↓
 F9 (sim barrel)
        ↓
-F4 (100-games broker test — THE acceptance test)
+F4 (100-games broker test — THE acceptance test, includes save/resume subset)
        ↓
 G1 → G2 → G3 → G4
 ```

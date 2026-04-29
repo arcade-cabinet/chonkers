@@ -380,6 +380,32 @@ The visual layer's tests are mostly behavioral / visual / e2e. Unit tests focus 
 
 ---
 
+## Execution order
+
+```text
+A1, A2 (docs in parallel; no code deps)
+   ↓
+B1, B2, B3, B4, B5 (test files in parallel — written before their impls)
+   ↓
+C1, C2 (HTML + CSS — independent of TSX impls; can land early)
+C3 (boot + ErrorBoundary — depends on src/sim, src/audio, src/schema, src/persistence)
+   ↓
+C4 (main.tsx + App.tsx — depends on C3)
+C5 (canvas/ — Scene + Board + Pieces + Piece + supporting; depends on B4 test passing once impl lands)
+C6 (input/ — depends on B1, B2, B3 tests passing)
+C7 (hooks/ — independent; can land in parallel with C5/C6)
+C8 (components/ — depends on B5; uses tokens from @/design)
+   ↓
+C9 (screens/ — depends on C4-C8; the integration of all sub-layers)
+   ↓
+D1 (manual playthrough — gates everything below)
+   ↓
+D2 (browser test suite green) ‖ D3 (build verification)
+```
+The execution graph mirrors the structure of `schema.prq.md` and `audio-and-design-tokens.prq.md` for consistency. Within each phase, items can run in parallel; the `↓` separator enforces strict ordering between phases.
+
+---
+
 ## Configuration
 
 ```yaml

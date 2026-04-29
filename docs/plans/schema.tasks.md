@@ -89,7 +89,7 @@
 
 ## Execution Order
 
-```
+```text
 1, 2 (docs in parallel)
    ↓
 3 (test setup)

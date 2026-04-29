@@ -274,7 +274,7 @@
 
 Strict dependency order enforced. Each group completes (test + impl + barrel) before the next group begins:
 
-```
+```text
 Group A docs (1-12) — first wave; documentation drives subsequent code
   ↓
 Group B layout (13) — repo structure aligned

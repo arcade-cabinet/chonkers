@@ -61,6 +61,8 @@ The merge gate from EXECUTION.md is satisfied when:
 
 ## Reading review feedback
 
+> **Note on `{owner}/{repo}` placeholders.** The `gh api` CLI auto-resolves `{owner}` and `{repo}` placeholders against the current git repo's `origin` remote (this is documented `gh` behavior, not a bug in the snippet). When the executor runs from inside the chonkers repo, these placeholders resolve to `arcade-cabinet/chonkers` automatically. Snippets below use the placeholder form for portability — copy-paste into a different repo and the same snippets work without edit. If running from outside a git repo, replace `{owner}/{repo}` with the literal `arcade-cabinet/chonkers` (or set `GH_REPO=arcade-cabinet/chonkers` env var).
+
 ### Line-level review comments
 
 ```bash
@@ -230,13 +232,42 @@ gh api graphql -f query='
   }' -f prId="$PR_GLOBAL_ID"
 ```
 
-Returns `state: APPROVED`. This is GitHub's documented behavior: the PR author CAN submit reviews on their own PR. The branch protection rule that blocks "approval from author" is opt-in per-repo and is NOT enabled on `arcade-cabinet/chonkers`. The executor verifies this before relying on self-approval:
+Returns `state: APPROVED`. The PR author CAN submit reviews on their own PR. Whether that approval **counts toward branch-protection or ruleset gates** depends on multiple settings that the executor must verify before relying on self-approval. The relevant settings are split across the legacy "branch protection" API and the newer "rulesets" API:
 
 ```bash
-gh api "repos/arcade-cabinet/chonkers/branches/main/protection" --jq '.required_pull_request_reviews.required_approving_review_count // 0'
+# Legacy branch protection — required_approving_review_count + bypass-pull-request-allowances
+gh api "repos/{owner}/{repo}/branches/main/protection" 2>/dev/null \
+  --jq '{
+    required_approving_review_count: .required_pull_request_reviews.required_approving_review_count // 0,
+    require_code_owner_reviews: .required_pull_request_reviews.require_code_owner_reviews // false,
+    dismiss_stale_reviews: .required_pull_request_reviews.dismiss_stale_reviews // false,
+    bypass_pull_request_allowances: .required_pull_request_reviews.bypass_pull_request_allowances // null
+  }' || echo "no legacy branch protection on main"
+
+# Rulesets — newer mechanism; can independently require N approvals + reject author approvals
+gh api "repos/{owner}/{repo}/rules/branches/main" \
+  --jq '[.[] | select(.type == "pull_request") | .parameters | {
+    required_approving_review_count: .required_approving_review_count,
+    require_code_owner_review: .require_code_owner_review,
+    dismiss_stale_reviews_on_push: .dismiss_stale_reviews_on_push,
+    require_last_push_approval: .require_last_push_approval,
+    required_review_thread_resolution: .required_review_thread_resolution
+  }]'
 ```
 
-If the count is 0, no approval is needed at all (the merge gate is just CI + threads + DCO if applicable). If the count is ≥1 and self-approval is allowed, the recipe above works. If self-approval is blocked, autonomous mode requires user intervention — which is a STOP_FAIL.
+The decision matrix:
+
+| Setting | Effect on self-approval |
+|---|---|
+| `required_approving_review_count: 0` | No approval needed at all — self-approval is moot. Merge gate is CI + threads + (DCO if applicable). |
+| `required_approving_review_count: ≥1` AND `require_last_push_approval: true` | Self-approval **does NOT count** — GitHub specifically excludes the last-pusher from approving. STOP_FAIL: needs user intervention. |
+| `required_approving_review_count: ≥1` AND `require_last_push_approval: false` AND author NOT in `require_code_owner_review` requirement | Self-approval **counts** if no rule requires a code-owner review. Recipe above works. |
+| `require_code_owner_review: true` AND author IS the code owner | Self-approval **does NOT count** for the code-owner requirement (GitHub excludes the author). STOP_FAIL. |
+| `bypass_pull_request_allowances` includes the executor's identity | Executor can bypass the gate via merge with `--admin` (FORBIDDEN per autonomy doctrine). STOP_FAIL — never bypass via `--admin`. |
+
+The executor runs the verification queries above on EVERY PR before relying on self-approval. If any rule blocks self-approval given current settings, the executor halts with a clear STOP_FAIL message rather than guessing or attempting bypass.
+
+For `arcade-cabinet/chonkers` specifically, the current state (verified at PR #4 time) is: zero required-approving-review-count, no rulesets enforcing PR review on `main`. Self-approval is therefore moot — the merge gate is CI + threads + auto-merge convergence. If the user later enables stricter gates, the verification queries above surface the change automatically and the executor adapts (or STOP_FAILs cleanly).
 
 ## Squash-merging
 
@@ -251,7 +282,11 @@ gh pr merge "$PR_NUMBER" --squash --delete-branch
 If the merge fails because the branch is behind:
 
 ```bash
-gh pr update-branch "$PR_NUMBER"  # rebases prd/<slug> onto main
+# Default `gh pr update-branch` creates a merge commit. We want a rebase
+# instead — squash-merging the final PR will collapse it anyway, but
+# rebase keeps the intermediate state cleaner and avoids merge-commit
+# noise on `prd/<slug>`.
+gh pr update-branch "$PR_NUMBER" --rebase
 # wait for the resulting CI to pass
 gh pr merge "$PR_NUMBER" --squash --delete-branch
 ```

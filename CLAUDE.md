@@ -40,7 +40,7 @@ This repo runs in **autonomous long-running execution mode**. The execution surf
 
 ## Architecture cheat-sheet
 
-```
+```text
 src/                               # PURE TYPESCRIPT — no JSX, no React, no DOM
 ├── persistence/                   # Capacitor Preferences (kv) + Capacitor SQLite (db). Generic.
 ├── schema/                        # Forward-only migration runner + chonkers SQL files.
@@ -49,7 +49,7 @@ src/                               # PURE TYPESCRIPT — no JSX, no React, no DO
 ├── store/                         # Typed data-access over schema's tables. Reads db, encodes types.
 ├── analytics/                     # Pre-baked aggregate SQL queries via db.query.
 ├── sim/                           # Koota state layer + actions broker. Routes save/resume.
-├── audio/                         # Howler bus, six committed clips, role-keyed.
+├── audio/                         # Howler bus, seven committed clips, role-keyed.
 ├── design/                        # Tokens + Radix theme + framer-motion variants.
 └── ...
 
