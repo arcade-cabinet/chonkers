@@ -32,7 +32,7 @@ git pull --ff-only
 git checkout -b prd/<slug>
 ```
 
-`<slug>` is the lowercase hyphen-separated PRD identifier from the directive (e.g. `prd/persistence`, `prd/schema`, `prd/logic`, etc.). One branch per PRD; never reuse.
+`<slug>` is the lowercase hyphen-separated PRD identifier from the directive (e.g. `prd/persistence`, `prd/logic`, `prd/visual-shell`, etc.). One branch per PRD; never reuse.
 
 ### 2. Task execution loop
 
@@ -44,8 +44,8 @@ For each task in the PRD's task list, in dependency order:
 4. **Run the relevant test suite for the package being touched** to confirm green:
    - `pnpm typecheck` (every commit)
    - `pnpm lint` (every commit)
-   - `pnpm test:node` for engine/AI/persistence-types/schema-runner work
-   - `pnpm test:browser` for persistence/schema/audio/sim/visual-shell work
+   - `pnpm test:node` for engine/AI/store/sim/persistence-sqlite Node-tier work (the bulk of testing per `docs/TESTING.md`)
+   - `pnpm test:browser` for persistence-preferences/persistence-sqlite-bootstrap/audio/visual-shell work
    - `pnpm test:e2e:smoke` for visual-shell and beyond
 5. **Commit** with a Conventional Commits message: `feat(persistence): kv get/put roundtrip` or `test(engine): partition runs property tests` or similar. The message body briefly describes WHY the change matters (one to three sentences). Sign with the standard `Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>` trailer.
 6. **Dispatch reviewer trio** scoped to the commit's diff, in parallel + background:

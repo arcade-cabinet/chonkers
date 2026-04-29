@@ -34,7 +34,7 @@ Commands marked "planned" or "post-PRQ-N" are not yet runnable; the PRD that add
 This repo runs in **autonomous long-running execution mode**. The execution surface is:
 
 - **The queue:** [`.agent-state/directive.md`](./.agent-state/directive.md) — the live PRD pipeline, who's working on what right now, what's done, what's blocked. Read this first on every session start.
-- **The PRDs:** [`docs/plans/*.prq.md`](./docs/plans/) — one PRD per major slice, each with locked acceptance criteria + task list. The seven PRDs in dependency order: persistence, schema, logic-surfaces-and-broker, audio-and-design-tokens, visual-shell, e2e-governor, native-shell.
+- **The PRDs:** [`docs/plans/*.prq.md`](./docs/plans/) — one PRD per major slice, each with locked acceptance criteria + task list. The six PRDs in dependency order: persistence-and-db, logic-surfaces-and-broker, audio-and-design-tokens, visual-shell, e2e-governor, native-shell. (Schema was originally a separate PRD; it has been merged into persistence-and-db so the drizzle schema, build-time `public/game.db` pipeline, and runtime version-replay all land in one PR — see `docs/DB.md`.)
 - **The runbook:** [`docs/plans/EXECUTION.md`](./docs/plans/EXECUTION.md) — PR-per-PRD workflow, branch naming, commit cadence, reviewer dispatch, merge gate.
 - **The autonomy reference:** [`docs/plans/AUTONOMY.md`](./docs/plans/AUTONOMY.md) — `gh` + GraphQL recipes for thread resolution, change-request handling, self-approval, squash-merge, STOP_FAIL recovery.
 
@@ -44,16 +44,21 @@ This repo runs in **autonomous long-running execution mode**. The execution surf
 
 ```text
 src/                               # PURE TYPESCRIPT — no JSX, no React, no DOM
-├── persistence/                   # Capacitor Preferences (kv) + Capacitor SQLite (db). Generic.
-├── schema/                        # Forward-only migration runner + chonkers SQL files.
-├── engine/                        # Pure rules engine. 3D occupancy state. No randomness.
-├── ai/                            # Yuka Graph + alpha-beta minimax. Deterministic. dumpAiState/loadAiState.
-├── store/                         # Typed data-access over schema's tables. Reads db, encodes types.
-├── analytics/                     # Pre-baked aggregate SQL queries via db.query.
+├── persistence/                   # Durable storage layer
+│   ├── preferences/               # typed JSON kv over @capacitor/preferences
+│   └── sqlite/                    # drizzle ORM + @capacitor-community/sqlite,
+│                                  # build-time game.db, runtime version-replay
+├── engine/                        # Pure rules engine. 3D occupancy state. No PRNG.
+├── ai/                            # Yuka Graph + alpha-beta minimax. 9 disposition×difficulty
+│                                  # profiles. Deterministic. dumpAiState/loadAiState.
+├── store/                         # Typed CRUD repos over drizzle (matchesRepo, movesRepo,
+│                                  # aiStatesRepo, analyticsRepo).
+├── analytics/                     # Pre-baked aggregate refresh logic. Materialised rows.
 ├── sim/                           # Koota state layer + actions broker. Routes save/resume.
+│                                  # Owns coin_flip_seed (only entropy in the system).
 ├── audio/                         # Howler bus, seven committed clips, role-keyed.
 ├── design/                        # Tokens + Radix theme + framer-motion variants.
-└── ...
+└── utils/                         # Coords, type guards, asset manifest.
 
 app/                               # ALL .tsx LIVES HERE — React, R3F, Radix, framer-motion
 ├── main.tsx, App.tsx, index.html
@@ -65,24 +70,27 @@ app/                               # ALL .tsx LIVES HERE — React, R3F, Radix, 
 ├── boot/                          # Boot + ErrorBoundary
 └── css/
 
-e2e/                               # Playwright specs
-docs/                              # Authoritative docs (RULES, AI, SIM, PERSISTENCE, SCHEMA, etc.)
+scripts/                           # Build-time scripts incl. build-game-db.mjs
+drizzle/                           # drizzle-kit-generated migration SQL (committed to git)
+e2e/                               # Playwright specs incl. governor.spec.ts
+docs/                              # Canonical docs: RULES, DESIGN, LORE, ARCHITECTURE,
+│                                  # PERSISTENCE, DB, AI, TESTING, STATE.
 docs/plans/                        # PRDs + execution runbooks (this file's neighbors)
 .agent-state/                      # Live working memory (directive, digest, cursor)
 ```
 
 ## Strict architectural rules
 
-- **`src/*`** never imports from `app/*`. Provable by `grep -r "from '~/" src` returning empty.
-- **`src/engine/*`** never imports from `src/ai/*` or `src/sim/*`.
-- **`src/ai/*`** imports from `src/engine/*` only (one-way).
-- **`src/persistence/*`** never imports from `src/engine/*`, `src/ai/*`, `src/sim/*`, `src/store/*`, `src/schema/*`. It's pure transport.
-- **`src/schema/*`** imports from `src/persistence/*` only.
-- **`src/store/*`** imports from `src/persistence/*`, `src/schema/*`, plus type-only imports from `src/engine/*` and `src/ai/*`.
-- **`src/sim/*`** is the broker — imports from `src/engine/*`, `src/ai/*`, `src/store/*`, `src/persistence/*`, `src/schema/*`.
-- **No `Math.random()`** outside permitted scopes (defined in `.claude/gates.json` — eventually). Game logic is fully deterministic.
-- **No React in `src/`.** Provable by lint.
-- **No mocks** in tests. Each layer's tests use the real layer below it. The 100-game broker test is the integration assertion.
+- **`src/*`** never imports from `app/*`. Provable by grep + lint.
+- **No React imports in `src/*`.** Lint-enforced.
+- **`src/engine/*`** never imports `src/ai/*`, `src/sim/*`, or `src/store/*`.
+- **`src/ai/*`** imports only from `src/engine/*` (one-way).
+- **`src/persistence/preferences/*`** is a leaf — imports nothing from other `src/` packages.
+- **`src/persistence/sqlite/*`** imports only the drizzle / capacitor / better-sqlite3 deps it needs; nothing from `src/{engine,ai,sim,store}/`.
+- **`src/store/*`** imports from `src/persistence/sqlite/*` for drizzle handles; type-only from `src/{engine,ai}/*`.
+- **`src/sim/*`** is the broker — imports from `src/{engine,ai,store,persistence,audio}/*`. Only place that calls `crypto.getRandomValues()` (for the per-match `coin_flip_seed`).
+- **No `Math.random()`** in `src/{engine,ai,sim,store}/`. Banned by `.claude/gates.json`. The sim broker's coin-flip is the only entropy source.
+- **No mocks** in tests (per `docs/TESTING.md`). Each layer's tests use the real layer below it. Tier 1 uses `makeTestDb()` (real `better-sqlite3`); Tier 2 uses real capacitor-sqlite; Tier 3 runs the full stack. The 100-run broker test is the alpha-stage integration assertion.
 
 Per-repo specifics that override profile defaults: see profile files for the standard rules; this CLAUDE.md only adds chonkers-unique items.
 

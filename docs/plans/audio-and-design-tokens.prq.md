@@ -5,7 +5,7 @@
 **Owner:** jbogaty
 **Acceptance:** A typed audio bus over Howler exposing role-keyed playback, reading volume + mute settings from `kv` (Capacitor Preferences). All seven committed clips wired with role-correct triggering. `src/design/` tokens, Radix Theme config, and framer-motion variant library reconciled with the visual shell's needs.
 
-**Prerequisite:** [persistence.prq.md](./persistence.prq.md) merged. `kv` is the only persistence touchpoint here.
+**Prerequisite:** [persistence-and-db.prq.md](./persistence-and-db.prq.md) merged. `kv` is the only persistence touchpoint here.
 
 ---
 

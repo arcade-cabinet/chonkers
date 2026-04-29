@@ -1,0 +1,389 @@
+{
+  "version": "6",
+  "dialect": "sqlite",
+  "id": "a8327b26-fcf4-4f69-b11c-b339afa0fb7e",
+  "prevId": "843c3cb0-af97-4320-9eed-f002c9938e8e",
+  "tables": {
+    "ai_states": {
+      "name": "ai_states",
+      "columns": {
+        "match_id": {
+          "name": "match_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "profile_key": {
+          "name": "profile_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "ply": {
+          "name": "ply",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "dump_blob": {
+          "name": "dump_blob",
+          "type": "blob",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "dump_format_version": {
+          "name": "dump_format_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "ai_states_match_id_matches_id_fk": {
+          "name": "ai_states_match_id_matches_id_fk",
+          "tableFrom": "ai_states",
+          "tableTo": "matches",
+          "columnsFrom": [
+            "match_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "ai_states_match_id_profile_key_pk": {
+          "columns": [
+            "match_id",
+            "profile_key"
+          ],
+          "name": "ai_states_match_id_profile_key_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "analytics_aggregates": {
+      "name": "analytics_aggregates",
+      "columns": {
+        "aggregate_key": {
+          "name": "aggregate_key",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "value_json": {
+          "name": "value_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "sample_count": {
+          "name": "sample_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "last_match_id": {
+          "name": "last_match_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "refreshed_at": {
+          "name": "refreshed_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "analytics_aggregates_last_match_id_matches_id_fk": {
+          "name": "analytics_aggregates_last_match_id_matches_id_fk",
+          "tableFrom": "analytics_aggregates",
+          "tableTo": "matches",
+          "columnsFrom": [
+            "last_match_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "matches": {
+      "name": "matches",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "started_at": {
+          "name": "started_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "finished_at": {
+          "name": "finished_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "winner": {
+          "name": "winner",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "red_profile": {
+          "name": "red_profile",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "white_profile": {
+          "name": "white_profile",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "opening_position_hash": {
+          "name": "opening_position_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "coin_flip_seed": {
+          "name": "coin_flip_seed",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "chain_source_col": {
+          "name": "chain_source_col",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "chain_source_row": {
+          "name": "chain_source_row",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "chain_remaining_json": {
+          "name": "chain_remaining_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "ply_count": {
+          "name": "ply_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        }
+      },
+      "indexes": {
+        "idx_matches_finished_at": {
+          "name": "idx_matches_finished_at",
+          "columns": [
+            "finished_at"
+          ],
+          "isUnique": false
+        },
+        "idx_matches_profiles": {
+          "name": "idx_matches_profiles",
+          "columns": [
+            "red_profile",
+            "white_profile"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "matches_winner_chk": {
+          "name": "matches_winner_chk",
+          "value": "\"matches\".\"winner\" IS NULL OR \"matches\".\"winner\" IN ('red', 'white', 'forfeit-red', 'forfeit-white')"
+        }
+      }
+    },
+    "moves": {
+      "name": "moves",
+      "columns": {
+        "match_id": {
+          "name": "match_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "ply": {
+          "name": "ply",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "color": {
+          "name": "color",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "from_col": {
+          "name": "from_col",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "from_row": {
+          "name": "from_row",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "to_col": {
+          "name": "to_col",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "to_row": {
+          "name": "to_row",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "slice_indices_json": {
+          "name": "slice_indices_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "stack_height_after": {
+          "name": "stack_height_after",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "position_hash_after": {
+          "name": "position_hash_after",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "move_duration_ms": {
+          "name": "move_duration_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "moves_match_id_matches_id_fk": {
+          "name": "moves_match_id_matches_id_fk",
+          "tableFrom": "moves",
+          "tableTo": "matches",
+          "columnsFrom": [
+            "match_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "moves_match_id_ply_pk": {
+          "columns": [
+            "match_id",
+            "ply"
+          ],
+          "name": "moves_match_id_ply_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "moves_color_chk": {
+          "name": "moves_color_chk",
+          "value": "\"moves\".\"color\" IN ('red', 'white')"
+        }
+      }
+    }
+  },
+  "views": {},
+  "enums": {},
+  "_meta": {
+    "schemas": {},
+    "tables": {},
+    "columns": {}
+  },
+  "internal": {
+    "indexes": {}
+  }
+}

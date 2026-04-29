@@ -2,7 +2,7 @@
 
 **Created:** 2026-04-29
 **PRD:** [audio-and-design-tokens.prq.md](./audio-and-design-tokens.prq.md)
-**Prerequisite:** persistence.prq.md merged
+**Prerequisite:** persistence-and-db.prq.md merged
 
 ## Tasks
 

@@ -37,9 +37,9 @@ pnpm cap:sync       # build + sync to android/ios native projects
 | Language | TypeScript 6.0+ (strict) |
 | 3D render | React Three Fiber + drei + Three.js |
 | 2D UI | Radix Themes + framer-motion |
-| State | Zustand + immutable reducer |
+| State | koota (ECS) — match state as traits on a singleton match entity |
 | Native shell | Capacitor 8 (iOS + Android) |
-| Storage | `@capacitor/preferences` (settings) + SQLite (`@capacitor-community/sqlite` / `jeep-sqlite`) (history) |
+| Storage | `@capacitor/preferences` for settings; drizzle ORM + `@capacitor-community/sqlite` for match history (build-time `public/game.db` + runtime version-replay; see `docs/DB.md`) |
 | Audio | curated WAV/OGG via a single `AudioBus` |
 | Build | Vite |
 | Lint/format | Biome |

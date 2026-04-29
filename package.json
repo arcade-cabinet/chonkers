@@ -27,17 +27,22 @@
 		"test:node": "vitest run --project node --passWithNoTests",
 		"test:browser": "vitest run --project browser --passWithNoTests",
 		"test:watch": "vitest",
+		"pretest": "pnpm prepare:public",
+		"pretest:watch": "pnpm prepare:public",
+		"pretest:node": "pnpm prepare:public",
 		"test:e2e": "playwright test",
 		"test:e2e:ci": "test -d e2e && playwright test --grep-invert @nightly || echo 'no e2e specs yet — skipping'",
 		"test:e2e:nightly": "test -d e2e && playwright test --grep @nightly || echo 'no e2e specs yet — skipping'",
 		"copywasm": "node scripts/copy-wasm.mjs",
-		"predev": "pnpm copywasm",
-		"prebuild": "pnpm copywasm",
-		"prebuild:native": "pnpm copywasm",
-		"prepreview": "pnpm copywasm",
-		"pretest:browser": "pnpm copywasm",
-		"pretest:e2e": "pnpm copywasm",
-		"pretest:e2e:ci": "pnpm copywasm",
+		"build:gamedb": "node scripts/build-game-db.mjs",
+		"prepare:public": "pnpm copywasm && pnpm build:gamedb",
+		"predev": "pnpm prepare:public",
+		"prebuild": "pnpm prepare:public",
+		"prebuild:native": "pnpm prepare:public",
+		"prepreview": "pnpm prepare:public",
+		"pretest:browser": "pnpm prepare:public",
+		"pretest:e2e": "pnpm prepare:public",
+		"pretest:e2e:ci": "pnpm prepare:public",
 		"cap:sync": "pnpm build:native && cap sync",
 		"native:android:debug": "pnpm build:native && cap sync android && cd android && ./gradlew assembleDebug",
 		"native:ios:build": "pnpm build:native && cap sync ios && xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug -sdk iphonesimulator -destination 'platform=iOS Simulator,name=iPhone 16'"
@@ -55,18 +60,19 @@
 		"@radix-ui/themes": "^3.3.0",
 		"@react-three/drei": "^10.7.7",
 		"@react-three/fiber": "^9.6.1",
+		"drizzle-orm": "^0.45.2",
 		"framer-motion": "^12.23.0",
 		"jeep-sqlite": "^2.8.0",
 		"react": "^19.2.5",
 		"react-dom": "^19.2.5",
-		"sql.js": "^1.14.1",
-		"three": "^0.184.0",
-		"zustand": "^5.0.8"
+		"sql.js": "1.11.0",
+		"three": "^0.184.0"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.4.13",
 		"@capacitor/cli": "^8.3.1",
 		"@playwright/test": "^1.59.1",
+		"@types/better-sqlite3": "^7.6.13",
 		"@types/node": "^25.6.0",
 		"@types/react": "^19.2.14",
 		"@types/react-dom": "^19.2.3",
@@ -75,12 +81,20 @@
 		"@vitejs/plugin-react": "^6.0.1",
 		"@vitest/browser": "^4.1.5",
 		"@vitest/browser-playwright": "^4.1.5",
+		"better-sqlite3": "^12.9.0",
 		"cross-env": "^10.1.0",
+		"drizzle-kit": "^0.31.10",
+		"fast-check": "^4.7.0",
 		"playwright": "^1.59.1",
 		"typescript": "^6.0.3",
 		"vite": "^8.0.10",
 		"vitest": "^4.1.5"
 	},
 	"author": "arcade-cabinet",
-	"license": "MIT"
+	"license": "MIT",
+	"pnpm": {
+		"onlyBuiltDependencies": [
+			"better-sqlite3"
+		]
+	}
 }
