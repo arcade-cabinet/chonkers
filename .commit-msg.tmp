@@ -1,0 +1,37 @@
+feat(store): typed CRUD repos over chonkers SQL data model
+
+Land the four repos described in docs/DB.md "Repos":
+  - matchesRepo: createMatch, getMatch, listMatches, finalizeMatch,
+    forfeit, setChain, clearChain, incrementPly. Forfeit records
+    forfeit-<color> as the winner field per docs/DB.md so the sim
+    broker can dispatch the standard game-over sting + the OPPOSITE
+    side's victory voice line.
+  - movesRepo: appendMove, getMove, listMovesByMatch (asc by ply),
+    latestMoveByMatch (desc by ply, limit 1).
+  - aiStatesRepo: upsertDump, getDump. Replace-not-append per the
+    composite PK (match_id, profile_key). Buffer-encoded BLOB
+    handling so the same code works under better-sqlite3 (Node tier)
+    and capacitor-sqlite (runtime).
+  - analyticsRepo: upsertAggregate, getAggregate, listByFamily.
+    listByFamily uses LIKE with the family-prefix convention from
+    docs/DB.md (e.g. "winrate:" matches every win-rate row).
+
+Each repo function takes the drizzle handle as its first argument
+so callers compose them inside transactions (drizzle's
+db.transaction(fn)). No singleton shortcuts; the broker passes the
+handle.
+
+A shared StoreDb type (BaseSQLiteDatabase generic over the schema)
+lets every repo accept BOTH the test-tier better-sqlite3 handle from
+makeTestDb() AND the runtime sqlite-proxy handle from
+src/persistence/sqlite/. Same code path under both backends.
+
+31 new repo CRUD tests against makeTestDb covering happy-path inserts,
+update-by-conflict semantics for the upsert repos, FK cascades for
+matches→{moves, ai_states}, FK SET NULL for matches→analytics, plus
+listByFamily prefix matching and ply-counter monotonicity.
+
+Total: 8 Node-tier test files, 69 tests pass. Browser tier unchanged
+(13 kv + 3 bootstrap = 16). Typecheck and lint clean.
+
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
