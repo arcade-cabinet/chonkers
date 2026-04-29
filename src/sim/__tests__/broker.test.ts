@@ -91,6 +91,11 @@ describe("broker — single match", () => {
 		});
 		expect(result.plies).toBeGreaterThanOrEqual(1);
 		expect(result.plies).toBeLessThanOrEqual(30);
+		// Stall counter is non-negative and tracked separately
+		// from plies (the alpha-stage 100-run gate uses it as a
+		// diagnostic for non-persisting loops, so the contract
+		// that it's exposed and shaped correctly matters).
+		expect(result.stalls).toBeGreaterThanOrEqual(0);
 		// Either the match resolved, or we hit the cap as an outlier.
 		expect(typeof result.outlier).toBe("boolean");
 

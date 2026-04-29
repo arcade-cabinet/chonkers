@@ -91,11 +91,18 @@ export interface PlayOptions {
 	/** Pass `replay` for governor runs; defaults to `live`. */
 	readonly mode?: "live" | "replay";
 	/**
-	 * Optional terminal-transition hook. Called exactly once when
-	 * the match concludes (winner stamped or ply cap hit). The hook
-	 * is the wiring point for `refreshOnMatchEnd` in `src/analytics`,
-	 * which the broker is forbidden from calling directly per the
-	 * import-boundary rule in CLAUDE.md.
+	 * Optional terminal-transition hook. `playTurn` invokes this
+	 * exactly once — when the match transitions to a finished state
+	 * (forfeit or engine-declared winner) — passing the matchId. The
+	 * hook is the wiring point for `refreshOnMatchEnd` in
+	 * `src/analytics`, which the broker is forbidden from calling
+	 * directly per the import-boundary rule in CLAUDE.md. Both the
+	 * 100-run alpha test and the PRQ-4 koota actions layer use this
+	 * to plug analytics back in.
+	 *
+	 * Outlier ply/stall-cap exits in `playToCompletion` do NOT fire
+	 * the hook: those matches have no `finishedAt` stamp, and
+	 * `refreshOnMatchEnd` early-bails on un-finished matches.
 	 */
 	readonly onTerminal?: (matchId: string) => Promise<void> | void;
 }
@@ -138,8 +145,12 @@ export async function createMatch(
 /**
  * Advance the match by one ply. Returns the resulting decision +
  * action + terminal flag. Updates the in-memory `handle.game` and
- * persists the move + (on terminal transition) the analytics
- * aggregates.
+ * persists the move. On terminal transition (forfeit or engine-
+ * declared winner), invokes `options.onTerminal` exactly once — this
+ * is the analytics-refresh hook that the broker is forbidden from
+ * calling directly (CLAUDE.md import boundary). PRQ-4's koota actions
+ * layer drives `playTurn` directly, so the hook MUST fire here, not
+ * only inside `playToCompletion`.
  */
 export async function playTurn(
 	db: StoreDb,
@@ -176,6 +187,7 @@ export async function playTurn(
 			...handle.game,
 			winner: mover === "red" ? "white" : "red",
 		};
+		if (options.onTerminal) await options.onTerminal(handle.matchId);
 		return {
 			action: null,
 			decision,
@@ -215,6 +227,7 @@ export async function playTurn(
 
 	if (next.winner) {
 		await matchesRepo.finalizeMatch(db, handle.matchId, next.winner);
+		if (options.onTerminal) await options.onTerminal(handle.matchId);
 		return { action, decision, mover, terminal: true, persistedMove: true };
 	}
 
@@ -233,6 +246,14 @@ export async function playTurn(
  * `result.plies` mirrors the persisted move log — exactly the value
  * stored in `matches.ply_count`. `result.stalls` is a sim-only loop
  * counter for diagnostics and outlier classification.
+ *
+ * `options.onTerminal` is forwarded to each `playTurn` call and fires
+ * exactly once — at the actual terminal transition (forfeit or
+ * engine-declared winner). It does NOT fire on outlier exits (ply or
+ * stall cap reached without a winner): outlier matches have no
+ * `finishedAt` stamp and analytics' `refreshOnMatchEnd` correctly
+ * skips them, so calling the hook would either be a no-op or
+ * misattribute the event.
  */
 export async function playToCompletion(
 	db: StoreDb,
@@ -255,9 +276,6 @@ export async function playToCompletion(
 	}
 	const outlier =
 		!handle.game.winner && (plies >= plyCap || stalls >= stallCap);
-	if (handle.game.winner && options.onTerminal) {
-		await options.onTerminal(handle.matchId);
-	}
 	return {
 		winner: handle.game.winner,
 		plies,
