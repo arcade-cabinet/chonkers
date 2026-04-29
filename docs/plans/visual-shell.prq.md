@@ -6,8 +6,7 @@
 **Acceptance:** A player can launch the dev server, see the 3D wood board with the 5-4-3 starting position, configure a new game (difficulty / disposition / colour), watch the AI move, select pieces, see legal-move highlights, move/chonk/split a piece via gestures with audio + animation, win or lose, see the win/lose screen with voice playback. All `app/*.tsx` consumes koota traits via reactive hooks; `src/*` stays pure TypeScript.
 
 **Prerequisites:**
-- [persistence.prq.md](./persistence.prq.md) merged
-- [schema.prq.md](./schema.prq.md) merged
+- [persistence-and-db.prq.md](./persistence-and-db.prq.md) merged
 - [logic-surfaces-and-broker.prq.md](./logic-surfaces-and-broker.prq.md) merged
 - [audio-and-design-tokens.prq.md](./audio-and-design-tokens.prq.md) merged
 
@@ -402,7 +401,7 @@ D1 (manual playthrough — gates everything below)
    ↓
 D2 (browser test suite green) ‖ D3 (build verification)
 ```
-The execution graph mirrors the structure of `schema.prq.md` and `audio-and-design-tokens.prq.md` for consistency. Within each phase, items can run in parallel; the `↓` separator enforces strict ordering between phases.
+The execution graph mirrors the structure of `persistence-and-db.prq.md` and `audio-and-design-tokens.prq.md` for consistency. Within each phase, items can run in parallel; the `↓` separator enforces strict ordering between phases.
 
 ---
 

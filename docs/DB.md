@@ -7,7 +7,7 @@ domain: technical
 
 # Database
 
-`src/db/` is the **relational data layer** for chonkers. It uses `drizzle-orm` for typed schema and queries, ships a pre-built `public/game.db` as the initial database snapshot, and replays drizzle-kit-generated migration files forward against persisted user copies on subsequent runs.
+`src/persistence/sqlite/` is the **relational data layer** for chonkers. It uses `drizzle-orm` for typed schema and queries, ships a pre-built `public/game.db` as the initial database snapshot, and replays drizzle-kit-generated migration files forward against persisted user copies on subsequent runs.
 
 `@capacitor/preferences` (the kv side, `src/persistence/`) handles small JSON values. This document is exclusively about the relational side.
 
@@ -15,7 +15,7 @@ domain: technical
 
 ```
                     ┌────────────────────────────────┐
-                    │  src/db/schema/  (drizzle TS)  │
+                    │  src/persistence/sqlite/schema/  (drizzle TS)  │
                     │  Source of truth for shape     │
                     └───────────────┬────────────────┘
                                     │ drizzle-kit generate
@@ -29,7 +29,7 @@ domain: technical
             ┌───────────────────────┼────────────────────────────┐
             │                       │                            │
             ▼ build time            ▼ test time                  ▼ user runtime
-   scripts/build-game-db.mjs   makeTestDb() factory     src/db/bootstrap.ts
+   scripts/build-game-db.mjs   makeTestDb() factory     src/persistence/sqlite/bootstrap.ts
    (better-sqlite3, Node)      (better-sqlite3, Node)   (capacitor-sqlite)
             │                       │                            │
             ▼                       ▼                            ▼
@@ -52,7 +52,7 @@ The output `public/game.db` is **gitignored**. It's a derived artefact rebuilt d
 
 ### Test time (Node, `makeTestDb()` factory)
 
-`src/db/__tests__/test-db.ts` exposes `makeTestDb()`. The factory:
+`src/persistence/sqlite/__tests__/test-db.ts` exposes `makeTestDb()`. The factory:
 
 1. Resolves the database location:
    - Explicit `path: string` argument → write to that path (creates parent dirs).
@@ -64,7 +64,7 @@ The output `public/game.db` is **gitignored**. It's a derived artefact rebuilt d
 
 Each call returns a fresh isolated DB. No shared state, no cleanup hooks needed. In-memory dies with the connection. On-disk artefacts under `CHONKERS_TEST_DB_DIR` are deliberately left after the run so a failed test's exact DB state can be inspected with `sqlite3 path/to/foo.db`.
 
-### User runtime (browser/Capacitor, `src/db/bootstrap.ts`)
+### User runtime (browser/Capacitor, `src/persistence/sqlite/bootstrap.ts`)
 
 On first run:
 
@@ -209,7 +209,7 @@ Reads are concurrent and lock-free.
 
 ## Test strategy
 
-The test pyramid for `src/db/` is:
+The test pyramid for `src/persistence/sqlite/` is:
 
 - **Node tier (the bulk):** schema correctness, migration forward-replay determinism, repo CRUD, query result shapes, transaction semantics. Backed by `makeTestDb()` (in-memory `better-sqlite3` by default; on-disk under `CHONKERS_TEST_DB_DIR` for diagnostics). Fast, parallelisable, no browser.
 - **Browser tier (thin):** the import-from-asset bootstrap path, the version-detection-and-replay flow, OPFS persistence smoke. Just enough to prove the runtime adapter works under real `@capacitor-community/sqlite`. Everything *meaningful* (CRUD, query shapes, transaction semantics) is already covered by the Node tier.
@@ -222,7 +222,7 @@ No mocks. Each layer's tests use the real layer below it. The 100/1000/10000 bro
 
 When schema changes are needed, the workflow is:
 
-1. Edit `src/db/schema/*.ts`.
+1. Edit `src/persistence/sqlite/schema/*.ts`.
 2. Run `pnpm drizzle-kit generate`. drizzle-kit emits `drizzle/NNNN_*.sql`.
 3. Review the generated SQL. Hand-edit if drizzle-kit's emit is non-optimal or carries a destructive change we want to soften.
 4. Commit the schema edit and the generated SQL together.

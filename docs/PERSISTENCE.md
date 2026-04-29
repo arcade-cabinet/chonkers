@@ -9,7 +9,7 @@ domain: technical
 
 `src/persistence/` is the **typed JSON key-value store** over `@capacitor/preferences`. It carries small, frequently-read settings — volume, mute, reduced-motion override, last camera angle, last-used AI profile pair, tutorial-seen flag, etc. — that don't belong in the relational database.
 
-Match history, AI dumps, move logs, and analytics aggregates all live in `src/db/` (drizzle ORM + `@capacitor-community/sqlite`). See `docs/DB.md`.
+Match history, AI dumps, move logs, and analytics aggregates all live in `src/persistence/sqlite/` (drizzle ORM + `@capacitor-community/sqlite`). See `docs/DB.md`.
 
 ## Scope boundary
 
@@ -70,14 +70,14 @@ Capacitor Preferences serialises per-key writes platform-side, so concurrent `pu
 
 ## Tests
 
-Tests live at `src/persistence/__tests__/kv.browser.test.ts` and run in the browser tier (`pnpm test:browser`) under real Capacitor Preferences via the `@capacitor/preferences` web implementation. Coverage includes round-trip property tests over arbitrary JSON values, namespace isolation, corrupted-JSON null fallback, concurrent-put safety, and clear-by-namespace boundaries.
+Tests live at `src/persistence/preferences/__tests__/kv.browser.test.ts` and run in the browser tier (`pnpm test:browser`) under real Capacitor Preferences via the `@capacitor/preferences` web implementation. Coverage includes round-trip property tests over arbitrary JSON values, namespace isolation, corrupted-JSON null fallback, concurrent-put safety, and clear-by-namespace boundaries.
 
 There is no node-tier test suite for `kv` — Capacitor Preferences requires a browser environment to exercise the web path. The behaviour under iOS/Android is the platform's responsibility (Capacitor's own tests).
 
 ## What `src/persistence/` does NOT provide
 
-- Relational queries → `src/db/`
-- Bulk updates / transactions → `src/db/`
-- Migration versioning → `src/db/`
-- Game state save/resume → `src/sim/` (broker), backed by `src/db/`
+- Relational queries → `src/persistence/sqlite/`
+- Bulk updates / transactions → `src/persistence/sqlite/`
+- Migration versioning → `src/persistence/sqlite/`
+- Game state save/resume → `src/sim/` (broker), backed by `src/persistence/sqlite/`
 - Encrypted storage → out of scope; Capacitor Preferences is plain text on every platform

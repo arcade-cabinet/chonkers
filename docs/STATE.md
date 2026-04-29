@@ -34,7 +34,7 @@ Stages reflect *kind of validation completed*, not *version number*. release-ple
 - Coordination state under `.agent-state/`: directive (the queue), digest, cursor.
 - Initial R3F + Radix + framer-motion skeleton: tilted board view, both home rows colour-graded with distinct PBR woods, 5-4-3 starting position rendered with PBR-textured pucks.
 - Design tokens (`src/design/tokens.ts`) derived from PBR mid-tones + Lato/Abril Fatface declared as `@font-face` in `src/css/fonts.css`.
-- Capacitor Preferences `kv` typed wrapper at `src/persistence/kv.ts` with browser-tier vitest coverage.
+- Capacitor Preferences `kv` typed wrapper at `src/persistence/preferences/kv.ts` with browser-tier vitest coverage.
 
 ## What is in flight
 

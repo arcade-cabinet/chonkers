@@ -90,8 +90,7 @@ docs/plans/                        # PRDs + execution runbooks (this file's neig
 - **`src/store/*`** imports from `src/persistence/sqlite/*` for drizzle handles; type-only from `src/{engine,ai}/*`.
 - **`src/sim/*`** is the broker — imports from `src/{engine,ai,store,persistence,audio}/*`. Only place that calls `crypto.getRandomValues()` (for the per-match `coin_flip_seed`).
 - **No `Math.random()`** in `src/{engine,ai,sim,store}/`. Banned by `.claude/gates.json`. The sim broker's coin-flip is the only entropy source.
-- **No mocks** in tests (per `docs/TESTING.md`). Each layer's tests use the real layer below it. Tier 1 uses `makeTestDb()` (real `better-sqlite3`); Tier 2 uses real capacitor-sqlite; Tier 3 runs the full stack.
-- **No mocks** in tests. Each layer's tests use the real layer below it. The 100-game broker test is the integration assertion.
+- **No mocks** in tests (per `docs/TESTING.md`). Each layer's tests use the real layer below it. Tier 1 uses `makeTestDb()` (real `better-sqlite3`); Tier 2 uses real capacitor-sqlite; Tier 3 runs the full stack. The 100-run broker test is the alpha-stage integration assertion.
 
 Per-repo specifics that override profile defaults: see profile files for the standard rules; this CLAUDE.md only adds chonkers-unique items.
 

@@ -5,11 +5,10 @@
 **Owner:** jbogaty
 **Acceptance:** ≥100 full chonkers matches driven through `src/sim/actions.ts` (the broker), each completing legally end-to-end with real engine, real AI, and real persistence — no mocks anywhere in the call graph.
 
-**Prerequisites (both must be complete and merged before this PRD begins):**
-- [persistence.prq.md](./persistence.prq.md) — `src/persistence/` provides generic `kv` + raw-SQL `db` transport. This PRD consumes it as an installed dependency.
-- [schema.prq.md](./schema.prq.md) — `src/schema/` provides the migration runner + chonkers SQL files. This PRD consumes `bootstrapChonkersSchema` from `@/schema` to set up the connection.
+**Prerequisite (must be complete and merged before this PRD begins):**
+- [persistence-and-db.prq.md](./persistence-and-db.prq.md) — `src/persistence/preferences/` (kv) + `src/persistence/sqlite/` (drizzle ORM + capacitor-sqlite, build-time `public/game.db`, runtime version-replay) + `src/store/` (typed CRUD repos). This PRD consumes those as installed dependencies. The earlier separate "schema" PRD has been merged into this prerequisite.
 
-This PRD does not build either of those packages; it only consumes them.
+This PRD does not build the persistence + db + store layer; it only consumes it.
 
 ---
 
@@ -38,8 +37,7 @@ There is no separate "integration" task because the broker test IS the integrati
 
 ## Dependency order (TDD lands in this order, no exceptions)
 
-0. **Persistence prerequisite** — `src/persistence/` merged via [persistence.prq.md](./persistence.prq.md).
-0a. **Schema prerequisite** — `src/schema/` merged via [schema.prq.md](./schema.prq.md).
+0. **Persistence + db + store prerequisite** — merged via [persistence-and-db.prq.md](./persistence-and-db.prq.md).
 1. **Documentation foundation** (no code dependencies) — contracts published before tests are written.
 2. **Repo layout migration** — `src/` vs `app/` split; vite/vitest/biome configs aligned.
 3. **`src/engine/`** — pure rules. Property tests against the barrel before any implementation.

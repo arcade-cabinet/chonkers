@@ -47,11 +47,31 @@ The Yuka Graph models reachable game states as nodes and legal transitions as we
 
 ## Determinism contract
 
-The AI is contractually deterministic on three guarantees:
+The AI is contractually deterministic on three guarantees. Each guarantee
+specifies its scope precisely — the contract holds in **search-depth-pinned
+mode** (used during replay and during alpha/beta/rc governor runs); it is a
+**fairness contract** in **time-budget mode** (the production live-play
+path). The two modes are documented below.
 
-1. **Same state, same profile → same action.** `chooseAction(state: GameState, profile: Profile): Action` is a pure function. Calling it twice with structurally-equal inputs yields the same output.
-2. **Same dump, same load → same state.** `loadAiState(dumpAiState(s)) ⊨ s` is the round-trip identity for any AI state `s`. The dump format is opaque BLOB + monotonic format-version integer.
-3. **Same match seed, same profile pair, same opening → same game.** Given recorded `coin_flip_seed`, `red_profile`, `white_profile`, and `opening_position_hash` from a `matches` row, replaying the match through the same chonkers code reproduces the exact ply sequence — including AI think-times within a tolerance window. This makes outlier-replay possible at rc-stage 10,000-run scale.
+1. **Same state, same profile, same mode → same action.** `chooseAction(state: GameState, profile: Profile, mode: 'live' | 'replay'): Action` is a pure function of its three arguments. Calling it twice with structurally-equal inputs yields the same output.
+
+2. **Same dump, same load → behaviourally equivalent state.** `loadAiState(dumpAiState(s))` produces an `AiState` `s'` such that for every game state `g` and mode `m`: `chooseAction(g, profile_of(s), m, s) === chooseAction(g, profile_of(s'), m, s')`. The states are not required to be bit-equal — the transposition table is a perf cache and may be repacked on dump/load — but they must produce the same actions for all inputs. The dump format is an opaque BLOB with a monotonic format-version integer (4 bytes, little-endian) following a 4-byte magic `'CHAI'`.
+
+3. **Same match seed, same profile pair, same opening → same game (replay mode).** Given recorded `coin_flip_seed`, `red_profile`, `white_profile`, and `opening_position_hash` from a `matches` row, **re-running the match in `replay` mode** reproduces the exact ply sequence. This makes outlier-replay possible at rc-stage 10,000-run scale.
+
+### `live` vs `replay` mode
+
+| Aspect | `live` | `replay` |
+|---|---|---|
+| Search depth | iterative deepening, capped by `time_budget_ms` (host-speed-dependent) | pinned to `profile.search_depth` (host-speed-independent) |
+| Action determinism | guaranteed for fixed (state, profile, hardware) — NOT across hardware | guaranteed for fixed (state, profile) — across all hardware |
+| Use | production live play under user pressure | governor runs (alpha/beta/rc), outlier diagnosis, post-match replay UI |
+
+`live` mode is what humans face. The AI thinks for up to `time_budget_ms` and returns the best move found within that budget. This is host-speed-dependent — a faster CPU completes deeper iterations within the budget — so two players on different hardware playing the same opening would face slightly different opponents. That's acceptable for fairness in production (everyone gets the same effective difficulty curve relative to their device's capability).
+
+`replay` mode is what the governor runs, what outlier-replay uses, and what the post-match replay UI consumes. It pins search to exactly `profile.search_depth` plies and ignores `time_budget_ms` entirely. This produces a deterministic, host-independent ply sequence from the recorded `(seed, profiles, opening)` tuple. Replay mode is slower per move on average (no early-out) but bounded.
+
+The governor spec at every stage runs in `replay` mode. The 100/1000/10000-run cycles produce balance data that's reproducible across machines. An outlier match found on CI can be re-played locally and surface the same divergent decision tree.
 
 ## The 9 profiles
 
@@ -157,11 +177,12 @@ interface AiState {
   readonly transpositionTable: TranspositionTable; // Zobrist-keyed evaluation memo
   readonly chainPlannedRemainder: ReadonlyArray<readonly number[]> | null;
   // ^ when mid-forced-split-chain, the AI's planned continuation
-  readonly profileFormatVersion: 1;
 }
 ```
 
-The transposition table and the search-tree cache are perf optimisations: they let the AI skip work it already did on a recent turn. They do not affect the chosen action — only how fast the choice arrives. They're part of the `AiState` so dump/resume preserves performance characteristics across save boundaries.
+The transposition table and the search-tree cache are **performance hints**, not load-bearing state: they let the AI skip work it already did on a recent turn but do not affect the chosen action. Per the determinism contract above, dump/load is required to produce a behaviourally-equivalent `AiState`, not a bit-equal one — the implementation may rebuild the transposition table during `loadAiState` rather than serialising it, or may serialise a pruned subset.
+
+The single source of format-version truth is the **blob's 4-byte little-endian `format_version` field** (described in `dumpAiState` / `loadAiState` below). The `AiState` interface itself does not carry a version — the version is a property of the *serialised representation*, not the in-memory structure.
 
 ## `dumpAiState` / `loadAiState`
 
