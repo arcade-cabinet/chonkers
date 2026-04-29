@@ -1,0 +1,134 @@
+{
+	"$comment": "Per-repo commit-gate rules for chonkers. Aligned with the PRD architecture: src/{persistence,schema,engine,ai,store,analytics,sim,audio,design} as pure-TS packages; app/{canvas,screens,components,input,hooks,boot,css} as the React layer. Tests co-located in __tests__/ within each package. See docs/ARCHITECTURE.md and docs/plans/*.prq.md for the full picture.",
+	"coverage_rules": [
+		{
+			"when_changed": ["src/engine/**"],
+			"require_changed": ["src/engine/**/__tests__/**"],
+			"or_explicit_skip": "// no-engine-test-impact: <≥10 word reason>",
+			"block_message": "src/engine/ change without a co-located __tests__ update. The engine is the spine — every behavior change must land with the property test that proves it."
+		},
+		{
+			"when_changed": ["src/ai/**"],
+			"require_changed": ["src/ai/**/__tests__/**"],
+			"or_explicit_skip": "// no-ai-test-impact: <≥10 word reason>",
+			"block_message": "src/ai/ change without a co-located __tests__ update."
+		},
+		{
+			"when_changed": ["src/persistence/**"],
+			"require_changed": ["src/persistence/**/__tests__/**"],
+			"or_explicit_skip": "// no-persistence-test-impact: <≥10 word reason>",
+			"block_message": "src/persistence/ change without a co-located __tests__ update."
+		},
+		{
+			"when_changed": ["src/schema/**"],
+			"require_changed": ["src/schema/**/__tests__/**"],
+			"or_explicit_skip": "// no-schema-test-impact: <≥10 word reason>",
+			"block_message": "src/schema/ change without a co-located __tests__ update. Migration changes must land with tests proving they apply correctly."
+		},
+		{
+			"when_changed": ["src/store/**"],
+			"require_changed": ["src/store/**/__tests__/**"],
+			"or_explicit_skip": "// no-store-test-impact: <≥10 word reason>",
+			"block_message": "src/store/ change without a co-located __tests__ update."
+		},
+		{
+			"when_changed": ["src/analytics/**"],
+			"require_changed": ["src/analytics/**/__tests__/**"],
+			"or_explicit_skip": "// no-analytics-test-impact: <≥10 word reason>",
+			"block_message": "src/analytics/ change without a co-located __tests__ update."
+		},
+		{
+			"when_changed": ["src/sim/**"],
+			"require_changed": ["src/sim/**/__tests__/**"],
+			"or_explicit_skip": "// no-sim-test-impact: <≥10 word reason>",
+			"block_message": "src/sim/ change without a co-located __tests__ update. The sim broker is the integration point — changes must land with the matching test."
+		},
+		{
+			"when_changed": ["app/canvas/**", "app/screens/**", "app/components/**"],
+			"require_run": "pnpm test:browser --reporter=line",
+			"evidence_pattern": "Tests:\\s+\\d+\\s+passed",
+			"block_message": "app/ render/screen/component change requires browser-tier test pass evidence."
+		},
+		{
+			"when_changed": ["docs/RULES.md"],
+			"require_changed": ["src/engine/**/__tests__/**"],
+			"or_explicit_skip": "// rules-doc-only: <≥10 word reason explaining why no test follows>",
+			"block_message": "RULES.md is authoritative. A rule change must land with the engine test that proves it."
+		},
+		{
+			"when_changed": ["docs/AI.md"],
+			"require_changed": ["src/ai/**/__tests__/**"],
+			"or_explicit_skip": "// ai-doc-only: <≥10 word reason>",
+			"block_message": "AI.md is authoritative. A contract change must land with the test that proves it."
+		},
+		{
+			"when_changed": ["capacitor.config.json", "android/**", "ios/**"],
+			"require_run": "pnpm cap:sync",
+			"evidence_pattern": "(✔ Sync finished|Sync finished in)",
+			"block_message": "Capacitor / Android / iOS change requires `pnpm cap:sync` evidence."
+		},
+		{
+			"when_changed": ["src/schema/chonkers/**.sql"],
+			"or_explicit_skip": "// new-migration: <≥10 word reason — only allowed for files matching ^[0-9]{3}-.*\\.sql$ that did not previously exist>",
+			"block_message": "Schema migrations are forward-only. Existing .sql files MUST NOT be modified. Add a new NNN-name.sql file instead."
+		}
+	],
+	"ban_patterns": [
+		{
+			"pattern": "Math\\.random\\(\\)",
+			"globs": ["src/engine/**", "src/ai/**", "src/sim/**"],
+			"message": "chonkers AI is fully deterministic. The 'two identical games' fear is a flawed-algorithm symptom, not a determinism problem. No PRNG anywhere in game logic."
+		},
+		{
+			"pattern": "performance\\.now\\(\\)",
+			"globs": ["src/engine/**", "src/ai/**"],
+			"message": "Engine + AI must be wall-clock independent. Animation timing belongs in app/ via R3F's useFrame."
+		},
+		{
+			"pattern": "from ['\"]react['\"]",
+			"globs": ["src/**"],
+			"message": "src/ is pure TypeScript. React lives in app/."
+		},
+		{
+			"pattern": "from ['\"]react-dom['\"]",
+			"globs": ["src/**"],
+			"message": "src/ is pure TypeScript. ReactDOM lives in app/."
+		},
+		{
+			"pattern": "from ['\"]@/ai['\"]|from ['\"]@/sim['\"]|from ['\"]@/store['\"]|from ['\"]@/audio['\"]",
+			"globs": ["src/engine/**"],
+			"message": "src/engine/ is a leaf package. It must not import from any other src/ package. See docs/ARCHITECTURE.md module-boundary rules."
+		},
+		{
+			"pattern": "from ['\"]@/sim['\"]|from ['\"]@/store['\"]|from ['\"]@/audio['\"]",
+			"globs": ["src/ai/**"],
+			"message": "src/ai/ may only import from src/engine/ (one-way). See docs/ARCHITECTURE.md module-boundary rules."
+		},
+		{
+			"pattern": "from ['\"]@/engine['\"]|from ['\"]@/ai['\"]|from ['\"]@/sim['\"]|from ['\"]@/store['\"]|from ['\"]@/schema['\"]",
+			"globs": ["src/persistence/**"],
+			"message": "src/persistence/ is generic transport. It must not import from any chonkers-specific package. Portability is the whole point."
+		},
+		{
+			"pattern": "from ['\"]yuka/.*MathUtils|from ['\"]yuka/.*NavMesh|from ['\"]yuka/.*Wander|from ['\"]yuka/.*steering",
+			"globs": ["src/**"],
+			"message": "Yuka's MathUtils / NavMesh / WanderBehavior / steering call Math.random(). Use only Yuka's deterministic primitives (Graph, Node, Edge, Vector3, BoundingSphere, BVH, Dijkstra, AStar)."
+		},
+		{
+			"pattern": "from ['\"]~/",
+			"globs": ["src/**"],
+			"message": "src/ never imports from app/. The dependency arrow is one-way: app/ → src/."
+		}
+	],
+	"forbidden_bash": [
+		"--no-verify",
+		"git push --force(?!-with-lease)",
+		"--admin",
+		"yarn ",
+		"npm install",
+		"npm run ",
+		"package-lock\\.json",
+		"yarn\\.lock"
+	],
+	"max_lines_warn": 600
+}
