@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { Scene } from "./render/Scene";
-import { TitleScreen } from "./ui/TitleScreen";
+import { Scene } from "./canvas/Scene";
+import { TitleScreen } from "./screens/TitleScreen";
 
 export function App() {
 	const [started, setStarted] = useState(false);

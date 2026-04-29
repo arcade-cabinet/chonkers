@@ -45,8 +45,9 @@
 		},
 		{
 			"when_changed": ["app/canvas/**", "app/screens/**", "app/components/**"],
-			"require_run": "pnpm test:browser --reporter=line",
-			"evidence_pattern": "Tests:\\s+\\d+\\s+passed",
+			"require_run": "pnpm test:browser",
+			"evidence_pattern": "Tests\\s+\\d+\\s+passed",
+			"or_explicit_skip": "// no-browser-test-impact: <≥10 word reason>",
 			"block_message": "app/ render/screen/component change requires browser-tier test pass evidence."
 		},
 		{

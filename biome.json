@@ -7,7 +7,16 @@
 	},
 	"files": {
 		"ignoreUnknown": false,
-		"includes": ["src/**", "e2e/**", "*.ts", "*.tsx", "*.json", "*.mts"]
+		"includes": [
+			"src/**",
+			"app/**",
+			"e2e/**",
+			"scripts/**",
+			"*.ts",
+			"*.tsx",
+			"*.json",
+			"*.mts"
+		]
 	},
 	"formatter": {
 		"enabled": true,
@@ -43,7 +52,7 @@
 			}
 		},
 		{
-			"includes": ["src/css/style.css"],
+			"includes": ["app/css/style.css"],
 			"linter": {
 				"rules": {
 					"complexity": { "noImportantStyles": "off" }

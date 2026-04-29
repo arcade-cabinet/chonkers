@@ -1,6 +1,6 @@
 import { useMemo } from "react";
-import { cellToWorld } from "@/game/coords";
-import { createInitialState } from "@/game/initialState";
+import { cellToWorld } from "@/engine/coords";
+import { createInitialState } from "@/engine/initialState";
 import { Piece } from "./Piece";
 
 /**

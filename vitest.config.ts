@@ -8,6 +8,7 @@ export default defineConfig({
 	resolve: {
 		alias: {
 			"@": path.resolve(__dirname, "src"),
+			"@app": path.resolve(__dirname, "app"),
 		},
 	},
 	test: {
@@ -25,7 +26,10 @@ export default defineConfig({
 				extends: true,
 				test: {
 					name: "browser",
-					include: ["src/**/__tests__/*.browser.test.{ts,tsx}"],
+					include: [
+						"src/**/__tests__/*.browser.test.{ts,tsx}",
+						"app/**/__tests__/*.browser.test.{ts,tsx}",
+					],
 					browser: {
 						enabled: true,
 						provider: playwright(),
