@@ -21,11 +21,13 @@ The included profile content is plain Markdown documenting the same conventions 
 - **Tests (node tier):** `pnpm test:node`
 - **Tests (browser tier):** `pnpm test:browser`
 - **E2E smoke:** `pnpm test:e2e:ci`
-- **E2E governor:** `pnpm test:e2e:governor`
+- **E2E governor:** planned in [`docs/plans/e2e-governor.prq.md`](./docs/plans/e2e-governor.prq.md) — script will be added in PRQ-6
 - **Production build:** `pnpm build`
 - **Capacitor sync:** `pnpm cap:sync`
-- **Android debug APK:** `pnpm native:android:debug`
-- **iOS debug build:** `pnpm native:ios:build`
+- **Android debug APK:** `pnpm native:android:debug` (works after PRQ-7 native-shell completes; uses existing `cap:sync`)
+- **iOS debug build:** `pnpm native:ios:build` (same — works post PRQ-7)
+
+Commands marked "planned" or "post-PRQ-N" are not yet runnable; the PRD that adds them is referenced. All commands without that note work today.
 
 ## Coordination
 

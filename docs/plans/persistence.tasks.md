@@ -64,9 +64,9 @@
    - Files: none
    - Criteria: 100% pass; total runtime ≤30s; 5 consecutive clean runs
 
-15. [P4] **Verify portability** — Zero @/... imports outside src/persistence; zero ../../ relative imports that escape the package; only Capacitor + jeep-sqlite + stdlib imports. Manual scan confirms no game-specific table names, column names, or types referenced anywhere in the package.
+15. [P4] **Verify portability** — Implementation files in src/persistence (excluding __tests__/) have zero `@/...` imports and zero `../../` relative imports that escape the package; only Capacitor + jeep-sqlite + stdlib imports. Tests under `__tests__/` are exempt because they MAY import `{ kv, db }` from `@/persistence` (the typed barrel — that's the whole point of testing the package's public surface). Manual scan confirms no game-specific table names, column names, or types referenced anywhere in implementation OR test code.
    - Files: none — process step (grep + manual scan)
-   - Criteria: `grep -r "from '@/" src/persistence` returns zero; `grep -r "from '\\.\\./\\.\\./" src/persistence` returns zero; only Capacitor + jeep-sqlite + Web Crypto / node:crypto imports allowed; no chonkers-specific naming anywhere
+   - Criteria: `grep -r "from '@/" src/persistence --exclude-dir=__tests__` returns zero (implementation files self-contained); `grep -r "from '\\.\\./\\.\\./" src/persistence` returns zero (no escaping the package via relative imports, even from tests); only Capacitor + jeep-sqlite + Web Crypto / node:crypto imports allowed in implementation; no chonkers-specific naming anywhere
 
 16. [P4] **Commit demonstration example** — A small example test that creates a temporary DB, defines a table with a JSON column, inserts a row, queries with json_extract, deletes the row, drops the table, closes the DB. Proves end-to-end usability of the generic transport without referencing any chonkers-specific table name.
    - Files: src/persistence/__tests__/demonstration.test.ts

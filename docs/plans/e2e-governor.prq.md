@@ -42,7 +42,7 @@ Land:
    - Playwright config (`playwright.config.ts`) with desktop-chromium project; mobile-pixel-7 project; mobile-iphone-14 project; iPad-Pro-landscape project (echoes mean-streets).
    - `e2e/_lib/governor-driver.ts` (the Action→gesture translator).
    - `e2e/_lib/window-chonkers-types.d.ts` (typed `window.__chonkers` shape).
-   - DEV-only addition to `app/boot/boot.tsx`: when `import.meta.env.DEV || playwright-test-mode`, expose `window.__chonkers = { state, history, world, actions }`.
+   - DEV-only addition to `app/boot/boot.tsx`: when `import.meta.env.DEV` AND `?testHook=1` are both true, expose `window.__chonkers = { state, history, world, actions }`. Production builds (`import.meta.env.DEV === false`) strip this branch entirely via Vite's dead-code elimination — verified by the `pnpm build && grep -c '__chonkers' dist/assets/*.js` check in B3's acceptance criteria. There is no escape-hatch flag that makes the hook live in production; the test environment uses dev-mode dev server with `?testHook=1`, never a production build.
 
 ---
 

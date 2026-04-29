@@ -78,7 +78,6 @@ import { duckAmbient, restoreAmbient } from './ducking';
 const STING_ROLES: ReadonlyArray<AudioRole> = ['sting', 'win', 'lose'];
 
 export interface AudioBus {
-  init(): Promise<void>;            // load settings from kv; preload all clips
   play(role: AudioRole): void;
   stop(role: AudioRole): void;
   startAmbient(): void;
@@ -87,27 +86,50 @@ export interface AudioBus {
   setMuted(m: boolean): Promise<void>;
 }
 
-let bus: AudioBus | null = null;
+let busPromise: Promise<AudioBus> | null = null;
 
-export function createAudioBus(): AudioBus { /* ... */ }
-export function getAudioBus(): AudioBus { /* lazy singleton */ }
+// Async lazy singleton: getAudioBus() returns Promise<AudioBus> resolving
+// AFTER init() (kv read + Howl preload) completes. Callers always await.
+// There is no public sync getter — the singleton's invariant is "fully
+// initialized when the promise resolves," and that requires async work.
+export async function getAudioBus(): Promise<AudioBus> {
+  if (!busPromise) {
+    busPromise = createAudioBus().then(async (bus) => {
+      await bus._init();  // private; not part of the public AudioBus interface
+      return bus;
+    });
+  }
+  return busPromise;
+}
 ```
 
-The `play(role)` implementation:
+Callers always `const audio = await getAudioBus(); audio.play('chonk');`. There is no path to a partially-initialized bus — if `getAudioBus()`'s promise hasn't resolved, the caller hasn't moved past its `await` yet.
+
+The `play(role)` implementation handles overlapping ducks via a counter (so two stings concurrently keep ambient ducked until BOTH end, not just the first):
 
 ```ts
+private activeDucks = 0;  // counter on the bus instance
+
 play(role: AudioRole) {
   if (this.muted) return;
   const sound = this.howls.get(role);
   if (!sound) return;
-  if (STING_ROLES.includes(role)) duckAmbient(this);
+  if (STING_ROLES.includes(role)) {
+    this.activeDucks++;
+    if (this.activeDucks === 1) duckAmbient(this);  // first duck starts the fade-down
+  }
   sound.volume(this.volume);
   sound.play();
   if (STING_ROLES.includes(role)) {
-    sound.once('end', () => restoreAmbient(this));
+    sound.once('end', () => {
+      this.activeDucks--;
+      if (this.activeDucks === 0) restoreAmbient(this);  // last duck ends the fade-up
+    });
   }
 }
 ```
+
+The counter prevents the "first sting to end restores ambient while another sting still plays" bug. The "stack ducking correctly" requirement in the test plan is asserted by playing two stings simultaneously, ending one, asserting ambient stays ducked, then ending the other, asserting ambient restores.
 
 Volume + mute persist to `kv`:
 
@@ -126,10 +148,10 @@ async setMuted(m: boolean) {
 }
 ```
 
-`init()` reads from `kv` on boot:
+The internal `_init()` (called once by `getAudioBus()`'s promise) reads from `kv` on boot:
 
 ```ts
-async init() {
+async _init() {
   const volume = (await kv.get<number>('settings', 'volume')) ?? 0.7;
   const muted = (await kv.get<boolean>('settings', 'muted')) ?? false;
   this.volume = volume;
@@ -150,7 +172,7 @@ async init() {
 }
 ```
 
-The bus is a lazy singleton — first call to `getAudioBus()` instantiates + initializes. Subsequent calls return the same instance. Tests reset via `__resetBusForTest()` (test-only export gated behind `import.meta.env.DEV` or equivalent).
+The bus is an async lazy singleton — `getAudioBus()` returns `Promise<AudioBus>`. The first call constructs + initializes (kv read + Howl preload); subsequent calls return the same resolved promise. Tests reset via `__resetBusForTest()` (test-only export gated behind `import.meta.env.DEV` or equivalent), which clears `busPromise` so the next `getAudioBus()` reconstructs.
 
 ### Ducking
 
@@ -294,7 +316,7 @@ DESIGN.md already exists. Reconcile to ensure:
 
 ### Update `src/audio/README.md` (new)
 
-Inline package README. Quick-start example: `getAudioBus().init(); getAudioBus().play('chonk');`. Cross-link to `docs/DESIGN.md` audio section.
+Inline package README. Quick-start example: `const audio = await getAudioBus(); audio.play('chonk');`. Cross-link to `docs/DESIGN.md` audio section.
 
 ### Update `src/design/README.md` (new)
 
@@ -361,7 +383,7 @@ Inline package README. Tokens / theme / motion documented at a glance.
 
 #### C2. Write `src/audio/__tests__/audioBus.test.ts`
 
-**Description:** Tests for the bus. Asserts: `init()` preloads all seven Howls; `play(role)` triggers the right Howl; `setVolume` clamps to [0, 1] and persists to `kv`; `setMuted` stops in-flight playback and persists; subsequent `getAudioBus()` returns the same instance; `init()` is idempotent.
+**Description:** Tests for the bus. Asserts: `await getAudioBus()` resolves with all seven Howls preloaded; `play(role)` triggers the right Howl; `setVolume` clamps to [0, 1] and persists to `kv`; `setMuted` stops in-flight playback and persists; subsequent `getAudioBus()` calls return the same resolved promise; calling `getAudioBus()` while a previous call is still resolving returns the same promise (no double-init).
 
 **Files:** `src/audio/__tests__/audioBus.test.ts`
 
