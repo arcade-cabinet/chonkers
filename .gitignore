@@ -35,6 +35,10 @@ pnpm-debug.log
 public/assets/*.wasm
 public/*.wasm
 
+# Built at build-time from drizzle migrations (see `pnpm build:gamedb`).
+public/assets/databases/
+public/game-db.meta.json
+
 # DCC / engine source files we don't ship — only the baked PNG/EXR/JPG textures
 # under public/assets/pbr/ are loaded at runtime. The .blend / .mtlx / .tres /
 # .usdc files travel with the original asset packs but aren't part of the build.
@@ -59,3 +63,4 @@ public/assets/pbr/**/WoodFloor008.png
 .vitest-attachments/
 .claude/scheduled_tasks.lock
 .claude/state/
+__screenshots__/
