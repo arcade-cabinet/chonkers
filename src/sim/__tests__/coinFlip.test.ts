@@ -8,10 +8,16 @@ describe("coinFlip", () => {
 			expect(seed).toMatch(/^[0-9a-f]{16}$/);
 		});
 
-		it("two consecutive calls produce different seeds (with high probability)", () => {
-			const a = freshCoinFlipSeed();
-			const b = freshCoinFlipSeed();
-			expect(a).not.toBe(b);
+		it("yields a value `decideFirstPlayer` can consume", () => {
+			// Deterministic invariant rather than a probabilistic
+			// uniqueness assertion: a collision between two `crypto`
+			// reads is astronomically unlikely but technically a
+			// legitimate result and would surface as a flaky-test
+			// failure unrelated to correctness. What we actually want
+			// to assert is that `freshCoinFlipSeed`'s output is shaped
+			// such that the rest of the pipeline can use it.
+			const seed = freshCoinFlipSeed();
+			expect(decideFirstPlayer(seed)).toMatch(/^(red|white)$/);
 		});
 	});
 

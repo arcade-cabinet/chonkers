@@ -19,6 +19,7 @@
 
 import { describe, expect, it } from "vitest";
 import { ALL_PROFILE_KEYS } from "@/ai";
+import { refreshOnMatchEnd } from "@/analytics";
 import { makeTestDb } from "@/persistence/sqlite/__tests__/test-db";
 import { analyticsRepo, matchesRepo } from "@/store";
 import { createMatch, playToCompletion } from "../broker";
@@ -40,9 +41,6 @@ describe("broker — 100-run alpha gate", () => {
 			const PLY_CAP = 40;
 
 			let outliers = 0;
-			let redWins = 0;
-			let whiteWins = 0;
-			let forfeits = 0;
 
 			for (let i = 0; i < RUNS; i += 1) {
 				const red = easyKeys[i % easyKeys.length];
@@ -66,11 +64,9 @@ describe("broker — 100-run alpha gate", () => {
 				const result = await playToCompletion(db, handle, {
 					mode: "replay",
 					maxPlies: PLY_CAP,
+					onTerminal: (matchId) => refreshOnMatchEnd(db, matchId),
 				});
 				if (result.outlier) outliers += 1;
-				else if (handle.game.winner === "red") redWins += 1;
-				else if (handle.game.winner === "white") whiteWins += 1;
-				else forfeits += 1;
 			}
 
 			// Hard requirements (contract):
@@ -81,6 +77,23 @@ describe("broker — 100-run alpha gate", () => {
 			for (const m of allMatches) {
 				expect(m.plyCount).toBeLessThanOrEqual(PLY_CAP);
 				expect(m.plyCount).toBeGreaterThanOrEqual(0);
+			}
+
+			// Derive win/forfeit counters from the persisted
+			// `matches.winner` column rather than from in-memory
+			// state. The broker normalises a forfeit by flipping
+			// `handle.game.winner` to the opposite color (so engine
+			// invariants stay clean), which means a `forfeit-red` in
+			// the DB shows up as `winner === "white"` in memory.
+			// Counting from the persisted column keeps forfeits and
+			// regular wins on separate axes.
+			let redWins = 0;
+			let whiteWins = 0;
+			let forfeits = 0;
+			for (const m of allMatches) {
+				if (m.winner === "red") redWins += 1;
+				else if (m.winner === "white") whiteWins += 1;
+				else if (m.winner?.startsWith("forfeit-")) forfeits += 1;
 			}
 
 			// Soft check on analytics: if any match concluded, the

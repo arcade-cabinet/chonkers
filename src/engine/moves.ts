@@ -170,7 +170,8 @@ export function applyAction(state: GameState, action: Action): GameState {
 		// detachment in line). The rest of the action's runs would be
 		// wrong here — chain action must have exactly one run matching
 		// the head detachment.
-		if (action.runs.length !== 1) {
+		const onlyRun = action.runs[0];
+		if (action.runs.length !== 1 || !onlyRun) {
 			throw new IllegalActionError(
 				"chain step must commit exactly one run per turn",
 			);
@@ -179,7 +180,7 @@ export function applyAction(state: GameState, action: Action): GameState {
 		if (!head) {
 			throw new IllegalActionError("chain has no remaining detachments");
 		}
-		const runIndices = [...action.runs[0]!.indices].sort((a, b) => a - b);
+		const runIndices = [...onlyRun.indices].sort((a, b) => a - b);
 		const expected = [...head].sort((a, b) => a - b);
 		if (
 			runIndices.length !== expected.length ||

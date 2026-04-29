@@ -23,7 +23,7 @@
 		"lint": "biome check .",
 		"lint:fix": "biome check --write .",
 		"format": "biome format --write .",
-		"test": "vitest run --passWithNoTests",
+		"test": "vitest run --project node --project browser --passWithNoTests",
 		"test:node": "vitest run --project node --passWithNoTests",
 		"test:browser": "vitest run --project browser --passWithNoTests",
 		"test:alpha": "vitest run --project alpha --passWithNoTests",

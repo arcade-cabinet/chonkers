@@ -63,30 +63,30 @@ interface MatchRow {
 	plyCount: number;
 }
 
-/** Update the winrate aggregate for the (red_profile, white_profile) pair. */
+/**
+ * Update the winrate aggregate for the (red_profile, white_profile)
+ * pair. Recomputes from `matches` so a duplicate call for the same
+ * matchId is idempotent — symmetrical with `refreshAvgPlyCount` and
+ * `refreshForfeitRate`, which also rescan rather than incrementing.
+ */
 async function refreshWinrate(
 	db: StoreDb,
 	match: MatchRow,
 	now: number,
 ): Promise<void> {
 	const key = `winrate:${match.redProfile}:vs:${match.whiteProfile}`;
-	const prior = await analyticsRepo.getAggregate(db, key);
+	const all = await db.select().from(matches);
 	let wins_red = 0;
 	let wins_white = 0;
 	let forfeits = 0;
-	if (prior) {
-		const v = JSON.parse(prior.valueJson) as {
-			wins_red: number;
-			wins_white: number;
-			forfeits: number;
-		};
-		wins_red = v.wins_red;
-		wins_white = v.wins_white;
-		forfeits = v.forfeits;
+	for (const m of all) {
+		if (m.finishedAt == null) continue;
+		if (m.redProfile !== match.redProfile) continue;
+		if (m.whiteProfile !== match.whiteProfile) continue;
+		if (m.winner === "red") wins_red += 1;
+		else if (m.winner === "white") wins_white += 1;
+		else if (m.winner?.startsWith("forfeit-")) forfeits += 1;
 	}
-	if (match.winner === "red") wins_red += 1;
-	else if (match.winner === "white") wins_white += 1;
-	else if (match.winner?.startsWith("forfeit-")) forfeits += 1;
 
 	await analyticsRepo.upsertAggregate(db, {
 		aggregateKey: key,

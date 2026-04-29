@@ -241,5 +241,5 @@ export function getProfile(key: ProfileKey): Profile {
 
 /** Type guard for profile keys; useful for validating store inputs. */
 export function isProfileKey(key: string): key is ProfileKey {
-	return key in PROFILES;
+	return Object.hasOwn(PROFILES, key);
 }

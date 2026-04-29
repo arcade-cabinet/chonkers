@@ -8,10 +8,11 @@
  * There is no `updateMove` — moves are immutable once recorded.
  */
 
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 import {
 	type Move,
 	type MoveColor,
+	matches,
 	moves,
 	type NewMove,
 } from "@/persistence/sqlite/schema";
@@ -92,6 +93,71 @@ export async function listMovesByMatch(
 		.from(moves)
 		.where(eq(moves.matchId, matchId))
 		.orderBy(asc(moves.ply));
+}
+
+/**
+ * Insert a move and bump `matches.ply_count` in one atomic step.
+ *
+ * Implementation: a single `UPDATE matches SET ply_count = ply_count + 1
+ * WHERE id = ? RETURNING ply_count - 1 AS ply` claims a ply slot
+ * atomically (SQLite serialises UPDATE-RETURNING at the engine level,
+ * so concurrent callers cannot pick the same ply). The returned ply
+ * is then used as the new move row's primary-key component.
+ *
+ * If the subsequent INSERT throws, the matches.ply_count bump is
+ * preserved — leaving `ply_count` one ahead of the move log. The
+ * broker treats appendMove failures as fatal (the match is aborted),
+ * so the invariant we protect is "ply_count is never BEHIND the move
+ * log"; "ply_count one ahead after a fatal abort" is acceptable.
+ *
+ * Avoids drizzle's `db.transaction()`, which is incompatible across
+ * runtimes: drizzle-orm/better-sqlite3 forbids async tx callbacks
+ * (the Node test tier), drizzle-orm/sqlite-proxy requires them (the
+ * capacitor-sqlite runtime tier). The single-statement claim works
+ * on both.
+ *
+ * Returns the inserted Move (so callers can assert the assigned ply).
+ */
+export async function appendMoveAndBumpPly(
+	db: StoreDb,
+	input: Omit<AppendMoveInput, "ply">,
+): Promise<Move> {
+	const claimed = await db
+		.update(matches)
+		.set({ plyCount: sql`${matches.plyCount} + 1` })
+		.where(eq(matches.id, input.matchId))
+		.returning({ ply: sql<number>`${matches.plyCount} - 1` });
+	const claim = claimed[0];
+	if (!claim) {
+		throw new Error(`appendMoveAndBumpPly: no match ${input.matchId}`);
+	}
+	const ply = Number(claim.ply);
+	const row: NewMove = {
+		matchId: input.matchId,
+		ply,
+		color: input.color,
+		fromCol: input.fromCol,
+		fromRow: input.fromRow,
+		toCol: input.toCol,
+		toRow: input.toRow,
+		stackHeightAfter: input.stackHeightAfter,
+		positionHashAfter: input.positionHashAfter,
+		...(input.sliceIndicesJson !== undefined
+			? { sliceIndicesJson: input.sliceIndicesJson }
+			: {}),
+		...(input.moveDurationMs !== undefined
+			? { moveDurationMs: input.moveDurationMs }
+			: {}),
+		...(input.createdAt !== undefined ? { createdAt: input.createdAt } : {}),
+	};
+	await db.insert(moves).values(row);
+	const inserted = await getMove(db, input.matchId, ply);
+	if (!inserted) {
+		throw new Error(
+			`appendMoveAndBumpPly: insert succeeded but row (${input.matchId}, ${ply}) missing`,
+		);
+	}
+	return inserted;
 }
 
 /** Most recent move in a match, or null if no moves yet. */

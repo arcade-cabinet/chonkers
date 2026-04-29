@@ -8,7 +8,7 @@
  * in drizzle docs). No singleton shortcuts; the broker passes the handle.
  */
 
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import {
 	type Match,
 	matches,
@@ -140,10 +140,12 @@ export async function clearChain(db: StoreDb, id: string): Promise<void> {
  * insert to keep `analytics_aggregates` joins fast at rc-stage scale.
  */
 export async function incrementPly(db: StoreDb, id: string): Promise<void> {
-	const row = await getMatch(db, id);
-	if (!row) throw new Error(`incrementPly: no match ${id}`);
-	await db
+	const result = await db
 		.update(matches)
-		.set({ plyCount: row.plyCount + 1 })
-		.where(eq(matches.id, id));
+		.set({ plyCount: sql`${matches.plyCount} + 1` })
+		.where(eq(matches.id, id))
+		.returning({ id: matches.id });
+	if (result.length === 0) {
+		throw new Error(`incrementPly: no match ${id}`);
+	}
 }

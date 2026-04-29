@@ -1,18 +1,25 @@
 /**
- * Sim broker — the ONLY module that imports from every other src/
- * package. Routes between engine + ai + store + persistence/sqlite +
- * analytics. The visual shell (PRQ-4) wraps this with koota, but
- * the broker itself is headless and node-runnable so the alpha-stage
- * 100-run gate (Tier 1, no UI) can drive it directly.
+ * Sim broker — routes between engine + ai + store + persistence/sqlite.
+ * The visual shell (PRQ-4) wraps this with koota, but the broker
+ * itself is headless and node-runnable so the alpha-stage 100-run gate
+ * (Tier 1, no UI) can drive it directly.
+ *
+ * Per the import-boundary rule in CLAUDE.md, `src/sim/*` does NOT
+ * import from `src/analytics/*`. Analytics refresh is wired by the
+ * caller via the `onTerminal` PlayOptions hook (the 100-run test, the
+ * PRQ-4 koota actions layer, etc.). Keeps the dependency direction
+ * one-way: analytics may read sim outputs, sim never reaches sideways
+ * into analytics.
  *
  * Public API:
  *   - createMatch(db, options) → MatchHandle: writes the matches row,
  *     returns the in-memory state.
  *   - playTurn(handle): advances one ply by asking the on-turn AI for
  *     a Decision, applying it through the engine reducer, persisting
- *     the move, and refreshing analytics on terminal transitions.
+ *     the move atomically with the matches.ply_count bump.
  *   - playToCompletion(handle, options?): runs playTurn in a loop
- *     until winner is set or the per-match ply cap is hit.
+ *     until winner is set or the per-match ply cap is hit. Calls
+ *     `options.onTerminal` exactly once at terminal transition.
  *   - saveMatchProgress / resumeMatch: AI-state dump-blob routing
  *     per docs/AI.md + docs/DB.md.
  */
@@ -27,7 +34,6 @@ import {
 	getProfile,
 	type ProfileKey,
 } from "@/ai";
-import { refreshOnMatchEnd } from "@/analytics";
 import {
 	type Action,
 	type Color,
@@ -62,13 +68,36 @@ export interface PlayTurnResult {
 	readonly mover: Color;
 	/** True iff the match transitioned to a terminal state on this turn. */
 	readonly terminal: boolean;
+	/**
+	 * True iff this turn persisted a move row (i.e. plyCount bumped).
+	 * False for forfeits and stalls — those are handled separately by
+	 * `playToCompletion` to keep `result.plies` aligned with the
+	 * persisted move log.
+	 */
+	readonly persistedMove: boolean;
 }
 
 export interface PlayOptions {
 	/** Stop the match if it exceeds this many plies (used by alpha governor). */
 	readonly maxPlies?: number;
+	/**
+	 * Stop the match if more than this many consecutive stall flips
+	 * happen without a persisted move. Defaults to `maxPlies`. Stalls
+	 * are not plies (no move row, no plyCount bump); they're loop
+	 * iterations that flip the turn. Without a cap they could spin
+	 * forever inside a chain dead-end.
+	 */
+	readonly maxStalls?: number;
 	/** Pass `replay` for governor runs; defaults to `live`. */
 	readonly mode?: "live" | "replay";
+	/**
+	 * Optional terminal-transition hook. Called exactly once when
+	 * the match concludes (winner stamped or ply cap hit). The hook
+	 * is the wiring point for `refreshOnMatchEnd` in `src/analytics`,
+	 * which the broker is forbidden from calling directly per the
+	 * import-boundary rule in CLAUDE.md.
+	 */
+	readonly onTerminal?: (matchId: string) => Promise<void> | void;
 }
 
 /**
@@ -123,6 +152,7 @@ export async function playTurn(
 			decision: { kind: "stalled" },
 			mover: handle.game.turn,
 			terminal: true,
+			persistedMove: false,
 		};
 	}
 
@@ -136,7 +166,6 @@ export async function playTurn(
 
 	if (decision.kind === "forfeit") {
 		await matchesRepo.forfeit(db, handle.matchId, mover);
-		await refreshOnMatchEnd(db, handle.matchId);
 		// Mirror the persisted winner field into the in-memory state
 		// so callers can inspect handle.game.winner without another DB
 		// hop. The forfeit-* values from the matches row don't fit the
@@ -147,43 +176,63 @@ export async function playTurn(
 			...handle.game,
 			winner: mover === "red" ? "white" : "red",
 		};
-		return { action: null, decision, mover, terminal: true };
+		return {
+			action: null,
+			decision,
+			mover,
+			terminal: true,
+			persistedMove: false,
+		};
 	}
 
 	if (decision.kind === "stalled") {
 		// No legal action and not below forfeit threshold. Per
-		// RULES.md §5.4, a stalled chain just flips control. For now
-		// the only "stall" we expect at PRQ-2 alpha is mid-chain dead
-		// ends; force-flip the turn and continue.
+		// RULES.md §5.4, a stalled chain just flips control. The flip
+		// is in-memory only — no move row, no plyCount bump. The
+		// caller (playToCompletion) tracks stalls separately so a
+		// pathological stall loop can be capped without inflating
+		// `plies` past the persisted move count.
 		handle.game = {
 			...handle.game,
 			turn: mover === "red" ? "white" : "red",
 			chain: null,
 		};
-		return { action: null, decision, mover, terminal: false };
+		return {
+			action: null,
+			decision,
+			mover,
+			terminal: false,
+			persistedMove: false,
+		};
 	}
 
 	const action = decision.action;
 	const next = engineApply(handle.game, action);
 
-	await persistMove(db, handle, mover, action, handle.game, next);
+	await persistMoveAtomic(db, handle, mover, action, handle.game, next);
 
 	handle.game = next;
 
 	if (next.winner) {
 		await matchesRepo.finalizeMatch(db, handle.matchId, next.winner);
-		await refreshOnMatchEnd(db, handle.matchId);
-		return { action, decision, mover, terminal: true };
+		return { action, decision, mover, terminal: true, persistedMove: true };
 	}
 
-	return { action, decision, mover, terminal: false };
+	return { action, decision, mover, terminal: false, persistedMove: true };
 }
 
 /**
- * Loop until the match concludes or the ply cap is hit. The cap is
- * the alpha-governor's outlier threshold per docs/TESTING.md "Outlier
+ * Loop until the match concludes or a cap is hit. The ply cap is the
+ * alpha-governor's outlier threshold per docs/TESTING.md "Outlier
  * handling": exceeding the cap without a winner indicates an AI
- * evaluation gap, not a draw (chonkers has no draw rule).
+ * evaluation gap, not a draw (chonkers has no draw rule). The stall
+ * cap is a separate fuse against pathological non-persisting loops
+ * (chain dead-ends that flip turns indefinitely without producing a
+ * move row).
+ *
+ * `result.plies` mirrors the persisted move log — exactly the value
+ * stored in `matches.ply_count`. `result.stalls` is a sim-only loop
+ * counter for diagnostics and outlier classification.
  */
 export async function playToCompletion(
 	db: StoreDb,
@@ -192,25 +241,40 @@ export async function playToCompletion(
 ): Promise<{
 	readonly winner: Color | null;
 	readonly plies: number;
+	readonly stalls: number;
 	readonly outlier: boolean;
 }> {
-	const cap = options.maxPlies ?? 1000;
+	const plyCap = options.maxPlies ?? 1000;
+	const stallCap = options.maxStalls ?? plyCap;
 	let plies = 0;
-	while (!handle.game.winner && plies < cap) {
-		await playTurn(db, handle, options);
-		plies += 1;
+	let stalls = 0;
+	while (!handle.game.winner && plies < plyCap && stalls < stallCap) {
+		const result = await playTurn(db, handle, options);
+		if (result.persistedMove) plies += 1;
+		else if (!result.terminal) stalls += 1;
+	}
+	const outlier =
+		!handle.game.winner && (plies >= plyCap || stalls >= stallCap);
+	if (handle.game.winner && options.onTerminal) {
+		await options.onTerminal(handle.matchId);
 	}
 	return {
 		winner: handle.game.winner,
 		plies,
-		outlier: !handle.game.winner && plies >= cap,
+		stalls,
+		outlier,
 	};
 }
 
 /**
- * Persist an executed move + bump the matches row's ply_count.
+ * Persist an executed move + bump the matches row's ply_count atomically.
+ * Uses `movesRepo.appendMoveAndBumpPly` which wraps the read of
+ * `matches.ply_count`, the move INSERT, and the ply_count UPDATE in a
+ * single transaction so a crash mid-sequence cannot diverge the
+ * persisted move log from `matches.ply_count`, and concurrent callers
+ * cannot race into the same ply.
  */
-async function persistMove(
+async function persistMoveAtomic(
 	db: StoreDb,
 	handle: MatchHandle,
 	mover: Color,
@@ -218,7 +282,6 @@ async function persistMove(
 	prevState: GameState,
 	nextState: GameState,
 ): Promise<void> {
-	const ply = await currentPly(db, handle.matchId);
 	// Combine all run indices into one slice_indices_json blob if
 	// this was a multi-run action; otherwise leave null for moves.
 	const allIndices = action.runs.flatMap((r) => r.indices);
@@ -226,11 +289,10 @@ async function persistMove(
 		allIndices.length === computePrevStackHeight(prevState, action);
 	const sliceIndicesJson = isFullStack ? undefined : JSON.stringify(allIndices);
 	const firstRun = action.runs[0];
-	if (!firstRun) throw new Error("persistMove: action has no runs");
+	if (!firstRun) throw new Error("persistMoveAtomic: action has no runs");
 
-	await movesRepo.appendMove(db, {
+	await movesRepo.appendMoveAndBumpPly(db, {
 		matchId: handle.matchId,
-		ply,
 		color: mover,
 		fromCol: action.from.col,
 		fromRow: action.from.row,
@@ -240,7 +302,6 @@ async function persistMove(
 		positionHashAfter: hashGameStateHex(nextState),
 		...(sliceIndicesJson !== undefined ? { sliceIndicesJson } : {}),
 	});
-	await matchesRepo.incrementPly(db, handle.matchId);
 }
 
 async function currentPly(db: StoreDb, matchId: string): Promise<number> {
