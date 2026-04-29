@@ -114,12 +114,43 @@ export interface MatchState {
 /**
  * Pack (col, row, height) into a `PositionKey`. col, row, height
  * each use 7 bits; total 21 bits.
+ *
+ * Inputs are validated to fail fast: passing a non-integer or
+ * out-of-7-bit-range value silently round-trips to a DIFFERENT legal
+ * cell after `unpackPositionKey` masks to 7 bits, which would poison
+ * board contents and Zobrist hashing without any visible error. The
+ * `unpackPositionKey` symmetric guard catches keys that came from a
+ * persistence round-trip with corrupted bits.
  */
+const POSITION_FIELD_MAX = 127; // 7-bit range
+const POSITION_KEY_MAX = 0x1fffffn; // 21 bits
+
 export function positionKey(
 	col: number,
 	row: number,
 	height: number,
 ): PositionKey {
+	if (
+		!Number.isInteger(col) ||
+		!Number.isInteger(row) ||
+		!Number.isInteger(height)
+	) {
+		throw new Error(
+			`positionKey: col/row/height must be integers (got col=${col}, row=${row}, height=${height})`,
+		);
+	}
+	if (
+		col < 0 ||
+		col > POSITION_FIELD_MAX ||
+		row < 0 ||
+		row > POSITION_FIELD_MAX ||
+		height < 0 ||
+		height > POSITION_FIELD_MAX
+	) {
+		throw new Error(
+			`positionKey: col/row/height must be in [0, ${POSITION_FIELD_MAX}] (got col=${col}, row=${row}, height=${height})`,
+		);
+	}
 	return (BigInt(col) << 14n) | (BigInt(row) << 7n) | BigInt(height);
 }
 
@@ -129,6 +160,11 @@ export function unpackPositionKey(key: PositionKey): {
 	row: number;
 	height: number;
 } {
+	if (key < 0n || key > POSITION_KEY_MAX) {
+		throw new Error(
+			`unpackPositionKey: key out of 21-bit range: ${key.toString()}`,
+		);
+	}
 	const height = Number(key & 0x7fn);
 	const row = Number((key >> 7n) & 0x7fn);
 	const col = Number((key >> 14n) & 0x7fn);
