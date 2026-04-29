@@ -83,12 +83,28 @@ export function computeReplay(
 }
 
 /**
+ * Resolve `/game-db.meta.json` against Vite's `BASE_URL` so the fetch
+ * works under non-root deployments (Capacitor `file://` included). The
+ * jeep-web custom-element registration uses the same trick for its
+ * `wasmpath`; both sites must agree on the served path prefix.
+ */
+function resolveMetaUrl(): string {
+	const base = import.meta.env.BASE_URL ?? "/";
+	const trimmed = base.endsWith("/") ? base : `${base}/`;
+	return `${trimmed}game-db.meta.json`;
+}
+
+/**
  * Fetch the served `public/game-db.meta.json` and parse its version.
  * Throws if the meta file is missing or malformed — bootstrap treats
- * that as a developer error, not a runtime recoverable.
+ * that as a developer error, not a runtime recoverable. `user_version`
+ * must be a non-negative integer (it indexes into the migration ladder);
+ * NaN, fractional, and negative values are rejected here so a malformed
+ * meta file can never produce an impossible replay window in
+ * `computeReplay`.
  */
 export async function fetchServedMeta(
-	url = "/game-db.meta.json",
+	url = resolveMetaUrl(),
 ): Promise<ServedDbMeta> {
 	const res = await fetch(url, { cache: "no-store" });
 	if (!res.ok) {
@@ -97,9 +113,12 @@ export async function fetchServedMeta(
 		);
 	}
 	const body = (await res.json()) as Partial<ServedDbMeta>;
-	if (typeof body.user_version !== "number") {
+	if (
+		!Number.isInteger(body.user_version) ||
+		(body.user_version as number) < 0
+	) {
 		throw new Error(
-			`fetchServedMeta: ${url} missing required field 'user_version' (got ${JSON.stringify(body)})`,
+			`fetchServedMeta: ${url} has invalid 'user_version' (expected non-negative integer, got ${JSON.stringify(body)})`,
 		);
 	}
 	if (typeof body.generated_at !== "string") {
@@ -107,5 +126,8 @@ export async function fetchServedMeta(
 			`fetchServedMeta: ${url} missing required field 'generated_at' (got ${JSON.stringify(body)})`,
 		);
 	}
-	return { user_version: body.user_version, generated_at: body.generated_at };
+	return {
+		user_version: body.user_version as number,
+		generated_at: body.generated_at,
+	};
 }

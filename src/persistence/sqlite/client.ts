@@ -106,6 +106,12 @@ export function createDrizzleClient(
 /**
  * Open or retrieve a capacitor-sqlite connection by name. Idempotent
  * across calls — the plugin caches the connection internally.
+ *
+ * SQLite disables foreign-key enforcement by default for each opened
+ * connection (the SQLite docs are explicit on this; capacitor-sqlite
+ * does not promise to enable it for us). We turn it on here so FK
+ * cascades from the schema (matches→moves, matches→ai_states,
+ * matches→analytics_aggregates) actually fire at runtime.
  */
 export async function openConnection(
 	name: string,
@@ -123,6 +129,7 @@ export async function openConnection(
 				false,
 			);
 	await conn.open();
+	await conn.execute("PRAGMA foreign_keys = ON");
 	return conn;
 }
 

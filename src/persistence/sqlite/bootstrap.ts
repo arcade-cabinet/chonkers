@@ -31,18 +31,21 @@ const DB_NAME = "chonkers";
 
 export interface BootstrapOptions {
 	/**
-	 * Override the served `game.db` URL. Defaults to the standard
-	 * `/game.db` Vite serves from `public/`.
-	 */
-	readonly gameDbUrl?: string;
-	/**
-	 * Override the served meta JSON URL. Defaults to `/game-db.meta.json`.
+	 * Override the served meta JSON URL. Defaults to
+	 * `${BASE_URL}game-db.meta.json` (Vite's BASE_URL is honoured by
+	 * `fetchServedMeta`'s default resolver).
+	 *
+	 * The shipped database file URL is NOT separately configurable —
+	 * capacitor-sqlite's `copyFromAssets()` auto-discovers the file via
+	 * the `databases.json` manifest at the platform-standard asset path,
+	 * which `scripts/build-game-db.mjs` writes to
+	 * `public/assets/databases/`.
 	 */
 	readonly metaUrl?: string;
 	/**
 	 * Source for the `drizzle/NNNN_*.sql` migration ladder. The runtime
-	 * needs the SQL for migrations *after* the shipped `game.db`'s
-	 * version. Vite resolves `import.meta.glob('../../drizzle/*.sql', { as: 'raw', eager: true })`
+	 * needs the SQL for migrations *after* the shipped DB's version.
+	 * Vite resolves `import.meta.glob('../../../drizzle/*.sql', ..., { eager: true })`
 	 * at build time; the test harness can pass a precomputed map.
 	 */
 	readonly migrationSql?: ReadonlyMap<number, string>;
@@ -101,11 +104,7 @@ async function readPersistedVersion(name: string): Promise<number | null> {
  * The shipped DB already has `PRAGMA user_version` set by the build
  * script, so no additional version stamping is needed after import.
  */
-async function importFreshAsset(
-	_name: string,
-	_gameDbUrl: string,
-	_servedVersion: number,
-): Promise<void> {
+async function importFreshAsset(): Promise<void> {
 	await sqlite.copyFromAssets(true);
 }
 
@@ -199,8 +198,6 @@ function defaultMigrationSql(): ReadonlyMap<number, string> {
 export async function bootstrap(
 	options: BootstrapOptions = {},
 ): Promise<BootstrapResult> {
-	const gameDbUrl = options.gameDbUrl ?? "/game.db";
-	const metaUrl = options.metaUrl ?? "/game-db.meta.json";
 	const migrationSql = options.migrationSql ?? defaultMigrationSql();
 
 	if (Capacitor.getPlatform() === "web") {
@@ -208,14 +205,16 @@ export async function bootstrap(
 		await sqlite.initWebStore();
 	}
 
-	const served = await fetchServedMeta(metaUrl);
+	const served = options.metaUrl
+		? await fetchServedMeta(options.metaUrl)
+		: await fetchServedMeta();
 	const persistedVersion = await readPersistedVersion(DB_NAME);
 	const decision = computeReplay(persistedVersion, served.user_version);
 
 	let outcome: BootstrapResult["outcome"];
 	switch (decision.kind) {
 		case "import-fresh":
-			await importFreshAsset(DB_NAME, gameDbUrl, decision.servedVersion);
+			await importFreshAsset();
 			outcome = "imported-fresh";
 			break;
 		case "no-op":

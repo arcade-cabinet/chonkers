@@ -8,7 +8,9 @@
  * INSERT per ply — see docs/DB.md "moves" notes.
  */
 
+import { sql } from "drizzle-orm";
 import {
+	check,
 	integer,
 	primaryKey,
 	sqliteTable,
@@ -38,6 +40,9 @@ export const moves = sqliteTable(
 	},
 	(t) => ({
 		pk: primaryKey({ columns: [t.matchId, t.ply] }),
+		// Enforce the MoveColor union at the storage boundary so raw SQL writes
+		// can't smuggle invalid values through the type-safe repo layer.
+		colorCheck: check("moves_color_chk", sql`${t.color} IN ('red', 'white')`),
 	}),
 );
 

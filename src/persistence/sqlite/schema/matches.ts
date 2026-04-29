@@ -8,7 +8,13 @@
  */
 
 import { sql } from "drizzle-orm";
-import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import {
+	check,
+	index,
+	integer,
+	sqliteTable,
+	text,
+} from "drizzle-orm/sqlite-core";
 
 export const matches = sqliteTable(
 	"matches",
@@ -31,6 +37,12 @@ export const matches = sqliteTable(
 	(t) => ({
 		idxFinishedAt: index("idx_matches_finished_at").on(t.finishedAt),
 		idxProfiles: index("idx_matches_profiles").on(t.redProfile, t.whiteProfile),
+		// Enforce the Winner union at the storage boundary so raw SQL writes
+		// can't smuggle invalid values through the type-safe repo layer.
+		winnerCheck: check(
+			"matches_winner_chk",
+			sql`${t.winner} IS NULL OR ${t.winner} IN ('red', 'white', 'forfeit-red', 'forfeit-white')`,
+		),
 	}),
 );
 
