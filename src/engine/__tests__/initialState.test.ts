@@ -1,58 +1,83 @@
 import { describe, expect, it } from "vitest";
-import { tokens } from "@/design/tokens";
-import { createInitialState, INITIAL_PIECE_COUNT } from "../initialState";
+import {
+	createInitialState,
+	INITIAL_PIECE_COUNT,
+	materializeStack,
+	stackHeight,
+} from "..";
 
 describe("createInitialState", () => {
-	it("produces a 9×11 board", () => {
+	it("places exactly 12 red and 12 white pieces", () => {
 		const state = createInitialState();
-		expect(state.board).toHaveLength(tokens.board.cols);
-		for (const column of state.board) {
-			expect(column).toHaveLength(tokens.board.rows);
+		let reds = 0;
+		let whites = 0;
+		for (const piece of state.board.values()) {
+			if (piece.color === "red") reds += 1;
+			else whites += 1;
 		}
+		expect(reds).toBe(INITIAL_PIECE_COUNT);
+		expect(whites).toBe(INITIAL_PIECE_COUNT);
 	});
 
-	it("places exactly 12 red pieces and 12 white pieces", () => {
+	it("leaves rows 0, 5, 10 empty (RULES.md §2)", () => {
 		const state = createInitialState();
-		let red = 0;
-		let white = 0;
-		for (const column of state.board) {
-			for (const stack of column) {
-				if (!stack) continue;
-				for (const piece of stack) {
-					if (piece.color === "red") red += 1;
-					else white += 1;
-				}
-			}
-		}
-		expect(red).toBe(INITIAL_PIECE_COUNT);
-		expect(white).toBe(INITIAL_PIECE_COUNT);
-	});
-
-	it("leaves both home rows (0 and 10) and the middle row (5) empty", () => {
-		const state = createInitialState();
-		for (const row of [0, 5, tokens.board.rows - 1]) {
-			for (let col = 0; col < tokens.board.cols; col++) {
-				const column = state.board[col];
-				expect(column).toBeDefined();
-				expect(column?.[row]).toBeNull();
+		for (let col = 0; col < 9; col += 1) {
+			for (const row of [0, 5, 10]) {
+				expect(stackHeight(state.board, { col, row })).toBe(0);
 			}
 		}
 	});
 
-	it("starts with red to move and no winner or chain", () => {
+	it("places red on rows 1, 2, 3 only", () => {
 		const state = createInitialState();
-		expect(state.turn).toBe("red");
-		expect(state.winner).toBeNull();
+		for (const piece of state.board.values()) {
+			if (piece.color === "red") {
+				expect([1, 2, 3]).toContain(piece.row);
+			}
+		}
+	});
+
+	it("places white on rows 7, 8, 9 only", () => {
+		const state = createInitialState();
+		for (const piece of state.board.values()) {
+			if (piece.color === "white") {
+				expect([7, 8, 9]).toContain(piece.row);
+			}
+		}
+	});
+
+	it("every starting cell is a 1-stack (height 0 is the only piece)", () => {
+		const state = createInitialState();
+		for (const piece of state.board.values()) {
+			expect(piece.height).toBe(0);
+			const stack = materializeStack(state.board, {
+				col: piece.col,
+				row: piece.row,
+			});
+			expect(stack).toHaveLength(1);
+		}
+	});
+
+	it("turn defaults to red (RULES.md §3)", () => {
+		expect(createInitialState().turn).toBe("red");
+	});
+
+	it("honors firstPlayer override (white opening for coin-flip-loses-red)", () => {
+		expect(createInitialState("white").turn).toBe("white");
+	});
+
+	it("starts with no chain and no winner", () => {
+		const state = createInitialState();
 		expect(state.chain).toBeNull();
+		expect(state.winner).toBeNull();
 	});
 
-	it("every starting piece is a 1-stack of the player's colour on top", () => {
-		const state = createInitialState();
-		for (const column of state.board) {
-			for (const stack of column) {
-				if (!stack) continue;
-				expect(stack).toHaveLength(1);
-			}
+	it("is deterministic — two calls produce structurally-equal boards", () => {
+		const a = createInitialState();
+		const b = createInitialState();
+		expect(a.board.size).toBe(b.board.size);
+		for (const [key, piece] of a.board) {
+			expect(b.board.get(key)).toEqual(piece);
 		}
 	});
 });
