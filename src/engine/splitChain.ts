@@ -7,8 +7,9 @@
  * can introspect chain status without simulating actions.
  */
 
+import { stackHeight } from "./board";
 import { adjacentCells } from "./positions";
-import { type GameState, stackHeight } from "./types";
+import type { GameState } from "./types";
 
 /** True iff a forced-split chain is in progress. */
 export function isChainActive(state: GameState): boolean {

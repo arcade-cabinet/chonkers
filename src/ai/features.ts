@@ -19,8 +19,6 @@ import {
 	type Color,
 	type GameState,
 	opponentHomeRow,
-	stackHeight,
-	topPieceAt,
 } from "@/engine";
 
 /** All ten feature values per docs/AI.md. */
@@ -102,6 +100,14 @@ export function computeFeatures(
 	const goal = opponentHomeRow(player);
 	const oppGoal = opponentHomeRow(opponent);
 	const summary = summariseCells(state.board);
+	// Index the summary by cell key so chonk_opportunities and
+	// adjacency lookups can read heights + colours in O(1) per cell
+	// instead of rescanning the whole board through stackHeight /
+	// topPieceAt — this function is on the alpha-beta hot path and
+	// the duplicate-scan cost cancels out the single-pass summary.
+	const summaryByCell = new Map<string, CellSummary>(
+		summary.map((s) => [`${s.cell.col}:${s.cell.row}`, s] as const),
+	);
 
 	let forward_progress = 0;
 	let top_count = 0;
@@ -152,13 +158,14 @@ export function computeFeatures(
 
 	// Chonk opportunities: legal chonks the player can make this turn.
 	for (const cell of playerCells) {
-		const myH = stackHeight(state.board, cell);
+		const me = summaryByCell.get(`${cell.col}:${cell.row}`);
+		if (!me) continue;
+		const myH = me.height;
 		for (const adj of adjacentCells(cell)) {
-			const top = topPieceAt(state.board, adj);
-			if (!top) continue; // empty cells are reachable but not chonks
-			if (top.color === player) continue; // chonking own colour is mostly perf-irrelevant
-			const adjH = stackHeight(state.board, adj);
-			if (myH <= adjH) chonk_opportunities += 1;
+			const adjSummary = summaryByCell.get(`${adj.col}:${adj.row}`);
+			if (!adjSummary) continue; // empty cell — not a chonk
+			if (adjSummary.topColor === player) continue;
+			if (myH <= adjSummary.height) chonk_opportunities += 1;
 		}
 	}
 

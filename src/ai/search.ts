@@ -82,9 +82,15 @@ export function search(
 		};
 	}
 
-	// Live: iterative deepening. Stop early if the deadline passes.
+	// Live: iterative deepening. Seed `lastBest` with the first
+	// legal action so a tight clock that expires before depth-1
+	// completes still returns a legal move rather than null. Without
+	// this seed, `chooseAction` would interpret the null as
+	// `stalled`/`forfeit` and skip a legal move.
+	const rootActions = enumerateLegalActions(state);
+	const fallback = rootActions[0] ?? null;
 	let lastBest: SearchResult = {
-		action: null,
+		action: fallback,
 		score: 0,
 		depthReached: 0,
 		nodesExplored: 0,
@@ -93,7 +99,8 @@ export function search(
 		if (now() >= ctx.deadlineMs) break;
 		const best = searchAtDepth(state, ctx, depth, now);
 		// If the deadline was hit mid-search, do not commit the partial
-		// result for this depth; keep the previous fully-completed result.
+		// result for this depth; keep the previous fully-completed
+		// result (or the seeded fallback if depth-1 didn't finish).
 		if (ctx.deadlineHit) break;
 		lastBest = {
 			action: best.action,
@@ -161,7 +168,11 @@ function alphaBeta(
 
 	if (ctx.mode === "live" && now() >= ctx.deadlineMs) {
 		ctx.deadlineHit = true;
-		return evaluate(state, ctx.profile, ctx.player);
+		// Score from the side-to-move's perspective so the negamax
+		// recursion stays consistent — using ctx.player here flips
+		// the sign every other ply, biasing partial-search scores
+		// arbitrarily.
+		return evaluate(state, ctx.profile, sideToMove(state, ctx.player));
 	}
 
 	if (state.winner) {
@@ -203,16 +214,20 @@ function alphaBeta(
 		if (alphaLocal >= beta) break;
 	}
 
-	// Store TT entry. Flag depends on the cutoff that occurred.
-	const flag: TTFlag =
-		best <= alpha ? "upperBound" : best >= beta ? "lowerBound" : "exact";
-	ctx.aiState.transpositionTable.set(ttKey, {
-		hash: ttKey,
-		depth,
-		score: best,
-		flag,
-		bestMoveIndex: 0,
-	});
+	// Store TT entry. Skip the write if the deadline was hit during
+	// this subtree — otherwise we'd cache a value that came from an
+	// incomplete search, biasing future move selection.
+	if (!ctx.deadlineHit) {
+		const flag: TTFlag =
+			best <= alpha ? "upperBound" : best >= beta ? "lowerBound" : "exact";
+		ctx.aiState.transpositionTable.set(ttKey, {
+			hash: ttKey,
+			depth,
+			score: best,
+			flag,
+			bestMoveIndex: 0,
+		});
+	}
 
 	return best;
 }

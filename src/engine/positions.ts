@@ -27,10 +27,22 @@ export function posToVector3(cell: Cell): Vector3 {
 	return new Vector3(x, 0, z);
 }
 
-/** Convert a Yuka Vector3 back to the closest board cell. */
+/**
+ * Convert a Yuka Vector3 back to the closest board cell. The result
+ * is clamped to the board's [0, cols-1] × [0, rows-1] range so a
+ * vector well off the board still snaps to the nearest legal cell
+ * — callers who need to detect off-board input can compare the
+ * unclamped projection against the result.
+ */
 export function vector3ToPos(v: Vector3): Cell {
-	const col = Math.round(v.x / cellSize + (cols - 1) / 2);
-	const row = Math.round(v.z / cellSize + (rows - 1) / 2);
+	const col = Math.max(
+		0,
+		Math.min(cols - 1, Math.round(v.x / cellSize + (cols - 1) / 2)),
+	);
+	const row = Math.max(
+		0,
+		Math.min(rows - 1, Math.round(v.z / cellSize + (rows - 1) / 2)),
+	);
 	return { col, row };
 }
 

@@ -135,43 +135,6 @@ export function unpackPositionKey(key: PositionKey): {
 	return { col, row, height };
 }
 
-/**
- * Materialise the stack at `(col, row)` from a `Board`. Returns the
- * pieces sorted by ascending height (bottom-first). Empty if no
- * pieces exist at that cell.
- */
-export function materializeStack(board: Board, cell: Cell): Stack {
-	const out: Piece[] = [];
-	for (const piece of board.values()) {
-		if (piece.col === cell.col && piece.row === cell.row) {
-			out.push(piece);
-		}
-	}
-	out.sort((a, b) => a.height - b.height);
-	return out;
-}
-
-/**
- * Top-of-stack piece at `(col, row)`, or null if empty. The top
- * piece's colour is who "owns" the cell (RULES.md §1).
- */
-export function topPieceAt(board: Board, cell: Cell): Piece | null {
-	let top: Piece | null = null;
-	for (const piece of board.values()) {
-		if (piece.col === cell.col && piece.row === cell.row) {
-			if (top === null || piece.height > top.height) {
-				top = piece;
-			}
-		}
-	}
-	return top;
-}
-
-/** Stack height at `(col, row)`. 0 means empty. */
-export function stackHeight(board: Board, cell: Cell): number {
-	let h = 0;
-	for (const piece of board.values()) {
-		if (piece.col === cell.col && piece.row === cell.row) h += 1;
-	}
-	return h;
-}
+// `materializeStack`, `topPieceAt`, and `stackHeight` are in
+// `./board.ts` — they operate on `Board` data, not types. Re-export
+// the runtime helpers there to keep this file purely about types.

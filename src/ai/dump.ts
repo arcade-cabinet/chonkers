@@ -84,8 +84,24 @@ export function loadAiState(blob: Uint8Array): AiState {
 		throw new AiDumpError(`invalid profileKey '${obj.profileKey}'`);
 	}
 	const chain = obj.chainPlannedRemainder ?? null;
-	if (chain !== null && !Array.isArray(chain)) {
-		throw new AiDumpError("chainPlannedRemainder must be array or null");
+	if (chain !== null) {
+		if (!Array.isArray(chain)) {
+			throw new AiDumpError("chainPlannedRemainder must be null or an array");
+		}
+		for (const run of chain) {
+			if (!Array.isArray(run)) {
+				throw new AiDumpError(
+					"chainPlannedRemainder entries must each be an array of slice indices",
+				);
+			}
+			for (const idx of run) {
+				if (!Number.isInteger(idx) || (idx as number) < 0) {
+					throw new AiDumpError(
+						`chainPlannedRemainder slice index ${idx} must be a non-negative integer`,
+					);
+				}
+			}
+		}
 	}
 
 	const out = createAiState(obj.profileKey);

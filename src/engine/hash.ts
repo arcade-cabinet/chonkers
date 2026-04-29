@@ -62,15 +62,15 @@ const ZOBRIST_TABLE = (() => {
 	return table;
 })();
 
-const TURN_TAG = (() => {
-	const r = splitmix64(SEED + 0xdeadbeefn);
-	return r.value;
-})();
+// Salted seeds for the turn + chain marker tags. Computed as masked
+// bigint constants up front so the splitmix64 inputs are unambiguous
+// bigints (no implicit operand conversion in the call expressions
+// — see code-quality bot warning).
+const TURN_SEED: bigint = (SEED + 0xdeadbeefn) & MASK64;
+const CHAIN_PRESENT_SEED: bigint = (SEED + 0xfeedfacen) & MASK64;
 
-const CHAIN_PRESENT_TAG = (() => {
-	const r = splitmix64(SEED + 0xfeedfacen);
-	return r.value;
-})();
+const TURN_TAG: bigint = splitmix64(TURN_SEED).value;
+const CHAIN_PRESENT_TAG: bigint = splitmix64(CHAIN_PRESENT_SEED).value;
 
 function pieceTag(
 	col: number,

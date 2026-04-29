@@ -27,23 +27,28 @@
  * for never dispatching an invalid action.
  */
 
-import { cellOwner, detachSlices, placeSubStack } from "./board";
+import {
+	cellOwner,
+	detachSlices,
+	materializeStack,
+	ownedCells,
+	placeSubStack,
+	stackHeight,
+} from "./board";
 import { adjacentCells, isOnBoard } from "./positions";
 import {
 	isFullStackSelection,
 	partitionRuns,
 	validateSplitSelection,
 } from "./slices";
-import {
-	type Action,
-	type Cell,
-	type Color,
-	type GameState,
-	materializeStack,
-	type Run,
-	type SplitChain,
-	type Stack,
-	stackHeight,
+import type {
+	Action,
+	Cell,
+	Color,
+	GameState,
+	Run,
+	SplitChain,
+	Stack,
 } from "./types";
 import { resolveWinner } from "./winCheck";
 
@@ -303,25 +308,10 @@ export function enumerateLegalActions(state: GameState): Action[] {
 		return result;
 	}
 
-	const owned: Cell[] = [];
-	const seen = new Map<string, number>();
-	for (const piece of state.board.values()) {
-		const k = `${piece.col}:${piece.row}`;
-		const prev = seen.get(k);
-		if (prev === undefined || piece.height > prev) {
-			seen.set(k, piece.height);
-		}
-	}
-	for (const [k, topH] of seen) {
-		const [col, row] = k.split(":").map(Number);
-		// Top piece's colour determines ownership.
-		const top = [...state.board.values()].find(
-			(p) => p.col === col && p.row === row && p.height === topH,
-		);
-		if (top?.color === state.turn) {
-			owned.push({ col: col as number, row: row as number });
-		}
-	}
+	// Reuse `ownedCells` from board.ts — single pass over the board
+	// instead of building a top-height map and then rescanning the
+	// pieces to find the colour at each top.
+	const owned = ownedCells(state.board, state.turn);
 
 	const result: Action[] = [];
 	for (const source of owned) {
@@ -371,20 +361,36 @@ export function enumerateLegalActions(state: GameState): Action[] {
 }
 
 /**
- * Enumerate every non-empty proper subset of {0, 1, ..., h-1}.
- * Returns subsets sorted ascending. Excludes the empty set and the
- * full set.
+ * Maximum split subset size considered by the AI search. Without a
+ * cap, `enumerateLegalActions` is O(2^h) per owned tall stack, which
+ * blows up alpha-beta on tall stacks (h=8 → 254 subsets, h=12 →
+ * 4094). The UI is unaffected — it dispatches a single chosen
+ * action, not a full enumeration. Increasing this cap is a balance
+ * decision the alpha/beta/rc tune cycle can revisit.
+ */
+const MAX_SPLIT_SUBSET_SIZE = 4;
+
+/**
+ * Enumerate every non-empty proper subset of {0, 1, ..., h-1} whose
+ * size is ≤ {@link MAX_SPLIT_SUBSET_SIZE}. Returns subsets sorted
+ * ascending. Excludes the empty set and the full set.
  */
 function enumerateSplitSubsets(h: number): number[][] {
 	const total = 1 << h;
+	const cap = Math.min(h - 1, MAX_SPLIT_SUBSET_SIZE);
 	const result: number[][] = [];
 	// Skip 0 (empty) and (1 << h) - 1 (full).
 	for (let mask = 1; mask < total - 1; mask += 1) {
 		const subset: number[] = [];
+		let popcount = 0;
 		for (let i = 0; i < h; i += 1) {
-			if ((mask >> i) & 1) subset.push(i);
+			if ((mask >> i) & 1) {
+				subset.push(i);
+				popcount += 1;
+				if (popcount > cap) break;
+			}
 		}
-		result.push(subset);
+		if (popcount > 0 && popcount <= cap) result.push(subset);
 	}
 	return result;
 }

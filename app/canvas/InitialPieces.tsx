@@ -11,36 +11,21 @@ import { Piece } from "./Piece";
 export function InitialPieces() {
 	const state = useMemo(() => createInitialState(), []);
 
-	const pieces: Array<{
-		key: string;
-		color: "red" | "white";
-		level: number;
-		x: number;
-		z: number;
-	}> = [];
-	for (const [key, piece] of state.board) {
-		const { col, row, height } = unpackPositionKey(key);
-		const v = posToVector3({ col, row });
-		pieces.push({
-			key: `${col}-${row}-${height}`,
-			color: piece.color,
-			level: height,
-			x: v.x,
-			z: v.z,
-		});
-	}
-
 	return (
 		<>
-			{pieces.map((p) => (
-				<Piece
-					key={p.key}
-					color={p.color}
-					level={p.level}
-					worldX={p.x}
-					worldZ={p.z}
-				/>
-			))}
+			{Array.from(state.board.entries()).map(([key, piece]) => {
+				const { col, row, height } = unpackPositionKey(key);
+				const v = posToVector3({ col, row });
+				return (
+					<Piece
+						key={`${col}-${row}-${height}`}
+						color={piece.color}
+						level={height}
+						worldX={v.x}
+						worldZ={v.z}
+					/>
+				);
+			})}
 		</>
 	);
 }

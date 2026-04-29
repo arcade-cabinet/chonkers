@@ -11,10 +11,13 @@ export {
 	cellOwner,
 	detachSlices,
 	emptyBoard,
+	materializeStack,
 	ownedCells,
 	placeSubStack,
 	removePieceAt,
 	setPiece,
+	stackHeight,
+	topPieceAt,
 } from "./board";
 export {
 	hashBoard,
@@ -69,13 +72,7 @@ export type {
 	SplitChain,
 	Stack,
 } from "./types";
-export {
-	materializeStack,
-	positionKey,
-	stackHeight,
-	topPieceAt,
-	unpackPositionKey,
-} from "./types";
+export { positionKey, unpackPositionKey } from "./types";
 export {
 	playerSatisfiesWin,
 	resolveWinner,

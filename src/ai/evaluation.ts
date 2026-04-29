@@ -11,7 +11,7 @@
  */
 
 import type { Color, GameState } from "@/engine";
-import { resolveWinner } from "@/engine";
+import { playerSatisfiesWin } from "@/engine";
 import { computeFeatures } from "./features";
 import type { Profile } from "./profiles";
 
@@ -26,9 +26,22 @@ export function evaluate(
 	player: Color,
 ): number {
 	// Terminal: trust the explicit winner field, then fall back to
-	// computing it from the board (in case the search hands us a
-	// board that hasn't yet had resolveWinner stamped on it).
-	const terminal = state.winner ?? resolveWinner(state.board, player);
+	// computing it from the board. We compute the per-side
+	// satisfaction directly rather than calling `resolveWinner`,
+	// which baked the moving-player tie-break into its return value
+	// — that's correct for the reducer but PERSPECTIVE-DEPENDENT and
+	// would let two evaluator calls on the same unstamped board
+	// disagree about who won. Here we only short-circuit when
+	// EXACTLY ONE side satisfies; an ambiguous board (both sides or
+	// neither) falls through to the feature sum.
+	const terminal =
+		state.winner ??
+		(() => {
+			const redWin = playerSatisfiesWin(state.board, "red");
+			const whiteWin = playerSatisfiesWin(state.board, "white");
+			if (redWin === whiteWin) return null;
+			return redWin ? "red" : "white";
+		})();
 	if (terminal === player) return TERMINAL_WIN_SCORE;
 	if (terminal !== null && terminal !== player) return -TERMINAL_WIN_SCORE;
 

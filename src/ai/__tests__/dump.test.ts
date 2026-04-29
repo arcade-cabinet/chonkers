@@ -56,15 +56,44 @@ describe("dumpAiState / loadAiState", () => {
 	});
 
 	it("rejects unknown profile keys in the payload", () => {
-		// Manually craft a v1 blob with a bogus profile key.
+		// Manually craft a current-format blob with a bogus profile
+		// key. Build the version header from the exported constant so
+		// the test stays correct across format bumps.
 		const enc = new TextEncoder();
 		const json = enc.encode(
 			JSON.stringify({ profileKey: "bogus", chainPlannedRemainder: null }),
 		);
 		const blob = new Uint8Array(8 + json.length);
-		blob.set([0x43, 0x48, 0x41, 0x49, 1, 0, 0, 0], 0);
+		blob.set([0x43, 0x48, 0x41, 0x49], 0);
+		new DataView(blob.buffer, blob.byteOffset, blob.byteLength).setUint32(
+			4,
+			CURRENT_DUMP_FORMAT_VERSION,
+			true,
+		);
 		blob.set(json, 8);
 		expect(() => loadAiState(blob)).toThrow(/invalid profileKey/);
+	});
+
+	it("rejects malformed chainPlannedRemainder structures", () => {
+		const enc = new TextEncoder();
+		const malformed = [
+			{ profileKey: "balanced-easy", chainPlannedRemainder: [["x"]] },
+			{ profileKey: "balanced-easy", chainPlannedRemainder: [[1, -1]] },
+			{ profileKey: "balanced-easy", chainPlannedRemainder: [[0.5]] },
+			{ profileKey: "balanced-easy", chainPlannedRemainder: [42] },
+		];
+		for (const payload of malformed) {
+			const json = enc.encode(JSON.stringify(payload));
+			const blob = new Uint8Array(8 + json.length);
+			blob.set([0x43, 0x48, 0x41, 0x49], 0);
+			new DataView(blob.buffer, blob.byteOffset, blob.byteLength).setUint32(
+				4,
+				CURRENT_DUMP_FORMAT_VERSION,
+				true,
+			);
+			blob.set(json, 8);
+			expect(() => loadAiState(blob)).toThrow(AiDumpError);
+		}
 	});
 
 	it("two consecutive dumps of the same state are byte-equal", () => {
