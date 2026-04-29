@@ -53,13 +53,9 @@ describe("chooseAction — replay mode determinism", () => {
 			"defensive-easy",
 		] as const) {
 			const profile = getProfile(key);
-			const decision = chooseAction(
-				state,
-				profile,
-				"red",
-				createAiState(key),
-				{ mode: "replay" },
-			);
+			const decision = chooseAction(state, profile, "red", createAiState(key), {
+				mode: "replay",
+			});
 			expect(decision.kind).toBe("act");
 		}
 	});
@@ -73,12 +69,24 @@ describe("chooseAction — replay mode determinism", () => {
 		const profileCopy = JSON.parse(JSON.stringify(profile));
 		const state = smallState();
 
-		const a = chooseAction(state, profile, "red", createAiState("balanced-easy"), {
-			mode: "replay",
-		});
-		const b = chooseAction(state, profileCopy, "red", createAiState("balanced-easy"), {
-			mode: "replay",
-		});
+		const a = chooseAction(
+			state,
+			profile,
+			"red",
+			createAiState("balanced-easy"),
+			{
+				mode: "replay",
+			},
+		);
+		const b = chooseAction(
+			state,
+			profileCopy,
+			"red",
+			createAiState("balanced-easy"),
+			{
+				mode: "replay",
+			},
+		);
 
 		expect(a).toEqual(b);
 	});

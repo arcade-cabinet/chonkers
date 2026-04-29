@@ -19,7 +19,22 @@ export default defineConfig({
 					name: "node",
 					environment: "node",
 					include: ["src/**/__tests__/*.test.ts"],
-					exclude: ["src/**/__tests__/*.browser.test.{ts,tsx}"],
+					exclude: [
+						"src/**/__tests__/*.browser.test.{ts,tsx}",
+						// Alpha-stage gate. Runs in a dedicated job
+						// (`pnpm test:alpha`) so the default Node tier
+						// stays under CI's 3-minute target.
+						"src/**/__tests__/broker-100-runs.test.ts",
+					],
+				},
+			},
+			{
+				extends: true,
+				test: {
+					name: "alpha",
+					environment: "node",
+					include: ["src/**/__tests__/broker-100-runs.test.ts"],
+					testTimeout: 15 * 60 * 1000,
 				},
 			},
 			{
