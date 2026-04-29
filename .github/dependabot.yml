@@ -1,0 +1,36 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch
+    open-pull-requests-limit: 10
+    # Pin sql.js — 1.14.x is required by jeep-sqlite@2.8.0 WASM ABI.
+    # Bumping sql.js without a matching jeep-sqlite release breaks the
+    # web SQLite shim. Revisit when jeep-sqlite ships a new wasm.
+    ignore:
+      - dependency-name: "sql.js"
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns:
+          - "*"
+
+  - package-ecosystem: gradle
+    directory: /android
+    schedule:
+      interval: weekly
+    groups:
+      android:
+        update-types:
+          - minor
+          - patch

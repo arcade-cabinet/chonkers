@@ -1,0 +1,16 @@
+{
+	"name": "Chonkers",
+	"short_name": "Chonkers",
+	"start_url": "index.html",
+	"display": "standalone",
+	"orientation": "portrait",
+	"icons": [
+		{
+			"src": "assets/imgs/logo.png",
+			"sizes": "512x512",
+			"type": "image/png"
+		}
+	],
+	"background_color": "#0F0A05",
+	"theme_color": "#7A3B22"
+}

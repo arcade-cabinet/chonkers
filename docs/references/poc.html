@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Chonkers - Interactive Board</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #1a1a1a;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            touch-action: none; /* Prevent mobile scrolling/zooming */
+        }
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+            display: block;
+        }
+        #ui-layer {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            pointer-events: none;
+            text-shadow: 1px 1px 4px rgba(0,0,0,0.8);
+            z-index: 10;
+        }
+        h1 { margin: 0; font-size: 24px; font-weight: 600; }
+        p { margin: 5px 0 0 0; font-size: 14px; opacity: 0.8; }
+        #turn-indicator {
+            margin-top: 15px;
+            padding: 8px 12px;
+            background: rgba(0,0,0,0.5);
+            border-radius: 6px;
+            display: inline-block;
+            font-weight: bold;
+            transition: color 0.3s;
+        }
+        .p1-text { color: #ff6b6b; }
+        .p2-text { color: #feca57; }
+
+        /* SPLIT MENU UI */
+        #split-menu-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            pointer-events: none; /* Let clicks pass through unless on the SVG */
+            z-index: 20;
+            overflow: hidden;
+        }
+        .split-svg {
+            position: absolute;
+            transform: translate(-50%, -50%);
+            pointer-events: auto; /* Catch events on the pie */
+            filter: drop-shadow(0px 4px 6px rgba(0,0,0,0.6));
+            touch-action: none;
+        }
+        .slice {
+            fill: rgba(255, 255, 255, 0.15);
+            stroke: #ffffff;
+            stroke-width: 2;
+            cursor: pointer;
+            transition: fill 0.2s, transform 0.2s;
+            transform-origin: center;
+        }
+        .slice:hover {
+            fill: rgba(255, 255, 255, 0.3);
+        }
+        .slice.selected {
+            fill: rgba(46, 204, 113, 0.7); /* Green highlight */
+        }
+        .slice.locked {
+            cursor: not-allowed;
+            fill: rgba(255, 0, 0, 0.2); /* Red tint if max selected */
+        }
+
+        /* 3-Second Flash Animation */
+        @keyframes flashReady {
+            0% { filter: brightness(1) drop-shadow(0px 0px 10px #2ecc71); }
+            100% { filter: brightness(1.8) drop-shadow(0px 0px 20px #2ecc71); }
+        }
+        .split-ready .slice.selected {
+            animation: flashReady 0.3s infinite alternate;
+            fill: rgba(46, 204, 113, 0.9);
+        }
+
+    </style>
+</head>
+<body>
+
+    <div id="ui-layer">
+        <h1>Chonkers</h1>
+        <p>Tap a stack >1 to split. Hold 3s & Drag.</p>
+        <div id="turn-indicator" class="p1-text">Red's Turn</div>
+    </div>
+    
+    <div id="canvas-container"></div>
+    <div id="split-menu-container"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tween.js/18.6.4/tween.umd.js"></script>
+
+    <script>
+        // --- GAME STATE ---
+        const cols = 9;
+        const rows = 11;
+        const tileSize = 1.2;
+        
+        const gameState = {
+            board: Array(rows).fill(null).map(() => Array(cols).fill(null).map(() => [])),
+            selected: null, // {x, z}
+            validMoves: [], // [{x, z}]
+            turn: 1, 
+            animating: false,
+            
+            // Splitting & Dragging State
+            splitMenu: {
+                active: false,
+                x: -1, z: -1,
+                slices: [], // boolean array matching stack size
+                meshRef: null // reference to the top piece mesh for 2D tracking
+            },
+            holdTimer: null,
+            isHolding: false,
+            splitReady: false,
+            isDragging: false,
+            draggedPieces: [] // Array of pieces currently being dragged
+        };
+
+        // --- SCENE SETUP ---
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color('#1e272e');
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 14, 18); 
+        
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        container.appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enablePan = false;
+        controls.maxPolarAngle = Math.PI / 2.2; 
+        controls.minDistance = 5;
+        controls.maxDistance = 35;
+
+        // --- LIGHTING ---
+        scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.7);
+        dirLight.position.set(5, 20, 10);
+        dirLight.castShadow = true;
+        dirLight.shadow.mapSize.width = 2048;
+        dirLight.shadow.mapSize.height = 2048;
+        scene.add(dirLight);
+
+        // --- BOARD GENERATION ---
+        const boardGroup = new THREE.Group();
+        scene.add(boardGroup);
+
+        const offsetX = -(cols * tileSize) / 2 + (tileSize / 2);
+        const offsetZ = -(rows * tileSize) / 2 + (tileSize / 2);
+
+        // Solid Wood Base
+        const woodMat = new THREE.MeshStandardMaterial({ color: '#3d2817', roughness: 0.9, metalness: 0.1 });
+        const boardBaseGeo = new THREE.BoxGeometry(cols * tileSize, 0.4, rows * tileSize);
+        const boardBase = new THREE.Mesh(boardBaseGeo, woodMat);
+        boardBase.position.y = -0.2;
+        boardBase.receiveShadow = true;
+        boardGroup.add(boardBase);
+
+        // Board plane for raycasting drags
+        const dragPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+
+        // Grid Lines
+        const lineMat = new THREE.LineBasicMaterial({ color: '#1a0f08', transparent: true, opacity: 0.5 });
+        for (let i = 0; i <= cols; i++) {
+            const points = [new THREE.Vector3(i * tileSize - (cols * tileSize)/2, 0.01, -(rows * tileSize)/2), new THREE.Vector3(i * tileSize - (cols * tileSize)/2, 0.01, (rows * tileSize)/2)];
+            boardGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), lineMat));
+        }
+        for (let i = 0; i <= rows; i++) {
+            const points = [new THREE.Vector3(-(cols * tileSize)/2, 0.01, i * tileSize - (rows * tileSize)/2), new THREE.Vector3((cols * tileSize)/2, 0.01, i * tileSize - (rows * tileSize)/2)];
+            boardGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), lineMat));
+        }
+
+        // Home Rows
+        const homeRowGeo = new THREE.PlaneGeometry(tileSize, tileSize);
+        homeRowGeo.rotateX(-Math.PI / 2);
+        for(let x=0; x<cols; x++) {
+            const intensity = 1 - (Math.abs(x - Math.floor(cols / 2)) / Math.floor(cols / 2)); 
+            const lightness = 0.15 + (0.3 * (1 - intensity)); 
+            const mat = new THREE.MeshStandardMaterial({ color: new THREE.Color().setHSL(0.4, 0.8, lightness), transparent: true, opacity: 0.8 });
+            
+            const h1 = new THREE.Mesh(homeRowGeo, mat); h1.position.set(x * tileSize + offsetX, 0.015, 0 * tileSize + offsetZ); boardGroup.add(h1);
+            const h2 = new THREE.Mesh(homeRowGeo, mat); h2.position.set(x * tileSize + offsetX, 0.015, 10 * tileSize + offsetZ); boardGroup.add(h2);
+        }
+
+        // --- PIECES ---
+        const p1Mat = new THREE.MeshStandardMaterial({ color: '#ff6b6b', roughness: 0.2, metalness: 0.1 }); 
+        const p2Mat = new THREE.MeshStandardMaterial({ color: '#feca57', roughness: 0.2, metalness: 0.1 }); 
+        const pieceGeo = new THREE.CylinderGeometry(0.45 * tileSize, 0.45 * tileSize, 0.2 * tileSize, 32);
+        const pieceHeightOffset = 0.2 * tileSize;
+
+        function createPiece(player, x, z) {
+            const mesh = new THREE.Mesh(pieceGeo, player === 1 ? p1Mat : p2Mat);
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+            boardGroup.add(mesh);
+            gameState.board[z][x].push({ player, mesh });
+            updateStackPositions(x, z);
+        }
+
+        function updateStackPositions(x, z) {
+            const stack = gameState.board[z][x];
+            stack.forEach((piece, index) => {
+                piece.mesh.position.set(x * tileSize + offsetX, (index * pieceHeightOffset) + (pieceHeightOffset / 2), z * tileSize + offsetZ);
+            });
+        }
+
+        // 12-Piece Setup
+        [{z: 1, cols: [0, 2, 4, 6, 8]}, {z: 2, cols: [1, 3, 5, 7]}, {z: 3, cols: [2, 4, 6]}].forEach(row => row.cols.forEach(x => createPiece(1, x, row.z)));
+        [{z: 9, cols: [0, 2, 4, 6, 8]}, {z: 8, cols: [1, 3, 5, 7]}, {z: 7, cols: [2, 4, 6]}].forEach(row => row.cols.forEach(x => createPiece(2, x, row.z)));
+
+        // --- HIGHLIGHTS ---
+        const highlightGeo = new THREE.PlaneGeometry(tileSize * 0.9, tileSize * 0.9);
+        highlightGeo.rotateX(-Math.PI / 2);
+        const validMoveMat = new THREE.MeshBasicMaterial({ color: '#00ff00', transparent: true, opacity: 0.4, side: THREE.DoubleSide });
+        const selectionMesh = new THREE.Mesh(highlightGeo, new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.5, side: THREE.DoubleSide }));
+        selectionMesh.visible = false;
+        boardGroup.add(selectionMesh);
+        const validMoveMeshes = [];
+
+        function clearHighlights() {
+            selectionMesh.visible = false;
+            validMoveMeshes.forEach(m => boardGroup.remove(m));
+            validMoveMeshes.length = 0;
+        }
+
+        function highlightValidMoves(moves) {
+            moves.forEach(m => {
+                const mesh = new THREE.Mesh(highlightGeo, validMoveMat);
+                mesh.position.set(m.x * tileSize + offsetX, 0.02, m.z * tileSize + offsetZ);
+                boardGroup.add(mesh);
+                validMoveMeshes.push(mesh);
+            });
+        }
+
+        function getValidMoves(x, z, customHeight = null) {
+            const moves = [];
+            const currentStack = gameState.board[z][x];
+            if (currentStack.length === 0 && customHeight === null) return moves;
+            
+            const height = customHeight !== null ? customHeight : currentStack.length;
+
+            const dirs = [[-1,-1], [0,-1], [1,-1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]];
+            dirs.forEach(d => {
+                const nx = x + d[0], nz = z + d[1];
+                if (nx >= 0 && nx < cols && nz >= 0 && nz < rows) {
+                    const targetStack = gameState.board[nz][nx];
+                    if (targetStack.length === 0 || targetStack.length >= height) {
+                        moves.push({x: nx, z: nz});
+                    }
+                }
+            });
+            return moves;
+        }
+
+        // --- SPLIT UI (SVG GENERATION) ---
+        function polarToCartesian(centerX, centerY, radius, angleInDegrees) {
+            const angleInRadians = (angleInDegrees - 90) * Math.PI / 180.0;
+            return { x: centerX + (radius * Math.cos(angleInRadians)), y: centerY + (radius * Math.sin(angleInRadians)) };
+        }
+
+        function describeArc(x, y, radius, startAngle, endAngle){
+            const start = polarToCartesian(x, y, radius, endAngle);
+            const end = polarToCartesian(x, y, radius, startAngle);
+            const largeArcFlag = endAngle - startAngle <= 180 ? "0" : "1";
+            return ["M", x, y, "L", start.x, start.y, "A", radius, radius, 0, largeArcFlag, 0, end.x, end.y, "Z"].join(" ");
+        }
+
+        function openSplitMenu(x, z, stack) {
+            const size = stack.length;
+            if (size <= 1) return;
+
+            gameState.splitMenu.active = true;
+            gameState.splitMenu.x = x;
+            gameState.splitMenu.z = z;
+            gameState.splitMenu.slices = Array(size).fill(false);
+            gameState.splitMenu.meshRef = stack[stack.length - 1].mesh;
+
+            const container = document.getElementById('split-menu-container');
+            container.innerHTML = '';
+
+            const radius = 50; // SVG radius
+            const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+            svg.setAttribute("width", radius * 2);
+            svg.setAttribute("height", radius * 2);
+            svg.classList.add("split-svg");
+            
+            const angleStep = 360 / size;
+            for(let i=0; i<size; i++) {
+                const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+                path.setAttribute("d", describeArc(radius, radius, radius - 2, i * angleStep, (i+1) * angleStep));
+                path.classList.add("slice");
+                path.setAttribute("data-index", i);
+                svg.appendChild(path);
+            }
+            container.appendChild(svg);
+            updateSplitUIPosition();
+
+            // SVG Interaction
+            svg.addEventListener('pointerdown', handleSvgPointerDown);
+            window.addEventListener('pointerup', handleSvgPointerUp); // Attached to window to catch releases anywhere
+        }
+
+        function closeSplitMenu() {
+            gameState.splitMenu.active = false;
+            document.getElementById('split-menu-container').innerHTML = '';
+            clearTimeout(gameState.holdTimer);
+            gameState.isHolding = false;
+            gameState.splitReady = false;
+        }
+
+        function updateSplitUIPosition() {
+            if (!gameState.splitMenu.active || !gameState.splitMenu.meshRef) return;
+            const vector = new THREE.Vector3();
+            gameState.splitMenu.meshRef.getWorldPosition(vector);
+            vector.project(camera);
+            
+            const x = (vector.x * .5 + .5) * window.innerWidth;
+            const y = (vector.y * -.5 + .5) * window.innerHeight;
+            
+            const svg = document.querySelector('.split-svg');
+            if (svg) {
+                svg.style.left = `${x}px`;
+                svg.style.top = `${y}px`;
+            }
+        }
+
+        // --- SPLIT INTERACTION LOGIC ---
+        function handleSvgPointerDown(e) {
+            e.stopPropagation(); // Stop board click
+            const sliceIndex = e.target.getAttribute('data-index');
+            
+            if (sliceIndex !== null) {
+                const idx = parseInt(sliceIndex);
+                const slices = gameState.splitMenu.slices;
+                const currentSelectedCount = slices.filter(Boolean).length;
+                
+                // Toggle Logic (Cannot select ALL slices)
+                if (slices[idx]) {
+                    slices[idx] = false;
+                    e.target.classList.remove('selected');
+                } else if (currentSelectedCount < slices.length - 1) {
+                    slices[idx] = true;
+                    e.target.classList.add('selected');
+                }
+
+                // Update locks visually
+                const newCount = slices.filter(Boolean).length;
+                document.querySelectorAll('.slice').forEach((el, i) => {
+                    if (!slices[i]) {
+                        if (newCount >= slices.length - 1) el.classList.add('locked');
+                        else el.classList.remove('locked');
+                    }
+                });
+            }
+
+            // Start 3-second hold timer
+            const selectedCount = gameState.splitMenu.slices.filter(Boolean).length;
+            if (selectedCount > 0) {
+                gameState.isHolding = true;
+                clearTimeout(gameState.holdTimer);
+                gameState.holdTimer = setTimeout(() => {
+                    gameState.splitReady = true;
+                    if (navigator.vibrate) navigator.vibrate([200]);
+                    document.querySelector('.split-svg').classList.add('split-ready');
+                    
+                    // Update highlights for the sub-stack height
+                    clearHighlights();
+                    gameState.validMoves = getValidMoves(gameState.splitMenu.x, gameState.splitMenu.z, selectedCount);
+                    highlightValidMoves(gameState.validMoves);
+                    
+                }, 3000);
+            }
+        }
+
+        function handleSvgPointerUp() {
+            gameState.isHolding = false;
+            clearTimeout(gameState.holdTimer);
+            if (!gameState.splitReady && !gameState.isDragging) {
+                const svg = document.querySelector('.split-svg');
+                if (svg) svg.classList.remove('split-ready');
+            }
+        }
+
+        // --- MAIN INPUT HANDLING (Drag & Drop) ---
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+
+        window.addEventListener('pointerdown', (event) => {
+            if (gameState.animating || event.target.closest('#split-menu-container')) return;
+            
+            // If they click the board while menu is open but split isn't ready, just close menu
+            if (gameState.splitMenu.active && !gameState.splitReady) {
+                closeSplitMenu();
+            }
+
+            setMousePos(event);
+            raycaster.setFromCamera(mouse, camera);
+            const intersectPoint = new THREE.Vector3();
+            raycaster.ray.intersectPlane(dragPlane, intersectPoint);
+
+            if (intersectPoint) {
+                const x = Math.round((intersectPoint.x - offsetX) / tileSize);
+                const z = Math.round((intersectPoint.z - offsetZ) / tileSize);
+                if (x >= 0 && x < cols && z >= 0 && z < rows) handleGridClick(x, z);
+            }
+        });
+
+        window.addEventListener('pointermove', (event) => {
+            // Initiate Drag
+            if (gameState.splitReady && gameState.isHolding && !gameState.isDragging) {
+                startDrag();
+            }
+
+            // Update Drag Position
+            if (gameState.isDragging) {
+                setMousePos(event);
+                raycaster.setFromCamera(mouse, camera);
+                const intersectPoint = new THREE.Vector3();
+                raycaster.ray.intersectPlane(dragPlane, intersectPoint);
+                
+                if (intersectPoint) {
+                    gameState.draggedPieces.forEach((piece, i) => {
+                        // Keep relative stacking heights
+                        piece.mesh.position.x = intersectPoint.x;
+                        piece.mesh.position.z = intersectPoint.z;
+                    });
+                }
+            }
+        });
+
+        window.addEventListener('pointerup', (event) => {
+            if (gameState.isDragging) {
+                setMousePos(event);
+                raycaster.setFromCamera(mouse, camera);
+                const intersectPoint = new THREE.Vector3();
+                raycaster.ray.intersectPlane(dragPlane, intersectPoint);
+                
+                let dropped = false;
+                if (intersectPoint) {
+                    const x = Math.round((intersectPoint.x - offsetX) / tileSize);
+                    const z = Math.round((intersectPoint.z - offsetZ) / tileSize);
+                    
+                    const isValidMove = gameState.validMoves.find(m => m.x === x && m.z === z);
+                    if (isValidMove) {
+                        finalizeDragMove(x, z);
+                        dropped = true;
+                    }
+                }
+                
+                if (!dropped) cancelDrag();
+            }
+        });
+
+        function setMousePos(event) {
+            let clientX = event.clientX, clientY = event.clientY;
+            if (event.changedTouches) { clientX = event.changedTouches[0].clientX; clientY = event.changedTouches[0].clientY; }
+            mouse.x = (clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(clientY / window.innerHeight) * 2 + 1;
+        }
+
+        function handleGridClick(x, z) {
+            const stack = gameState.board[z][x];
+            const topPiece = stack[stack.length - 1];
+
+            if (gameState.selected) {
+                const isValidMove = gameState.validMoves.find(m => m.x === x && m.z === z);
+                if (isValidMove) {
+                    executeMove(gameState.selected.x, gameState.selected.z, x, z);
+                    return;
+                }
+            }
+
+            if (topPiece && topPiece.player === gameState.turn) {
+                gameState.selected = {x, z};
+                gameState.validMoves = getValidMoves(x, z);
+                
+                clearHighlights();
+                selectionMesh.position.set(x * tileSize + offsetX, 0.02, z * tileSize + offsetZ);
+                selectionMesh.visible = true;
+                highlightValidMoves(gameState.validMoves);
+
+                // Open split menu for stacks > 1
+                if (stack.length > 1) {
+                    openSplitMenu(x, z, stack);
+                }
+            } else {
+                gameState.selected = null;
+                clearHighlights();
+                closeSplitMenu();
+            }
+        }
+
+        // --- DRAG LOGIC ---
+        function startDrag() {
+            gameState.isDragging = true;
+            controls.enabled = false; // Disable camera orbit while dragging
+            document.getElementById('split-menu-container').innerHTML = ''; // Hide SVG
+            
+            const numPiecesToMove = gameState.splitMenu.slices.filter(Boolean).length;
+            const sourceStack = gameState.board[gameState.splitMenu.z][gameState.splitMenu.x];
+            
+            // Pop pieces off the top
+            gameState.draggedPieces = sourceStack.splice(sourceStack.length - numPiecesToMove, numPiecesToMove);
+            
+            // Lift them slightly for visual feedback
+            gameState.draggedPieces.forEach(p => {
+                p.mesh.position.y += 0.5;
+            });
+        }
+
+        function cancelDrag() {
+            // Snap back to original stack
+            const {x, z} = gameState.splitMenu;
+            const sourceStack = gameState.board[z][x];
+            sourceStack.push(...gameState.draggedPieces);
+            updateStackPositions(x, z);
+            
+            resetDragState();
+        }
+
+        function finalizeDragMove(toX, toZ) {
+            const targetStack = gameState.board[toZ][toX];
+            targetStack.push(...gameState.draggedPieces);
+            updateStackPositions(toX, toZ);
+            
+            resetDragState();
+            endTurn();
+        }
+
+        function resetDragState() {
+            gameState.isDragging = false;
+            gameState.draggedPieces = [];
+            controls.enabled = true;
+            closeSplitMenu();
+            clearHighlights();
+            gameState.selected = null;
+        }
+
+        // --- STANDARD MOVE ---
+        function executeMove(fromX, fromZ, toX, toZ) {
+            gameState.animating = true;
+            clearHighlights();
+            closeSplitMenu();
+            
+            const stackToMove = gameState.board[fromZ][fromX];
+            const targetStack = gameState.board[toZ][toX];
+            
+            gameState.board[fromZ][fromX] = [];
+            const startingTargetHeight = targetStack.length;
+            targetStack.push(...stackToMove);
+
+            let completedAnimations = 0;
+            stackToMove.forEach((piece, index) => {
+                const targetY = ((startingTargetHeight + index) * pieceHeightOffset) + (pieceHeightOffset / 2);
+                const targetX = toX * tileSize + offsetX, targetZ = toZ * tileSize + offsetZ;
+
+                new TWEEN.Tween(piece.mesh.position)
+                    .to({ x: targetX, y: targetY + 1, z: targetZ }, 300)
+                    .easing(TWEEN.Easing.Quadratic.Out)
+                    .onComplete(() => {
+                        new TWEEN.Tween(piece.mesh.position)
+                            .to({ y: targetY }, 200).easing(TWEEN.Easing.Bounce.Out)
+                            .onComplete(() => {
+                                completedAnimations++;
+                                if (completedAnimations === stackToMove.length) endTurn();
+                            }).start();
+                    }).start();
+            });
+        }
+
+        function endTurn() {
+            gameState.selected = null;
+            gameState.validMoves = [];
+            gameState.turn = gameState.turn === 1 ? 2 : 1;
+            gameState.animating = false;
+
+            const indicator = document.getElementById('turn-indicator');
+            indicator.textContent = gameState.turn === 1 ? "Red's Turn" : "Yellow's Turn";
+            indicator.className = gameState.turn === 1 ? "p1-text" : "p2-text";
+        }
+
+        // --- ANIMATION LOOP ---
+        function animate(time) {
+            requestAnimationFrame(animate);
+            TWEEN.update(time);
+            controls.update();
+            updateSplitUIPosition(); // Keep SVG tracked to 3D piece
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+</html>

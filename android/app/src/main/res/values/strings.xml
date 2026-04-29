@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">chonkers</string>
+    <string name="title_activity_main">chonkers</string>
+    <string name="package_name">com.arcadecabinet.chonkers</string>
+    <string name="custom_url_scheme">com.arcadecabinet.chonkers</string>
+</resources>

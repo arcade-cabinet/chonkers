@@ -1,0 +1,10 @@
+{
+	"appId": "com.arcadecabinet.chonkers",
+	"appName": "chonkers",
+	"webDir": "dist",
+	"plugins": {
+		"SplashScreen": {
+			"launchAutoHide": false
+		}
+	}
+}

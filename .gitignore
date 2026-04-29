@@ -1,0 +1,58 @@
+.idea/
+.vscode/
+node_modules/
+dist/
+*.map
+.sourcemaps
+.DS_Store
+
+# Test artifacts
+playwright-report/
+test-results/
+coverage/
+
+# Capacitor build outputs
+android/app/build/
+android/build/
+android/.gradle/
+android/local.properties
+android/app/release/
+android/app/debug/
+ios/App/build/
+ios/App/Pods/
+ios/DerivedData/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+pnpm-debug.log
+
+# Copied at build-time from sql.js (see `pnpm copywasm`).
+public/assets/*.wasm
+public/*.wasm
+
+# DCC / engine source files we don't ship — only the baked PNG/EXR/JPG textures
+# under public/assets/pbr/ are loaded at runtime. The .blend / .mtlx / .tres /
+# .usdc files travel with the original asset packs but aren't part of the build.
+public/assets/pbr/**/*.blend
+public/assets/pbr/**/*.blend1
+public/assets/pbr/**/*.mtlx
+public/assets/pbr/**/*.tres
+public/assets/pbr/**/*.usdc
+public/assets/pbr/**/*.usda
+public/assets/pbr/**/*.usd
+# Source PNGs that duplicate the *_Color.png / *_Roughness.png /
+# *_Normal*.png / *_Displacement.png / *_AmbientOcclusion.png ship-files.
+# Keep the suffixed maps; ignore the un-suffixed source.
+public/assets/pbr/**/Wood008.png
+public/assets/pbr/**/Wood031.png
+public/assets/pbr/**/WoodFloor007.png
+public/assets/pbr/**/WoodFloor008.png
+
+# Font licence / OFL source markdown that ships next to the TTFs
+# (we already track the OFL.txt files; the TTFs are the load-bearing assets).
+
