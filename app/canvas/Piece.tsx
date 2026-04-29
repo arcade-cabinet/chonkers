@@ -2,7 +2,7 @@ import { useTexture } from "@react-three/drei";
 import { useMemo } from "react";
 import * as THREE from "three";
 import { tokens } from "@/design/tokens";
-import type { Color } from "@/engine/types";
+import type { Color } from "@/engine";
 import { ASSETS } from "@/utils/manifest";
 
 interface Props {

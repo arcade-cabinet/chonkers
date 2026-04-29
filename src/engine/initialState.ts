@@ -1,25 +1,20 @@
-import { tokens } from "@/design/tokens";
-import type { Board, GameState, Piece, Stack } from "./types";
-
 /**
- * The 5-4-3 triangular starting layout described in docs/RULES.md §2.
+ * The 5-4-3 triangular starting layout described in RULES.md §2.
  *
  * Red occupies rows 1, 2, 3 (advancing toward row 10).
  * White occupies rows 7, 8, 9 (advancing toward row 0).
  * Rows 0, 5, 10 are empty at start.
+ *
+ * The "first player" parameter lets the sim broker honour the
+ * coin-flip seed without tying the engine to entropy: passing
+ * `firstPlayer: 'red'` produces RULES §3's default; passing
+ * `firstPlayer: 'white'` flips the opening turn. Both layouts are
+ * IDENTICAL — only `turn` differs.
  */
 
-const COLS = tokens.board.cols;
-const ROWS = tokens.board.rows;
+import { emptyBoard, setPiece } from "./board";
+import type { Board, Color, GameState } from "./types";
 
-const redPiece: Piece = { color: "red" };
-const whitePiece: Piece = { color: "white" };
-const single = (p: Piece): Stack => [p];
-
-// Row 1 / row 9: 5 pieces at cols 2..6
-// Row 2 / row 8: 4 pieces at cols 2, 4, 5, 7  (chosen so the formation
-//                visually reads as a 5-4-3 triangle pointing inward)
-// Row 3 / row 7: 3 pieces at cols 3, 4, 5
 const RED_LAYOUT: ReadonlyArray<{ row: number; cols: ReadonlyArray<number> }> =
 	[
 		{ row: 1, cols: [2, 3, 4, 5, 6] },
@@ -36,50 +31,34 @@ const WHITE_LAYOUT: ReadonlyArray<{
 	{ row: 7, cols: [3, 4, 5] },
 ];
 
-type MutableColumn = Array<Stack | null>;
+export const INITIAL_PIECE_COUNT = 12 as const;
 
-function buildEmptyBoard(): MutableColumn[] {
-	return Array.from({ length: COLS }, () =>
-		Array.from({ length: ROWS }, () => null),
-	);
-}
-
-function place(
-	board: MutableColumn[],
-	col: number,
-	row: number,
-	piece: Piece,
-): void {
-	const column = board[col];
-	if (!column) {
-		throw new Error(
-			`initialState: column ${col} out of range (0..${COLS - 1})`,
-		);
-	}
-	column[row] = single(piece);
-}
-
-export function createInitialState(): GameState {
-	const board = buildEmptyBoard();
-
-	for (const { row, cols } of RED_LAYOUT) {
+function placeColor(
+	board: Board,
+	color: Color,
+	layout: typeof RED_LAYOUT,
+): Board {
+	let out = board;
+	for (const { row, cols } of layout) {
 		for (const col of cols) {
-			place(board, col, row, redPiece);
+			out = setPiece(out, { col, row, height: 0, color });
 		}
 	}
+	return out;
+}
 
-	for (const { row, cols } of WHITE_LAYOUT) {
-		for (const col of cols) {
-			place(board, col, row, whitePiece);
-		}
-	}
+export function createInitialBoard(): Board {
+	let b = emptyBoard();
+	b = placeColor(b, "red", RED_LAYOUT);
+	b = placeColor(b, "white", WHITE_LAYOUT);
+	return b;
+}
 
+export function createInitialState(firstPlayer: Color = "red"): GameState {
 	return {
-		board: board as Board,
-		turn: "red",
+		board: createInitialBoard(),
+		turn: firstPlayer,
 		chain: null,
 		winner: null,
 	};
 }
-
-export const INITIAL_PIECE_COUNT = 12 as const;
