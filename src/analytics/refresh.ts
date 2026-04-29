@@ -32,14 +32,44 @@ import { matches } from "@/persistence/sqlite/schema";
 import { analyticsRepo, type StoreDb } from "@/store";
 
 /**
- * Re-compute every aggregate that this match-end could have
- * changed. Runs inside a single drizzle transaction so the
- * aggregates and the matches row commit atomically.
+ * Per-DB serializer for `refreshOnMatchEnd`. Each helper inside the
+ * refresh rescans `matches` and overwrites the aggregate row, so two
+ * overlapping refreshes can interleave their reads + writes and the
+ * later writer (which scanned earlier) can clobber the earlier
+ * writer's result, regressing the aggregate. Chonkers runs ONE match
+ * at a time per device today, but this guard makes the helper safe
+ * against any future caller that fires off match terminations in
+ * parallel (a batch tournament runner, a replay-many-games tool,
+ * etc.). Keyed by drizzle handle identity so multiple test DBs in
+ * the same process don't share the lock.
+ */
+const refreshLocks = new WeakMap<object, Promise<unknown>>();
+
+/**
+ * Re-compute every aggregate that this match-end could have changed.
+ * Reads are based on the actual `matches` table state — calling
+ * twice for the same matchId is idempotent. Sequenced per-DB via
+ * `refreshLocks` so concurrent calls cannot regress aggregate rows.
  */
 export async function refreshOnMatchEnd(
 	db: StoreDb,
 	matchId: string,
 	now: number = Date.now(),
+): Promise<void> {
+	const lockKey = db as unknown as object;
+	const prior = refreshLocks.get(lockKey) ?? Promise.resolve();
+	const next = prior.then(() => refreshOnMatchEndInner(db, matchId, now));
+	refreshLocks.set(
+		lockKey,
+		next.catch(() => undefined),
+	);
+	return next;
+}
+
+async function refreshOnMatchEndInner(
+	db: StoreDb,
+	matchId: string,
+	now: number,
 ): Promise<void> {
 	const rows = await db.select().from(matches).where(eq(matches.id, matchId));
 	const match = rows[0];
@@ -47,12 +77,14 @@ export async function refreshOnMatchEnd(
 	if (match.finishedAt == null) return; // not actually ended
 	if (!match.winner) return;
 
-	await Promise.all([
-		refreshWinrate(db, match, now),
-		refreshAvgPlyCount(db, now),
-		refreshForfeitRate(db, match.redProfile, now),
-		refreshForfeitRate(db, match.whiteProfile, now),
-	]);
+	// Sequenced sub-helpers (each reads then writes, so even within
+	// a single match-end they must not interleave with each other —
+	// the analytics_aggregates row a helper writes is what the next
+	// helper would otherwise read concurrently).
+	await refreshWinrate(db, match, now);
+	await refreshAvgPlyCount(db, now);
+	await refreshForfeitRate(db, match.redProfile, now);
+	await refreshForfeitRate(db, match.whiteProfile, now);
 }
 
 interface MatchRow {

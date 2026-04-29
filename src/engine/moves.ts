@@ -248,17 +248,34 @@ export function applyAction(state: GameState, action: Action): GameState {
 	// Compute new chain: leftover runs become the chain's remaining
 	// detachments. If the action had only one run, the chain (if any
 	// was active) is consumed.
+	//
+	// CRITICAL: top-down indices are taken against the source stack at
+	// the moment they're consumed. After committing this turn's run,
+	// the source stack compacts — every piece above a removed slot
+	// drops down. Queued tail indices were authored against the
+	// pre-detach stack, so they MUST be rebased against the residual
+	// before we store them. Without this, e.g. a stack of [a, b, c]
+	// (top-down 0=c, 1=b, 2=a) split as runs `[[0], [2]]` would queue
+	// `[2]` against a 2-stack and either out-of-bounds or land on the
+	// wrong piece.
+	const removedTopDown = firstRun.indices;
 	let newChain: SplitChain | null = null;
 	if (state.chain) {
 		const remaining = state.chain.remainingDetachments.slice(1);
 		if (remaining.length > 0) {
-			newChain = { source: action.from, remainingDetachments: remaining };
+			newChain = {
+				source: action.from,
+				remainingDetachments: remaining.map((run) =>
+					rebaseTopDownIndices(run, removedTopDown),
+				),
+			};
 		}
 	} else if (action.runs.length > 1) {
-		// Begin a chain with the un-applied runs.
 		newChain = {
 			source: action.from,
-			remainingDetachments: action.runs.slice(1).map((r) => [...r.indices]),
+			remainingDetachments: action.runs
+				.slice(1)
+				.map((r) => rebaseTopDownIndices([...r.indices], removedTopDown)),
 		};
 	}
 
@@ -274,6 +291,33 @@ export function applyAction(state: GameState, action: Action): GameState {
 
 function flip(c: Color): Color {
 	return c === "red" ? "white" : "red";
+}
+
+/**
+ * Rebase a queued top-down detachment against the residual stack
+ * after `removed` indices were detached + the stack compacted.
+ *
+ * Top-down semantics: 0 = topmost. After removing a set of top-down
+ * indices `R`, the stack compacts so the surviving piece originally
+ * at top-down `j` is at new top-down `j - |{r in R : r < j}|`.
+ *
+ * Pre-conditions: every index in `queued` survived the detach (was
+ * NOT in `removed`). The reducer enforces this — runs in a single
+ * action partition the original selection, so no overlap.
+ */
+function rebaseTopDownIndices(
+	queued: ReadonlyArray<number>,
+	removed: ReadonlyArray<number>,
+): number[] {
+	const removedSorted = [...removed].sort((a, b) => a - b);
+	return queued.map((j) => {
+		let shift = 0;
+		for (const r of removedSorted) {
+			if (r < j) shift += 1;
+			else break;
+		}
+		return j - shift;
+	});
 }
 
 /**

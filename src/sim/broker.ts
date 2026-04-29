@@ -199,16 +199,17 @@ export async function playTurn(
 
 	if (decision.kind === "stalled") {
 		// No legal action and not below forfeit threshold. Per
-		// RULES.md §5.4, a stalled chain just flips control. The flip
-		// is in-memory only — no move row, no plyCount bump. The
-		// caller (playToCompletion) tracks stalls separately so a
-		// pathological stall loop can be capped without inflating
-		// `plies` past the persisted move count.
+		// RULES.md §5.4, a stalled chain just flips control. No move
+		// row, no plyCount bump — but the chain MUST be cleared in the
+		// DB or save/resume + analytics will see ghost chain
+		// obligations on a row whose engine state has none.
+		const hadChain = handle.game.chain !== null;
 		handle.game = {
 			...handle.game,
 			turn: mover === "red" ? "white" : "red",
 			chain: null,
 		};
+		if (hadChain) await matchesRepo.clearChain(db, handle.matchId);
 		return {
 			action: null,
 			decision,
@@ -219,11 +220,17 @@ export async function playTurn(
 	}
 
 	const action = decision.action;
+	const prevChain = handle.game.chain;
 	const next = engineApply(handle.game, action);
 
 	await persistMoveAtomic(db, handle, mover, action, handle.game, next);
 
 	handle.game = next;
+
+	// Sync the chain column with the engine's authoritative state.
+	// Every transition that changes `chain` must hit the DB so save/
+	// resume and replay can reconstruct the obligation set.
+	await syncChain(db, handle.matchId, prevChain, next.chain);
 
 	if (next.winner) {
 		await matchesRepo.finalizeMatch(db, handle.matchId, next.winner);
@@ -232,6 +239,40 @@ export async function playTurn(
 	}
 
 	return { action, decision, mover, terminal: false, persistedMove: true };
+}
+
+/**
+ * Persist the chain transition that just happened in the engine.
+ * Diffing on the (source, remainingDetachments) tuple keeps the DB
+ * write rate down — most plies don't touch the chain at all.
+ */
+async function syncChain(
+	db: StoreDb,
+	matchId: string,
+	prev: GameState["chain"],
+	next: GameState["chain"],
+): Promise<void> {
+	if (prev === next) return;
+	if (next === null) {
+		if (prev !== null) await matchesRepo.clearChain(db, matchId);
+		return;
+	}
+	const nextJson = JSON.stringify(next.remainingDetachments);
+	if (
+		prev !== null &&
+		prev.source.col === next.source.col &&
+		prev.source.row === next.source.row &&
+		JSON.stringify(prev.remainingDetachments) === nextJson
+	) {
+		return;
+	}
+	await matchesRepo.setChain(
+		db,
+		matchId,
+		next.source.col,
+		next.source.row,
+		nextJson,
+	);
 }
 
 /**

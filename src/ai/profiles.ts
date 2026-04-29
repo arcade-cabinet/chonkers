@@ -243,3 +243,20 @@ export function getProfile(key: ProfileKey): Profile {
 export function isProfileKey(key: string): key is ProfileKey {
 	return Object.hasOwn(PROFILES, key);
 }
+
+// Module-load drift guard: if `ALL_PROFILE_KEYS` ever drifts from the
+// keys actually present in `PROFILES` (say, someone adds a profile
+// but forgets to update the list, or vice-versa), fail at first
+// import rather than letting AI selection silently miss profiles.
+{
+	const profileKeys = Object.keys(PROFILES).sort();
+	const listKeys = [...ALL_PROFILE_KEYS].sort();
+	if (
+		profileKeys.length !== listKeys.length ||
+		profileKeys.some((k, i) => k !== listKeys[i])
+	) {
+		throw new Error(
+			`profiles.ts: ALL_PROFILE_KEYS drift — list has [${listKeys.join(", ")}], PROFILES has [${profileKeys.join(", ")}]`,
+		);
+	}
+}
