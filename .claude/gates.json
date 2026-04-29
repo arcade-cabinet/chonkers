@@ -124,9 +124,9 @@
 		"--no-verify",
 		"git push --force(?!-with-lease)",
 		"--admin",
-		"yarn ",
-		"npm install",
-		"npm run ",
+		"\\byarn\\b",
+		"npm\\s+i(nstall)?\\b",
+		"npm\\s+run\\b",
 		"package-lock\\.json",
 		"yarn\\.lock"
 	],

@@ -161,7 +161,10 @@ const DUCK_FACTOR = 0.25;
 export function duckAmbient(bus: AudioBus): void {
   const ambient = bus.howls.get('ambient');
   if (!ambient || !ambient.playing()) return;
-  ambient.fade(bus.volume, bus.volume * DUCK_FACTOR, 200);
+  // Fade from CURRENT volume (not bus.volume) — preserves any in-flight fade
+  // and prevents an abrupt jump if duck is called while a previous duck/restore
+  // hasn't fully completed. Mirrors restoreAmbient's symmetric approach.
+  ambient.fade(ambient.volume(), bus.volume * DUCK_FACTOR, 200);
 }
 
 export function restoreAmbient(bus: AudioBus): void {

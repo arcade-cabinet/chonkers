@@ -5,9 +5,13 @@ Two-player abstract strategy game — checkers reimagined around stacking instea
 
 ## Profiles loaded
 
+The `@`-prefixed lines below are Claude Code's file-include syntax. They reference the executor's locally-installed Claude profile addendums (set up via the `/init-profile` skill). Other tools / CI pipelines / external developers can ignore them — this CLAUDE.md is documentation for those readers, configuration only for Claude Code.
+
 @/Users/jbogaty/.claude/profiles/arcade-game.md
 @/Users/jbogaty/.claude/profiles/mobile-android.md
 @/Users/jbogaty/.claude/profiles/standard-repo.md
+
+The included profile content is plain Markdown documenting the same conventions captured (in distilled form) in this file's "Strict architectural rules" + "Repo-specific" sections below. A reader without the profile files installed loses no information — the rules they encode are also present here.
 
 ## Repo-specific
 

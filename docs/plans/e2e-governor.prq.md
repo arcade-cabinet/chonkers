@@ -94,18 +94,26 @@ export async function executeActionViaUI(page: Page, action: Action): Promise<vo
   }
 
   // Split — open overlay, select slices, hold-arm, drag-commit
+  // Multi-run split: ALL slice indices selected in the overlay (this commits
+  // the entire split atomically — first run resolves now, remaining runs queue
+  // in state.chain and surface as forced moves on subsequent turns), but only
+  // ONE drag-and-drop happens per turn. The driver targets the FIRST run's
+  // destination on this turn. Subsequent turns will see the chain-forced run
+  // as the only legal action; the governor then computes that as `decide()`'s
+  // output and translates it into the same single-drag pattern.
   await openSplitOverlay(page, action.from);
-  for (const run of action.runs) {
-    for (const idx of run.indices) {
-      await page.click(`[data-slice-index="${idx}"]`);
-    }
+  const allIndices = action.runs.flatMap((run) => run.indices);
+  for (const idx of allIndices) {
+    await page.click(`[data-slice-index="${idx}"]`);
   }
   await holdArm(page, 3100); // 100ms over the 3000ms threshold for safety
-  for (const run of action.runs) {
-    const toCell = await cellSelector(page, run.to);
-    await page.dragAndDrop('[data-armed-overlay]', toCell);
-    await page.waitForFunction(() => window.__chonkers.state.chain != null || /* match ended */ true);
-  }
+
+  const firstRun = action.runs[0];
+  if (!firstRun) throw new Error('split action has no runs');
+  const toCell = await cellSelector(page, firstRun.to);
+  await page.dragAndDrop('[data-armed-overlay]', toCell);
+  // The remaining runs (if any) are now queued in state.chain and will surface
+  // as forced moves on the executor's next turn. Do NOT drag them here.
 }
 
 export async function waitForTurnFlip(page: Page, fromTurn: 'red' | 'white'): Promise<void> {

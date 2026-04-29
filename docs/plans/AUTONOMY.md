@@ -364,7 +364,7 @@ The next session's `orient` hook reads `HALT.md` first; the user's response eith
 | Need | Command |
 |---|---|
 | Get PR state | `gh pr view N --json state,mergeable,mergeStateStatus,reviewDecision` |
-| List failing checks | `gh pr checks N --jq '.[] \| select(.conclusion=="FAILURE")'` |
+| List failing checks | `gh pr checks N --json name,conclusion,detailsUrl --jq '[.[] \| select(.conclusion == "FAILURE" or .conclusion == "CANCELLED" or .conclusion == "TIMED_OUT")]'` |
 | List unresolved threads | GraphQL query above |
 | Resolve thread | `gh api graphql -f query='mutation { resolveReviewThread(input:{threadId:"X"}) { thread { isResolved } } }'` |
 | Dismiss own review | `gh api graphql ... dismissPullRequestReview ...` |
