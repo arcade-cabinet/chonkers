@@ -56,3 +56,6 @@ public/assets/pbr/**/WoodFloor008.png
 # Font licence / OFL source markdown that ships next to the TTFs
 # (we already track the OFL.txt files; the TTFs are the load-bearing assets).
 
+.vitest-attachments/
+.claude/scheduled_tasks.lock
+.claude/state/

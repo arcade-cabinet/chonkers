@@ -73,16 +73,11 @@ export const kv = {
 	},
 
 	async clear(namespace?: string): Promise<void> {
-		if (namespace == null) {
-			await Preferences.clear();
-			return;
-		}
 		const { keys } = await Preferences.keys();
-		const prefix = `${namespace}${SEPARATOR}`;
-		await Promise.all(
-			keys
-				.filter((k) => k.startsWith(prefix))
-				.map((k) => Preferences.remove({ key: k })),
-		);
+		const matches =
+			namespace == null
+				? keys.filter((k) => k.includes(SEPARATOR))
+				: keys.filter((k) => k.startsWith(`${namespace}${SEPARATOR}`));
+		await Promise.all(matches.map((k) => Preferences.remove({ key: k })));
 	},
 } as const;

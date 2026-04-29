@@ -1,9 +1,7 @@
 import { Preferences } from "@capacitor/preferences";
 import * as fc from "fast-check";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { kv } from "@/persistence";
-
-import "./_setup";
+import { kv } from "@/persistence/preferences";
 
 describe("kv — typed JSON key-value store", () => {
 	beforeEach(async () => {

@@ -1,16 +1,21 @@
 /**
- * src/persistence — generic Capacitor-backed transport.
+ * src/persistence — chonkers' durable storage layer.
  *
- * Two surfaces:
- *   • kv  — typed JSON key-value over @capacitor/preferences
- *   • db  — raw SQL transport over @capacitor-community/sqlite +
- *           jeep-sqlite (web fallback)
+ * Two child packages, named for the platform mechanism that backs each:
  *
- * Zero knowledge of game-specific concepts. Schema and typed data
- * access live in src/schema/ and src/store/ (separate packages).
+ *   • preferences/  — typed JSON kv over @capacitor/preferences
+ *   • sqlite/       — drizzle ORM + @capacitor-community/sqlite
+ *                     (build-time game.db + runtime version-replay)
  *
- * See docs/PERSISTENCE.md for the full contract.
+ * Consumers import from the child packages directly:
+ *
+ *   import { kv } from '@/persistence/preferences';
+ *   import { db } from '@/persistence/sqlite';
+ *
+ * The top-level barrel re-exports both for convenience.
+ *
+ * See docs/PERSISTENCE.md (kv) and docs/DB.md (sqlite) for contracts.
  */
 
-export { type DbConnection, db } from "./db";
-export { kv } from "./kv";
+export { kv } from "./preferences";
+export * from "./sqlite";

@@ -5,56 +5,51 @@ status: current
 domain: context
 ---
 
-# State — as of 2026-04-29
+# State
 
-## Where we are
+This document describes **what is currently committed in the repo** and **what stage of the validation cadence the project is in**. It is the snapshot a returning contributor reads to orient. It is updated on every PRQ merge.
 
-Initial commit. The repository is being seeded with:
+## Stage
 
-- Curated assets (audio, fonts, HDRI, PBR for board + both pieces).
-- Capacitor 8 shell (iOS + Android).
-- Vite + TypeScript 6 dev environment.
-- Biome lint/format, release-please, dependabot, CI/CD workflows.
-- Authoritative documentation (this directory).
-- Initial R3F + Radix + framer-motion skeleton with a tilted board view, both home rows colour-graded, and the 5-4-3 starting layout rendered with PBR-textured pucks.
+Stages reflect *kind of validation completed*, not *version number*. release-please owns version numbers as conventional commits accumulate.
 
-## What is done
+| Stage | Threshold | Bias | Locks in |
+|---|---|---|---|
+| **pre-alpha** | PRQs in flight | unit-exercising contracts during construction | individual subsystem APIs + the broker that orchestrates them |
+| **alpha** | 100 AI-vs-AI broker runs pass | unit-exercising end-to-end | every PRQ has landed; broker drives engine + ai + store + analytics + persistence as a closed loop; first AI-weight tune from the resulting balance data |
+| **beta** | 1,000 in-browser AI-vs-AI governor runs pass | playtesting the real visual stack | R3F render + framer-motion + audio + Radix UI + input pipeline all integrate cleanly under sustained automated play; second AI-weight tune at higher statistical power |
+| **rc** | 10,000 governor runs + balance + profiling clean | outlier hunting + perf | no remaining visual glitches; AI-weight tuning finalised; profile pairs surveyed for unresolved-match outliers (AI evaluation gaps, not draws — the rule set has no draw condition); perf within budget |
 
-- Asset library curated under `public/assets/`: audio (ambient + 4 effects + 2 voices), fonts (Lato body, Abril Fatface header), HDRI background, PBR sets for the board and both piece colours.
-- `package.json` updated to TypeScript 6, React 19, R3F 9, drei, Radix Themes, framer-motion. pnpm 10 lockfile committed.
-- `tsconfig.json` strict mode (noUncheckedIndexedAccess, exactOptionalPropertyTypes).
-- `biome.json` aligned with sibling projects (tab indent, double-quote JS).
-- CI/CD workflows (`.github/workflows/{ci,cd,release,automerge}.yml`) wired for chonkers (build, typecheck, lint, test:node, test:browser, e2e:smoke, Pages deploy, Android debug APK on push, AAB on release).
-- Capacitor config branded `com.arcadecabinet.chonkers` / "chonkers".
-- `release-please-config.json` package-name set to `chonkers`.
-- Design tokens committed (`src/design/tokens.ts`) with palette derived from PBR mid-tones + Lato/Abril Fatface declared as `@font-face` in `src/css/fonts.css`.
-- Initial R3F scene renders the board (PBR + engraved gridlines), both home-row gradients, and the 5-4-3 starting position.
-- Radix theme provider wired with `accentColor` matching `accent.select`; framer-motion fade-in for the title screen.
-- Empty-shell `capacitor-welcome` removed; replaced by `<App />` mounting at `#root`.
+**Current stage: pre-alpha.** PRQ-1 (persistence + db) in flight on branch `prd/persistence` (PR #5).
 
-## What is NOT yet done
+## What is committed
 
-Everything below is queued for follow-up commits (one feature per PR per the autonomy policy in `~/.claude/CLAUDE.md`):
+- Curated assets under `public/assets/`: audio (ambient + 4 effects + 2 voices), fonts (Lato body, Abril Fatface display), HDRI background, PBR sets for board and both piece colours.
+- Capacitor 8 shell (iOS + Android) — `com.arcadecabinet.chonkers`.
+- Vite + TypeScript 6.0+ dev environment with strict mode (`noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, `verbatimModuleSyntax`).
+- Biome lint/format aligned with sibling arcade-cabinet projects.
+- release-please + dependabot + CI/CD workflows wired (`.github/workflows/{ci,cd,release,automerge}.yml`).
+- Authoritative documentation under `docs/`: this file, `RULES.md`, `DESIGN.md`, `LORE.md`, `ARCHITECTURE.md`, `PERSISTENCE.md`, `DB.md`, `AI.md`, `TESTING.md`.
+- PRD pipeline under `docs/plans/`: seven PRDs (persistence-and-db, logic-surfaces-and-broker, audio-and-design-tokens, visual-shell, e2e-governor, native-shell, plus one merged-and-deleted: schema folded into persistence-and-db).
+- Coordination state under `.agent-state/`: directive (the queue), digest, cursor.
+- Initial R3F + Radix + framer-motion skeleton: tilted board view, both home rows colour-graded with distinct PBR woods, 5-4-3 starting position rendered with PBR-textured pucks.
+- Design tokens (`src/design/tokens.ts`) derived from PBR mid-tones + Lato/Abril Fatface declared as `@font-face` in `src/css/fonts.css`.
+- Capacitor Preferences `kv` typed wrapper at `src/persistence/kv.ts` with browser-tier vitest coverage.
 
-- Move generation + reducer for tier-1 game logic (`src/game/moves.ts`, `gameState.ts`).
-- Pointer / touch input pipeline (`src/input/`).
-- Split overlay (SVG + framer-motion + state machine).
-- Audio bus and role wiring.
-- SQLite match-history schema.
-- Win/lose screens with voice playback.
-- Pause + settings.
-- Tutorial overlay.
-- Visual snapshot baselines (tier-2 browser tests).
-- Playwright e2e specs.
-- Maestro flows.
-- iOS app icon, Android adaptive icon.
+## What is in flight
 
-## Open questions
+- **PRQ-1 (persistence + db)** — `prd/persistence` branch, PR #5. Combines the typed `kv` surface (committed) with the drizzle ORM + capacitor-sqlite runtime + version-replay bootstrap (in progress per `docs/DB.md`). Schema PRD has been merged into this PRQ; there is no separate schema PR.
 
-- AI opponent for v1.0? Currently red moves first; both seats are human (hot-seat). An AI opponent is a v1.1 question, not a v1.0 blocker.
-- Online matchmaking? Out of scope for v1.0. The SQLite schema leaves room for a `remote_match_id` column without committing to a backend.
-- Tutorial: scripted or organic-discovery? Open question; resolve before v1.0.
+## What has not started
+
+PRDs queued, in dependency order:
+
+- PRQ-2: logic surfaces + broker (`src/engine/`, `src/ai/`, `src/store/`, `src/analytics/`, `src/sim/`). Acceptance gate: 100-run broker pass → **alpha**.
+- PRQ-3: audio + design tokens reconciliation (`src/audio/`, `src/design/`).
+- PRQ-4: visual shell (`app/`).
+- PRQ-5: e2e governor + accessibility (`e2e/`). Acceptance gate: 1,000-run governor pass → **beta**.
+- PRQ-6: native shell (Capacitor iOS + Android). Acceptance gate: 10,000-run governor + balance + profiling clean → **rc**.
 
 ## Reference snapshots
 
-The Three.js POC at `docs/references/poc.html` is the visual + interaction reference for everything ahead. It is **not** the implementation — every subsystem will be re-built in TS + R3F + Radix + framer-motion, but the POC remains the source of truth for "does the split feel right."
+The Three.js POC at `docs/references/poc.html` is the visual + interaction reference for everything ahead. It is **not** the implementation — every subsystem is rebuilt in TypeScript + R3F + Radix + framer-motion — but the POC remains the source of truth for "does the split feel right."
