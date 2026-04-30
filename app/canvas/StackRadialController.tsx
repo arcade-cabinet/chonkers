@@ -36,7 +36,6 @@ import { useThree } from "@react-three/fiber";
 import { useTrait } from "koota/react";
 import { useCallback, useMemo } from "react";
 import * as THREE from "three";
-import { Vector3 } from "yuka";
 import { tokens } from "@/design/tokens";
 import {
 	BOARD_COLS,
@@ -157,6 +156,17 @@ export function StackRadialController() {
 	);
 }
 
+// Module-scope reusable Three.js objects for `cellAtClientPoint`
+// (PRQ-A1 audit hazard H4). The raycaster + plane + ndc + target
+// have no per-call state worth preserving — `setFromCamera`
+// overwrites the ray, `intersectPlane` writes to the supplied
+// target. Reusing them avoids ~4 allocations per drag-commit.
+// Pattern cited: https://discourse.threejs.org/t/performance-problem-when-using-raycaster/5314
+const HIT_RAYCASTER = new THREE.Raycaster();
+const HIT_PLANE = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+const HIT_NDC = new THREE.Vector2();
+const HIT_TARGET = new THREE.Vector3();
+
 /**
  * Project a client-space pointer position to a board cell.
  *
@@ -178,13 +188,12 @@ function cellAtClientPoint(
 	gl: { domElement: HTMLCanvasElement },
 ): { col: number; row: number } | null {
 	const rect = gl.domElement.getBoundingClientRect();
-	const ndcX = ((clientX - rect.left) / rect.width) * 2 - 1;
-	const ndcY = -(((clientY - rect.top) / rect.height) * 2 - 1);
-	const raycaster = new THREE.Raycaster();
-	raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), camera);
-	const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
-	const target = new THREE.Vector3();
-	const hit = raycaster.ray.intersectPlane(plane, target);
+	HIT_NDC.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+	HIT_NDC.y = -(((clientY - rect.top) / rect.height) * 2 - 1);
+	HIT_RAYCASTER.setFromCamera(HIT_NDC, camera);
+	const hit = HIT_RAYCASTER.ray.intersectPlane(HIT_PLANE, HIT_TARGET);
 	if (!hit) return null;
-	return vector3ToPos(new Vector3(target.x, target.y, target.z));
+	// vector3ToPos accepts any `{x, y, z}` shape — pass the
+	// THREE.Vector3 directly (engine helpers are structural-typed).
+	return vector3ToPos(HIT_TARGET);
 }

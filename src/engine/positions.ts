@@ -4,12 +4,15 @@
  * The 9×11 grid is described in docs/RULES.md §2. Coords use
  * (col, row) with col in [0, 8] and row in [0, 10].
  *
- * `posToVector3` / `vector3ToPos` exist for the AI's Yuka Graph
- * state-space model (Yuka uses Vector3 for graph nodes), and for
- * the R3F render layer's eventual world-space transform.
+ * `posToVector3` / `vector3ToPos` map between the abstract grid and
+ * a structural `{x, y, z}` shape compatible with both `THREE.Vector3`
+ * and `yuka.Vector3` (and any plain object literal). No library type
+ * is imported here — the engine doesn't depend on a particular
+ * Vector3 implementation, so neither the canvas (which uses Three.js)
+ * nor the AI (which historically used yuka, currently doesn't reach
+ * this surface) needs an adapter when consuming the result.
  */
 
-import { Vector3 } from "yuka";
 import { tokens } from "@/design/tokens";
 import type { Cell } from "./types";
 
@@ -20,21 +23,33 @@ export const BOARD_ROWS = rows;
 export const RED_HOME_ROW = 0;
 export const WHITE_HOME_ROW = rows - 1;
 
-/** Convert a board cell to a Yuka Vector3. Y is the board surface (0). */
-export function posToVector3(cell: Cell): Vector3 {
+/**
+ * Minimal structural Vector3 shape. Both `THREE.Vector3` and
+ * `yuka.Vector3` extend this — callers can pass either or a plain
+ * object literal.
+ */
+export interface Vector3Like {
+	readonly x: number;
+	readonly y: number;
+	readonly z: number;
+}
+
+/** Convert a board cell to a `{x, y, z}` triple. Y is the board surface (0). */
+export function posToVector3(cell: Cell): Vector3Like {
 	const x = (cell.col - (cols - 1) / 2) * cellSize;
 	const z = (cell.row - (rows - 1) / 2) * cellSize;
-	return new Vector3(x, 0, z);
+	return { x, y: 0, z };
 }
 
 /**
- * Convert a Yuka Vector3 back to the closest board cell. The result
+ * Convert a `{x, y, z}` triple (THREE.Vector3, yuka.Vector3, or a
+ * plain object literal) back to the closest board cell. The result
  * is clamped to the board's [0, cols-1] × [0, rows-1] range so a
- * vector well off the board still snaps to the nearest legal cell
- * — callers who need to detect off-board input can compare the
+ * vector well off the board still snaps to the nearest legal cell —
+ * callers who need to detect off-board input can compare the
  * unclamped projection against the result.
  */
-export function vector3ToPos(v: Vector3): Cell {
+export function vector3ToPos(v: Vector3Like): Cell {
 	const col = Math.max(
 		0,
 		Math.min(cols - 1, Math.round(v.x / cellSize + (cols - 1) / 2)),
