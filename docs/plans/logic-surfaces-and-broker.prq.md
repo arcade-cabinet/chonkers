@@ -188,23 +188,24 @@ Each layer's tests must pass before the next layer begins. The no-mocks discipli
 
 ### Group B — Repo layout migration
 
-#### B1. Apply `src/` vs `app/` split
+#### B1. Apply `src/`-only repo layout
 
-**Description:** Move existing files into the new layout. `src/` holds only pure TypeScript (no JSX/TSX). `app/` holds all React. `src/render/` → `app/canvas/`; `src/ui/` → `app/screens/`; `src/main.tsx` → `app/main.tsx`; `src/App.tsx` → `app/App.tsx`; `src/index.html` → `app/index.html`; `src/css/` → `app/css/`; `src/manifest.json` → `public/manifest.webmanifest`; `src/sim/` (legacy types/coords/initialState) → `src/engine/` with `coords.ts` renamed `positions.ts` for 3D semantics. Drop `tests/` directory entirely.
+**Description (updated 2026-04-30):** This PRD originally moved files into a `src/` (pure TS) vs `app/` (React/JSX) split. The `app/` half has been retired — there is no React, no JSX, no R3F, no Radix in the project. All code now lives under `src/`. Moves: `src/render/` and `src/ui/` are absorbed into `src/scene/`; `src/main.tsx` / `src/App.tsx` are replaced by `src/scene/index.ts`; `src/index.html` moves to repo root as `index.html`; `src/css/` is absorbed into `src/scene/styles.ts` (small CSS-as-string injected at boot for the overlay container + `@font-face` rules); `src/manifest.json` → `public/manifest.webmanifest`; `src/sim/` (legacy types/coords/initialState) → `src/engine/` with `coords.ts` renamed `positions.ts` for 3D semantics. Drop `tests/` directory entirely.
 
 **Files:** filesystem moves; `tsconfig.json`; `vite.config.ts`; `vitest.config.ts`; `biome.json`; `.gitignore`; `package.json` scripts
 
 **Acceptance criteria:**
-- `find src -name '*.tsx' -o -name '*.jsx'` returns zero results
-- `find app -type f \( -name '*.tsx' -o -name '*.ts' \)` finds all React entry points
-- `tsconfig.json` paths: `@/*` → `src/*`, `~/*` → `app/*`; both `src` and `app` in `include`
-- `vite.config.ts` `root: 'app'`; aliases for `@` and `~`
-- `vitest.config.ts` two projects: `node` (`src/**/__tests__/*.test.ts`) and `browser` (`app/**/__tests__/*.browser.test.tsx`)
-- `biome.json` includes both `src/**` and `app/**`; React/JSX rules scoped to `app/**` override
+- `find . -name '*.tsx' -o -name '*.jsx'` returns zero results outside `node_modules`
+- `find src -type f -name '*.ts'` finds the entire application source
+- `tsconfig.json` paths: `@/*` → `src/*`; `src` in `include`
+- `vite.config.ts` `root: '.'`; alias for `@`
+- `vitest.config.ts` two projects: `node` (`src/**/__tests__/*.test.ts`) and `browser` (`src/**/__tests__/*.browser.test.ts`)
+- `biome.json` includes `src/**`; React/JSX rules removed
 - `pnpm typecheck` clean
 - `pnpm lint` clean
-- `pnpm build` produces `dist/` from `app/index.html` entry
+- `pnpm build` produces `dist/` from `index.html` entry
 - `tests/` directory does not exist
+- No `app/` directory exists
 
 ---
 

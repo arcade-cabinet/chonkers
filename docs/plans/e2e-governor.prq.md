@@ -36,13 +36,13 @@ Land:
    
    Run 3 full AI-vs-AI games at different difficulty/disposition combinations. Workers=1; runtime ≤8min on CI.
 
-3. **`e2e/accessibility.spec.ts`** — `@axe`-driven audit at every screen. TitleView / SettingsView / PlayView / WinView / LoseView each visited; axe-core scan asserts no critical violations. WCAG 2.1 AA target.
+3. **`e2e/accessibility.spec.ts`** — `@axe`-driven audit at every diegetic UI surface. The harness visits each surface (lobby Play/Resume radials, splitting radial on a 2-stack, pause radial, settings radial, end-game radial) by stepping through deterministic autostart configs; axe-core scan asserts no critical violations. WCAG 2.1 AA target. (The 3D scene itself is opaque to axe; the SVG overlay slices carry the accessibility surface — labelled `<button>`s inside `<foreignObject>` per `DESIGN.md`.)
 
 4. **Test infrastructure:**
    - Playwright config (`playwright.config.ts`) with desktop-chromium project; mobile-pixel-7 project; mobile-iphone-14 project; iPad-Pro-landscape project (echoes mean-streets).
    - `e2e/_lib/governor-driver.ts` (the Action→gesture translator).
    - `e2e/_lib/window-chonkers-types.d.ts` (typed `window.__chonkers` shape).
-   - DEV-only addition to `app/boot/boot.tsx`: when `import.meta.env.DEV` AND `?testHook=1` are both true, expose `window.__chonkers = { state, history, world, actions }`. Production builds (`import.meta.env.DEV === false`) strip this branch entirely via Vite's dead-code elimination — verified by the `pnpm build && grep -c '__chonkers' dist/assets/*.js` check in B3's acceptance criteria. There is no escape-hatch flag that makes the hook live in production; the test environment uses dev-mode dev server with `?testHook=1`, never a production build.
+   - DEV-only addition to `src/scene/index.ts`: when `import.meta.env.DEV` AND `?testHook=1` are both true, expose `window.__chonkers = { state, history, world, actions }`. Production builds (`import.meta.env.DEV === false`) strip this branch entirely via Vite's dead-code elimination — verified by the `pnpm build && grep -c '__chonkers' dist/assets/*.js` check in B3's acceptance criteria. There is no escape-hatch flag that makes the hook live in production; the test environment uses dev-mode dev server with `?testHook=1`, never a production build.
 
 ---
 
@@ -50,10 +50,10 @@ Land:
 
 ### `window.__chonkers` exposure
 
-In `app/boot/boot.tsx`, gated behind `import.meta.env.DEV` AND a `?testHook=1` URL parameter (so production builds can never accidentally expose it):
+In `src/scene/index.ts`, gated behind `import.meta.env.DEV` AND a `?testHook=1` URL parameter (so production builds can never accidentally expose it):
 
 ```tsx
-// app/boot/boot.tsx (additions)
+// src/scene/index.ts (additions)
 if (import.meta.env.DEV && new URLSearchParams(location.search).has('testHook')) {
   Object.defineProperty(window, '__chonkers', {
     get: () => ({
@@ -208,11 +208,11 @@ Three configs is enough to prove the contract; more would just add runtime witho
 - TypeScript ambient declaration for `window.__chonkers`
 - Tests get full type completion when reading the global
 
-#### B3. Add testHook gate to `app/boot/boot.tsx`
+#### B3. Add testHook gate to `src/scene/index.ts`
 
 **Description:** Gate `window.__chonkers` exposure behind `import.meta.env.DEV` AND `?testHook=1`. Production builds must strip this completely (verified via `pnpm build && grep -c '__chonkers' dist/assets/*.js` returns 0).
 
-**Files:** `app/boot/boot.tsx`
+**Files:** `src/scene/index.ts`
 
 **Acceptance criteria:**
 - DEV+testHook=1 exposes window.__chonkers
@@ -259,7 +259,7 @@ Three configs is enough to prove the contract; more would just add runtime witho
 **Files:** `e2e/accessibility.spec.ts`
 
 **Acceptance criteria:**
-- Visits TitleView, SettingsView, PlayView, WinView, LoseView (use autostart configs to deterministically reach each)
+- Visits each diegetic surface (lobby Play/Resume, splitting radial, pause, settings, end-game) using autostart configs to deterministically reach each
 - Runs axe-core scan; asserts no critical violations
 - WCAG 2.1 AA target
 - Passes on desktop + iPhone-14 projects

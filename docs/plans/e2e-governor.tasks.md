@@ -10,7 +10,7 @@
 2. [P1] **Update docs/TESTING.md** — Tier-3 governor + smoke + a11y.
 3. [P2] **Author playwright.config.ts** — Four projects (desktop + 3 mobile/tablet); webServer; tag-based selection.
 4. [P2] **Author e2e/_lib/window-chonkers-types.d.ts** — Ambient types for window.__chonkers.
-5. [P2] **Add testHook gate to app/boot/boot.tsx** — DEV+?testHook=1 gates exposure; production strips.
+5. [P2] **Add testHook gate to src/scene/index.ts** — DEV+?testHook=1 gates exposure; production strips.
 6. [P2] **Author e2e/_lib/governor-driver.ts** — executeActionViaUI translator + waitForTurnFlip + getState/getHistory.
 7. [P3] **Author e2e/app-flow.spec.ts** — Smoke; ≤30s; passes on all 4 projects.
 8. [P3] **Author e2e/governor.spec.ts** — Three @governor full games; per-turn fidelity assertion; workers=1; ≤8min.

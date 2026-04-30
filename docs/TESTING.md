@@ -1,6 +1,6 @@
 ---
 title: Testing
-updated: 2026-04-29
+updated: 2026-04-30
 status: current
 domain: quality
 ---
@@ -21,7 +21,7 @@ The tiers are *where* tests run. The stages are *how many runs* drive the covera
 ```
 Tier 4 — Maestro (native Android + iOS smoke; rc gate)
 Tier 3 — Playwright e2e (Chromium, mobile viewports, real touch + GPU)
-Tier 2 — Vitest browser (real Chromium GPU, WebGL, R3F render, capacitor-sqlite OPFS)
+Tier 2 — Vitest browser (real Chromium GPU, WebGL, three.js scene, capacitor-sqlite OPFS)
 Tier 1 — Vitest node (pure TypeScript, no DOM, no WebGL, better-sqlite3 ad-hoc DBs)
 ```
 
@@ -58,14 +58,14 @@ CHONKERS_TEST_DB_DIR=/tmp/chonkers-debug pnpm test:node
 
 ### Tier 2 — Browser tests (real GPU)
 
-**Purpose:** anything that requires a real browser. R3F render components, Three.js material configuration, WebGL state, visual snapshot regression, capacitor-sqlite OPFS persistence, capacitor-preferences platform routing on web.
+**Purpose:** anything that requires a real browser. Three.js scene construction, material configuration, WebGL state, visual snapshot regression, capacitor-sqlite OPFS persistence, capacitor-preferences platform routing on web.
 
-**Where files live:** `src/**/__tests__/*.browser.test.{ts,tsx}` and `app/**/__tests__/*.browser.test.tsx`.
+**Where files live:** `src/**/__tests__/*.browser.test.ts`. No `.tsx` — there is no React in the project.
 
 **What to cover:**
-- `<Board />` renders with the correct geometry and PBR material.
-- `<Stack />` for stack heights 1, 3, and 6 produce stable visual snapshots.
-- The split overlay open animation completes in ~160ms ± 40ms.
+- `src/scene/board.ts` produces the correct 9×11 mesh group with both PBR woods loaded.
+- `src/scene/pieces.ts` for stack heights 1, 3, and 6 produce stable visual snapshots.
+- `tweenRadialOpen()` completes in ~160ms ± 40ms (gsap timeline duration).
 - HDRI loads and contributes to scene lighting.
 - `kv` round-trips JSON values through real Capacitor Preferences (under `localStorage` on the web tier).
 - `src/persistence/sqlite/` bootstrap path: first run imports `public/game.db` into OPFS; second run is a no-op; drift detection triggers migration replay.
@@ -83,7 +83,7 @@ CI uses `xvfb-run` for a virtual framebuffer.
 
 #### Visual snapshot policy
 
-- Baselines live in `app/canvas/__screenshots__/`.
+- Baselines live in `src/scene/__screenshots__/`.
 - Updating a baseline requires a commit body line `// visual-update: <reason ≥10 words>` per `commit-gate.mjs` policy.
 - Snapshots are platform-pinned to the CI runner's Chromium build; local runs on different platforms compare against the same pinned image (small differences land as test failures, not silent drift).
 
@@ -93,7 +93,7 @@ CI uses `xvfb-run` for a virtual framebuffer.
 
 **Where files live:** `e2e/*.spec.ts`.
 
-**The governor spec.** `e2e/governor.spec.ts` runs N AI-vs-AI matches end-to-end through the real R3F + Radix + framer-motion + audio + capacitor-sqlite stack. N is parameterised by environment:
+**The governor spec.** `e2e/governor.spec.ts` runs N AI-vs-AI matches end-to-end through the real three.js + gsap + audio + capacitor-sqlite stack. N is parameterised by environment:
 
 | Env | N | When |
 |---|---:|---|
@@ -108,10 +108,10 @@ The governor spec records every match's `coin_flip_seed` + profile pair + `posit
 - `pnpm test:e2e:governor` — governor spec, parameterised by `GOVERNOR_RUNS`.
 
 **Mandatory smoke specs:**
-- New game → red plays a 1-stack move → audio dispatches the `move` role.
-- Stack two reds → tap stack → split overlay opens → select 1 slice → hold 3s → drag off → place on adjacent cell.
-- Construct a near-win position via `?seed=...` URL → execute the winning move → win screen + voice line.
-- Forfeit button → game-over sting + opponent's voice line.
+- New game from the lobby Play radial → red plays a 1-stack move → audio dispatches the `move` role.
+- Stack two reds → tap stack → splitting radial opens on the top puck → select 1 slice → hold 3s → drag off → place on adjacent cell.
+- Construct a near-win position via `?seed=...` URL → execute the winning move → end-game radial appears on the winning stack + voice line plays.
+- Triple-tap the bezel to open the pause radial → select Forfeit → game-over sting + opponent's voice line.
 
 Specs use **DOM locators**, not `page.evaluate()` against the WebGL surface — Playwright cannot reliably introspect WebGL state.
 

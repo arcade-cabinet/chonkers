@@ -1,6 +1,6 @@
 ---
 title: Architecture
-updated: 2026-04-29
+updated: 2026-04-30
 status: current
 domain: technical
 ---
@@ -10,7 +10,7 @@ domain: technical
 ## Top-level boundaries
 
 ```
-Input (pointer/touch + radial overlay, app/input/)
+Input (raycaster on board plane + pieces; SVG overlay pointer events for diegetic affordances)
     │
     ▼
 Sim broker (src/sim/) ──── coordinates engine + ai + store + persistence
@@ -20,36 +20,47 @@ Sim broker (src/sim/) ──── coordinates engine + ai + store + persistence
     ├─► Store     (src/store/)    typed CRUD over db tables
     ├─► Analytics (src/analytics/) materialised aggregate queries
     │
-    ├─► R3F render tree   (app/canvas/)     subscribes to koota
-    ├─► Radix UI shell    (app/screens/, app/components/)  subscribes to koota
+    ├─► Scene    (src/scene/)     three.js scene + gsap tweens + diegetic SVG overlays — subscribes to koota
     │
-    └─► Audio bus        (src/audio/)       dispatched as side-effects from sim broker
+    └─► Audio bus (src/audio/)    dispatched by scene event handlers on Match.lastMove + ceremony phase + winner transitions
 
 Persistence:
     ├─► Capacitor Preferences  (src/persistence/)  typed JSON kv  — settings, last-camera-angle, profile pair, audio volume
     └─► SQLite via Capacitor   (src/persistence/sqlite/) drizzle ORM — match history, AI dumps, analytics aggregates
 ```
 
-State flows through the sim broker. Render trees subscribe to koota traits; they never mutate state directly. The broker is the only module that imports from both the logic side (engine/ai/store) and the IO side (persistence/db/audio).
+State flows through the sim broker. The scene subscribes to koota traits; it never mutates state directly. The broker is the only module that imports from both the logic side (engine/ai/store) and the IO side (persistence/db/audio).
 
-## The src/ vs app/ split
+## Everything is `src/`
 
-`src/` is **pure TypeScript with no JSX, no React, no DOM**. Every module is testable in node, callable from a build-time script, portable to other arcade-cabinet projects.
+There is **no `app/` directory**. There is no React, no JSX, no R3F, no Radix, no framer-motion in the application. The full stack is:
 
-`app/` is **the React shell**. All `.tsx` lives here. R3F, Radix Themes, framer-motion, hooks, screens, and the boot sequence.
+| Concern | Library | Why |
+|---|---|---|
+| 3D rendering | `three` (pinned `^0.184.0`) | The scene IS the application. |
+| Animation (3D + 2D SVG) | `gsap` | Free since the Webflow acquisition; framework-agnostic; animates any JS object property — meshes, cameras, SVG attrs. |
+| Diegetic UI overlays | vanilla SVG | Positioned each frame via `camera.project()` of the relevant mesh's world position. No reconciler, no JSX-children walking. |
+| State (in-memory) | `koota` (ECS) | Match state as traits on a singleton match entity. |
+| Persistence | drizzle ORM + `@capacitor-community/sqlite` + `@capacitor/preferences` | Match history, AI dumps, settings. |
+| Audio | `howler` | Through the existing `AudioBus`. |
+| Native shell | `@capacitor/*` | iOS + Android wrap. |
+| Build | `vite` | Same as before. |
+| Test | `playwright` (E2E + golden) + `vitest` (node + browser) | Same as before. |
 
 Provable rules:
 
 | Rule | How it's enforced |
 |---|---|
-| `src/*` never imports from `app/*` | grep + lint |
-| No React imports in `src/*` | biome rule + lint |
-| `src/engine/*` never imports `src/ai/*`, `src/sim/*`, or `src/store/*` | lint + audited at PR review |
+| All code is in `src/` (plus `index.html` + `scripts/` + `drizzle/` + `e2e/`) | grep — no `app/` directory exists |
+| No React imports anywhere in the project | biome rule + lint |
+| No R3F / Radix / framer-motion imports anywhere | biome rule + lint |
+| `src/engine/*` never imports `src/ai/*`, `src/sim/*`, `src/store/*`, or `src/scene/*` | lint + audited at PR review |
 | `src/ai/*` imports only from `src/engine/*` (one-way) | same |
 | `src/persistence/preferences/*` is a leaf — imports nothing from other `src/` packages | same |
-| `src/persistence/sqlite/*` imports only the drizzle / capacitor / better-sqlite3 deps it needs; nothing from `src/{engine,ai,sim,store}/` | same |
+| `src/persistence/sqlite/*` imports only the drizzle / capacitor / better-sqlite3 deps it needs; nothing from `src/{engine,ai,sim,store,scene}/` | same |
 | `src/store/*` imports from `src/persistence/sqlite/*` for drizzle handles; type-only from `src/{engine,ai}/*` | same |
 | `src/sim/*` is the broker — imports from `src/{engine,ai,store,persistence,audio}/*` | same |
+| `src/scene/*` imports from `src/{sim,audio,design,utils}/*` only — type-only from `src/{engine,ai}/*` | same |
 | No `Math.random()` in `src/{engine,ai,sim,store}/*` | gates.json ban pattern |
 | No mocks in tests | doctrine; each layer's tests use the real layer below |
 
@@ -65,42 +76,66 @@ Provable rules:
 | `src/analytics/` | Aggregate queries (win-rate by profile, avg game length, opening frequency, etc.). Pre-baked materialised rows refreshed on match-end by the sim broker. | Pure TS. |
 | `src/sim/` | Koota state layer + actions broker. Routes save/resume between engine, ai, store, db. Owns `saveMatchProgress` / `resumeMatch` / `dispatchAiTurn`. | Pure TS. |
 | `src/audio/` | Howler-backed audio bus. Seven role-keyed clips. Volume reads from kv. | Pure TS; HTMLAudioElement under the hood. |
-| `src/design/` | Design tokens, Radix theme config, framer-motion variant library. | Pure TS. |
-| `src/utils/` | Pure utilities: coords, type guards, asserts. | Pure TS. |
-| `app/canvas/` | R3F scene tree: board mesh, piece pucks, lighting, environment, overlay anchor. | All `.tsx`. |
-| `app/screens/` | Radix full-screen views: title, settings, pause, win, lose. | All `.tsx`. |
-| `app/components/` | Radix atoms shared across screens, including `SplitRadial` (the SVG radial overlay). | All `.tsx`. |
-| `app/input/` | Pointer/touch pipeline: pointer normalisation, hold-timer, drag-tracker. | All `.tsx`. |
-| `app/hooks/` | React hooks: `usePrefs` (kv reads), `useFrameloop`, `useMatchSubscription` (koota). | All `.tsx`. |
-| `app/boot/` | App boot sequence + ErrorBoundary. | All `.tsx`. |
-| `app/css/` | Global CSS + `@font-face` declarations. | |
+| `src/design/` | Design tokens (colours, motion durations, typography). Pure TS. No React, no Radix theme — tokens are consumed directly by the scene + by the SVG overlays. | Pure TS. |
+| `src/utils/` | Pure utilities: coords, type guards, asserts, asset manifest. | Pure TS. |
+| `src/scene/` | Three.js scene + gsap tweens + diegetic SVG overlays. Owns the canvas, the renderer loop, the camera, the lighting, the board, the pieces, the coin flip, the splitting radials, and every diegetic UI surface (lobby Play/Resume on demo pieces, pause radial, end-game radial). Subscribes to koota; never mutates state directly. | See `src/scene/README.md`. |
+
+`src/scene/` is itself organised by concern:
+
+| File | Owns |
+|---|---|
+| `src/scene/index.ts` | Boot: mounts `<canvas>` + `<div id="overlay">` from `index.html`; constructs scene, camera, renderer, GSAP ticker integration; subscribes to koota; runs the rAF loop. |
+| `src/scene/board.ts` | The 9×11 wood surface — interior playfield mesh (`WoodFloor007` PBR) + home-row meshes (`WoodFloor008` PBR), engraved gridlines, bezel frame. |
+| `src/scene/pieces.ts` | Stack rendering: a `THREE.Group` per cell, each holding N puck meshes. Top puck carries the dominant owner's wood. |
+| `src/scene/lighting.ts` | HDRI environment (`background.exr`) + key/fill/rim directional lights + shadow setup. |
+| `src/scene/camera.ts` | The tilted "sitting at the table" camera + the `TippingBoard`-equivalent X-axis tip toward whoever owns the turn (driven by gsap). |
+| `src/scene/coinFlip.ts` | The 3D coin: spawn, GSAP-tween spin, land, owner assignment. |
+| `src/scene/input.ts` | Raycaster against the board plane + pieces; pointer-down/move/up routing. |
+| `src/scene/overlay/` | Diegetic SVG overlays positioned per-frame via `camera.project()` of a piece's world position. Subdirectories per surface: `splitRadial.ts`, `lobbyAffordances.ts` (Play / Resume on demo pieces), `pauseRadial.ts`, `endGameRadial.ts`. |
+| `src/scene/animations.ts` | GSAP tween factories for piece moves (lift / arc / settle), splits (detach / follow pointer), board tip, coin spin, radial open/close. Reduced-motion variants live here too. |
 
 ## State management
 
-`koota` (entity-component-system) replaces the earlier Zustand reference. Match state — board occupancy, current turn, active split chain, AI think-state — lives as koota traits on a singleton match entity. Render trees subscribe to traits via koota's React adapter. The sim broker mutates traits as the engine and AI return new states.
+`koota` (entity-component-system) is the single in-memory state container. Match state — board occupancy, current turn, active split chain, AI think-state — lives as koota traits on a singleton match entity. The scene subscribes to traits via koota's vanilla (non-React) subscription API. The sim broker mutates traits as the engine and AI return new states.
 
 Persistence is *not* in koota. The koota world is rebuilt on app boot (or on match resume) from the database — the database is durable; koota is the in-memory working set.
 
-## R3F scene tree
+## Scene composition
+
+The scene graph at runtime:
 
 ```
-<Canvas shadows dpr={[1, 2]}>
-  <Environment files="/assets/hdri/background.exr" background blur={0.4} />
-  <Lighting />                 // key + fill + rim
-  <Board />                    // 9×11 mesh, wood PBR, engraved gridlines
-  <HomeRowGradient />          // shader overlay on rows 0 + 10 (distinct PBR wood)
-  <StackGroup>                 // one <Stack> per non-empty cell
-    <Stack col row stack />    // N <Piece> stacked vertically
-  </StackGroup>
-  <SelectionRing />            // selected cell glow
-  <ValidMoveMarkers />         // dots on legal destinations
-  <SplitOverlayAnchor />       // 3D position → 2D screen-projection sink
-</Canvas>
-<SplitRadial />                // SVG, html-layered above canvas
-<Hud />                        // Radix UI HUD
+THREE.Scene
+├─ HDRI environment (image-based lighting from background.exr)
+├─ THREE.DirectionalLight × 3  // key, fill, rim — shadow-casting on key
+├─ bezel group                  // dark-wood cabinet frame around the board
+├─ board group
+│  ├─ interior playfield mesh   // rows 1–9, WoodFloor007 PBR, engraved gridlines
+│  ├─ home-row mesh × 2         // row 0 + row 10, WoodFloor008 PBR
+│  └─ board base (sub-floor)
+├─ pieces group
+│  └─ stack group × N           // one per occupied cell; each holds the puck meshes for that stack
+├─ transient overlays
+│  ├─ selection ring            // pulsing emissive ring at the selected cell
+│  ├─ valid-move markers        // glow tiles at legal target cells
+│  ├─ moving-piece group        // meshes mid-tween between source and target
+│  ├─ split arm bar             // vertical sub-stack arm dots while a split is being composed
+│  └─ coin                      // present only during the coin-flip ceremony
+└─ camera (the "sitting at the table" perspective; tipped per-turn by gsap)
 ```
 
-The split overlay is **outside** `<Canvas>` — it's HTML/SVG. An anchor inside the canvas projects the active stack's world position to screen-space and writes the screen-coords to a koota trait; the overlay reads the trait and positions itself with CSS `transform`.
+A parallel DOM tree, NOT inside the canvas:
+
+```
+<div id="overlay">                           // pointer-events: none by default
+  <svg class="split-radial" data-piece-id>   // pointer-events: auto on slices; positioned by camera.project()
+  <svg class="lobby-affordance" data-puck>   // Play / Resume sit on the demo pieces in the lobby
+  <svg class="pause-radial">                 // appears on the centre cell when the player pauses
+  <svg class="endgame-radial">               // Play Again / Quit on the winning stack
+</div>
+```
+
+Each SVG's `transform: translate(...)` is updated in the rAF loop from `camera.project(piece.getWorldPosition())`. There is no React reconciler, no JSX subtree walked by R3F — the SVG elements are appended to the DOM via `document.createElementNS` / direct DOM ops once, then their transforms are mutated each frame.
 
 ## Asset loading
 
@@ -120,10 +155,11 @@ export const ASSETS = {
     lose:    '/assets/audio/voices/you_lose.ogg',
   },
   pbr: {
-    boardInterior: '/assets/pbr/game_board/wood_table_001',  // _diff_4k.jpg, _disp_4k.png, ...
-    boardHomeRow:  '/assets/pbr/game_board/WoodFloor008',
-    redPiece:      '/assets/pbr/red_piece/Wood008_1K-PNG',
-    whitePiece:    '/assets/pbr/white_piece/Wood031_1K-PNG',
+    boardInterior: '/assets/pbr/game_board_main/WoodFloor007',  // _diff_*.png, _disp_*.png, _nor_*.png, _rough_*.png, _ao_*.png
+    boardHomeRow:  '/assets/pbr/game_board_home/WoodFloor008',
+    redPiece:      '/assets/pbr/red_piece/Wood008',
+    whitePiece:    '/assets/pbr/white_piece/Wood031',
+    bezel:         '/assets/pbr/bezel/<set>',
   },
   fonts: {
     body:   '/assets/fonts/body/Lato-Regular.ttf',
@@ -133,9 +169,9 @@ export const ASSETS = {
 } as const;
 ```
 
-Loading is funnelled through drei's `useTexture` and `useLoader` for textures + HDRI. Audio files load on first user interaction (browser autoplay policy). Fonts declare via CSS `@font-face` in `app/css/fonts.css`.
+Textures load through `THREE.TextureLoader` + `RGBELoader`/`EXRLoader` for the HDRI, all funnelled through one promise so the boot path waits on a single `Promise.all`. Audio loads lazily on first user interaction (browser autoplay policy). Fonts install at boot via a small helper that writes `@font-face` rules into a single `<style>` element from `ASSETS.fonts.*` (BASE_URL-aware).
 
-The asset manifest is the **only** layer that references string paths. Components import from `ASSETS.*` — never typing literals.
+The asset manifest is the **only** layer that references string paths. Modules import from `ASSETS.*` — never typing literals.
 
 ## Save / resume
 
@@ -145,11 +181,11 @@ The sim broker owns `saveMatchProgress` and `resumeMatch`. Save serialises:
 - AI state via `dumpAiState()` (opaque BLOB, format-versioned — see `docs/AI.md`)
 - Move history rows (already streamed to db on each move)
 
-Resume rehydrates the engine from the latest match row + the AI from `loadAiState(blob)`. The koota world is rebuilt from those; render subscribes; play continues at the next legal action. See `docs/DB.md` for table schemas.
+Resume rehydrates the engine from the latest match row + the AI from `loadAiState(blob)`. The koota world is rebuilt from those; the scene re-subscribes; play continues at the next legal action. See `docs/DB.md` for table schemas.
 
 ## Build + native shell
 
-- Vite (root: project root, dev server, asset handling).
+- Vite (root: project root, dev server, asset handling). Single entry point: `index.html` → `src/scene/index.ts`.
 - TypeScript 6.0+ in strict mode (`strict: true`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, `verbatimModuleSyntax`).
 - Capacitor 8 wraps the built `dist/` as iOS + Android. `pnpm build:native` produces a Capacitor-ready bundle; `pnpm cap:sync` copies into `android/` and `ios/`.
 - `scripts/build-game-db.mjs` runs as `prebuild` and produces `public/game.db` from drizzle migrations + seed data.

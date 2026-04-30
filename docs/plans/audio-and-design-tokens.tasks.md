@@ -18,11 +18,11 @@
 10. [P4] **Implement src/audio/ducking.ts** — duckAmbient + restoreAmbient with fade.
 11. [P4] **Author src/audio/index.ts barrel** — getAudioBus, createAudioBus, types.
 12. [P4] **Update src/design/tokens.ts** — Add splitRadial + turnBadge sub-trees.
-13. [P4] **Author src/design/theme.ts** — Radix theme config.
-14. [P4] **Author src/design/motion.ts** — Variant library + reducedMotionFallback.
-15. [P4] **Update src/design/index.ts barrel** — Re-exports.
+13. ~~[P4] Author src/design/theme.ts — Radix theme config.~~ **REMOVED 2026-04-30**: no Radix in the project.
+14. ~~[P4] Author src/design/motion.ts — Variant library + reducedMotionFallback.~~ **REMOVED 2026-04-30**: motion lives in `src/scene/animations.ts` as gsap factories.
+15. [P4] **Update src/design/index.ts barrel** — Re-exports `tokens` only.
 16. [P5] **Run test suite** — `pnpm test:browser src/audio` green, typecheck clean, ≤20s.
-17. [P5] **Cross-package check** — Audio imports only @/persistence + howler; design imports only framer-motion + @radix-ui/themes types.
+17. [P5] **Cross-package check** — Audio imports only @/persistence + howler; design imports nothing external.
 
 ## Configuration
 

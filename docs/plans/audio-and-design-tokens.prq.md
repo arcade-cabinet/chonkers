@@ -1,9 +1,12 @@
-# PRD: src/audio — Howler bus + design token reconciliation
+# PRD: src/audio — Howler bus + design tokens
 
 **Created:** 2026-04-29
-**Status:** ACTIVE
+**Updated:** 2026-04-30 — Radix theme bridge + framer-motion variants removed; design layer is now `tokens.ts` only.
+**Status:** SHIPPED (audio + tokens) / Radix theme + motion variants subsection SUPERSEDED
 **Owner:** jbogaty
-**Acceptance:** A typed audio bus over Howler exposing role-keyed playback, reading volume + mute settings from `kv` (Capacitor Preferences). All seven committed clips wired with role-correct triggering. `src/design/` tokens, Radix Theme config, and framer-motion variant library reconciled with the visual shell's needs.
+**Acceptance:** A typed audio bus over Howler exposing role-keyed playback, reading volume + mute settings from `kv` (Capacitor Preferences). All seven committed clips wired with role-correct triggering. `src/design/tokens.ts` covers the palette + typography + motion-duration tokens that `src/scene/` consumes.
+
+> **Note (2026-04-30):** The original sections 3 and 4 of "Goal" specified a `src/design/theme.ts` (Radix Themes config) and `src/design/motion.ts` (framer-motion variants). Both have been removed from scope — the project no longer uses Radix or framer-motion. Lower sections of this document still contain detailed implementation notes for those files; **ignore them**. The audio half of this PRD shipped as written; the design half is now just `tokens.ts`. Definitive guidance is in [`docs/ARCHITECTURE.md`](../ARCHITECTURE.md) + [`docs/DESIGN.md`](../DESIGN.md).
 
 **Prerequisite:** [persistence-and-db.prq.md](./persistence-and-db.prq.md) merged. `kv` is the only persistence touchpoint here.
 
@@ -14,9 +17,9 @@
 Audio + design tokens are leaf packages — they have no dependency on engine, ai, store, sim, or any game logic. They're:
 
 - **Pure I/O wrappers** (audio over Howler; no procedural audio, just playback of committed files).
-- **Pure constants** (design tokens, Radix theme config, motion variants).
+- **Pure constants** (design tokens — colours, typography, motion durations).
 
-Both are consumed by the visual shell (`app/`) but not by anything in `src/` except via `kv` for the audio bus reading volume settings. Factoring them as their own PRD means they can land independently of the visual shell, and the visual shell PRD has fewer concerns.
+Both are consumed by `src/scene/` but not by anything else in `src/` except via `kv` for the audio bus reading volume settings. Factoring them as their own PRD means they can land independently of the scene layer, and the scene PRD has fewer concerns.
 
 A nice side effect: this PRD is small enough to ship in a day or two, providing an early reviewable slice that exercises the PR workflow before the larger logic PRDs touch real code.
 
@@ -28,11 +31,11 @@ Land:
 
 1. **`src/audio/`** — Howler-backed audio bus. Seven clips: `ambient`, `move`, `chonk`, `split`, `sting`, `win`, `lose`. Role-keyed dispatch (`audio.play('chonk')`). Reads volume + mute from `kv` namespace `'settings'` keys `'volume'` (number 0..1) and `'muted'` (boolean). Ducking helper that lowers ambient under sting + voice. Loop control for ambient. Tested in browser tier with real Howler instances.
 
-2. **`src/design/tokens.ts` reconciliation** — verify the existing tokens file (`wood.boardMain`, `wood.boardHome`, `wood.pieceRed`, `wood.pieceWhite`, `ink.*`, `accent.*`, `surface.*`, `font.*`, `motion.*`, `board.*`) covers everything the visual shell will reference. Add tokens for `app/components/SplitRadial.tsx` slice states (idle / hovered / selected / hold-ready / committed) and for `app/components/TurnBadge.tsx` colour banding. Document each token's consumer.
+2. **`src/design/tokens.ts` reconciliation** — verify the existing tokens file (`wood.boardMain`, `wood.boardHome`, `wood.pieceRed`, `wood.pieceWhite`, `ink.*`, `accent.*`, `surface.*`, `font.*`, `motion.*`, `board.*`) covers everything the scene + diegetic SVG overlays reference. Add tokens for splitting-radial slice states (idle / hovered / selected / hold-ready / committed) and for the diegetic turn indicator's colour banding. Document each token's consumer.
 
-3. **`src/design/theme.ts`** — Radix Themes config: `appearance: 'dark'`, `accentColor: 'amber'` (matches `accent.select`), `grayColor: 'sand'` (warm to read against wood), `radius: 'medium'`, `panelBackground: 'translucent'`. Single config object exported for `<Theme {...radixTheme}>` wrapping.
+3. **`src/design/theme.ts`** — REMOVED. There is no Radix theme bridge. `src/scene/` consumes `tokens.ts` directly when building materials and SVG markup.
 
-4. **`src/design/motion.ts`** — framer-motion variant library: `radialOpen` (160ms ease-out), `radialClose` (140ms ease-in), `sliceSelect` (80ms ease-out), `holdFlash` (240ms ease-in-out, 2 cycles), `modalIn`/`modalOut` (180ms), `screenFade` (200ms cross-fade). Reduced-motion variants that flatten to instant snaps.
+4. **`src/design/motion.ts`** — REMOVED. Animation lives in `src/scene/animations.ts` as `gsap` tween factories (one library, one timeline model, one easing vocabulary across 3D meshes and 2D SVG). Motion duration tokens stay in `tokens.ts` so `animations.ts` reads from the same single source.
 
 ---
 

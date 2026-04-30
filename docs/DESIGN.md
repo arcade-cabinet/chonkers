@@ -1,6 +1,6 @@
 ---
 title: Design
-updated: 2026-04-29
+updated: 2026-04-30
 status: current
 domain: product
 ---
@@ -56,9 +56,9 @@ The palette is **derived from the curated PBR textures** in `public/assets/pbr/`
 | `accent.split` | `#3FB67A` | Split-segment flash on hold-ready |
 | `surface.scrim` | `rgba(15, 10, 5, 0.72)` | Modal backdrop, pause overlay |
 
-The `splitRadial.*` sub-tree adds slice-state colours (idle, hovered, selected, hold-ready, committed-opacity) for `app/components/SplitRadial.tsx`. The `turnBadge.*` sub-tree adds red/white colour banding for `app/components/TurnBadge.tsx`. These all reference the same wood/ink/accent base colours so the palette stays cohesive.
+The `splitRadial.*` sub-tree adds slice-state colours (idle, hovered, selected, hold-ready, committed-opacity) used by the splitting radial in `src/scene/overlay/splitRadial.ts`. The `turnBadge.*` sub-tree adds red/white colour banding for the diegetic turn indicator (a small wood pip on the bezel that lights for the active player). These all reference the same wood/ink/accent base colours so the palette stays cohesive.
 
-Tokens are defined in `src/design/tokens.ts` (one `tokens as const` export) and exposed to Radix Themes via `radixTheme` in `src/design/theme.ts` (`accentColor: 'amber'` matching `accent.select`), plus to CSS as `--ck-*` custom properties in `app/css/style.css`. All three sources stay in sync.
+Tokens are defined in `src/design/tokens.ts` (one `tokens as const` export). The scene reads them directly when constructing materials and when generating SVG overlay markup. There is no Radix theme bridge and no CSS custom-property mirror — the tokens module is the single source.
 
 ### Typography
 
@@ -105,14 +105,33 @@ The 9×11 board with engraved gridlines is the game's signature shot. Design con
 
 ---
 
-## The split overlay
+## Diegetic UI — every affordance lives on a piece
 
-When the player taps a stack of height ≥ 2, a 2D SVG radial menu appears, centred over the stack's screen-projected position. The overlay is HTML/SVG layered on top of the R3F canvas — **not** WebGL geometry — so:
+There are no floating buttons, no full-screen menus, no Radix dialogs. **Every interactive surface is a diegetic SVG overlay positioned above a piece on the board** — the affordance is *attached* to the wood the player is looking at.
+
+The shared mechanism: the scene's rAF loop calls `camera.project(piece.getWorldPosition())` for each visible affordance and writes the resulting screen-space coordinate to the SVG element's `transform: translate(...)`. The SVG is regular DOM (not inside the canvas, not inside a custom reconciler) appended to `<div id="overlay">` once at boot. Pointer events on slice paths fire native DOM handlers; hit-testing is exact and crisp.
+
+Animation is driven by `gsap` for both the 3D pieces (mesh transforms, materials, camera) and the 2D SVG overlays (path attributes, opacity, transform). One animation library, one timeline model, one easing vocabulary across the whole app.
+
+### Surfaces
+
+| Surface | Where it sits | What it does |
+|---|---|---|
+| Lobby Play / Resume | On the two demo pucks resting in the centre of the board at boot | Tap the red puck to start a new match; tap the white puck to resume the saved match (faded if none). |
+| Coin flip | The coin itself is a 3D mesh that spawns above the board, spins via gsap, lands on a face. | The landing face decides who plays first. No SVG required. |
+| Pause | On the centre cell of the board when the player triple-taps the bezel | Radial: Resume, Settings, Quit. |
+| Splitting radial | On the top puck of the selected stack when stack height ≥ 2 | See "The splitting radial" below. |
+| Selection ring + valid-move markers | 3D meshes around the selected stack and on legal target cells | Pulsing emissive ring (gsap-driven). |
+| End-of-match | On the winning stack's top piece on the home row | Radial: Play Again, Quit. |
+| Settings (volume, reduced-motion, etc.) | A radial that opens from the centre cell when reached from Pause | Each slice a toggle. |
+
+### The splitting radial
+
+When the player taps a stack of height ≥ 2, a 2D SVG radial menu appears, centred over the top puck's screen-projected position. SVG is the right tool for slice geometry:
 
 - Slice borders stay crisp at any zoom.
-- CSS animations drive the flash + pulse.
+- gsap drives the open/close + slice flash + hold-ready pulse.
 - Hit-testing for slice selection is native pointer events, not raycasts.
-- `framer-motion` drives the open/close + flash animations.
 
 Slice count = stack height. Players can select up to N − 1 slices (the whole stack ≠ a split). Visual states per slice:
 
@@ -152,24 +171,26 @@ Edge: `duckAmbient` early-returns if ambient isn't already playing. So if a stin
 
 ## Motion
 
-`framer-motion` owns all 2D UI motion. R3F + GSAP-style tweens (or `@react-three/drei`'s `useSpring`) own 3D piece motion. Two motion budgets:
+`gsap` owns all motion — 3D mesh transforms, camera moves, SVG overlay attributes, opacity, the lot. One library, one timeline model, one easing vocabulary. Two motion budgets:
 
-- **UI motion** — radial overlay open (160ms ease-out), slice flash (240ms ease-in-out, 2 cycles), modal in/out (180ms).
+- **UI motion** — radial overlay open (160ms ease-out), slice flash (240ms ease-in-out, 2 cycles), pause/end radial in/out (180ms).
 - **Piece motion** — lift-arc-drop on move (420ms total: 120ms lift, 200ms arc, 100ms settle bounce). Split-extract is 300ms for the slice-pucks to detach + follow pointer.
 
-The 2D variants live in `src/design/motion.ts` as a shared library. Visual-shell components (PRQ-4) import them by name rather than redeclaring transitions:
+The motion vocabulary lives in `src/design/tokens.ts` (durations) and `src/scene/animations.ts` (gsap tween factories). Surfaces import factories by name rather than redeclaring tweens:
 
-| Variant | Where it's used | Token |
-|---------|-----------------|-------|
-| `radialOpen` | `app/components/SplitRadial.tsx` open animation | `tokens.motion.uiOpenMs` |
-| `radialClose` | `app/components/SplitRadial.tsx` close (faster than open) | `tokens.motion.uiCloseMs` |
-| `sliceSelect` | Slice idle → hovered → selected (80ms ease-out) | hardcoded (one-off) |
-| `holdFlash` | Selected slice pulses while the hold-arm timer runs | `tokens.motion.uiFlashMs` |
-| `modalIn` / `modalOut` | Forfeit confirm, settings, game-over screen | `tokens.motion.modalMs` / `uiCloseMs` |
-| `screenFade` | Cross-fade between top-level Radix screens | `tokens.motion.screenFadeMs` |
-| `reducedMotionFallback` | Drop-in for any of the above when reduced-motion is on | 0.001s |
+| Factory | Where it's used | Duration token |
+|---|---|---|
+| `tweenRadialOpen(svgEl)` | Splitting / pause / lobby / end-game radials open | `tokens.motion.uiOpenMs` |
+| `tweenRadialClose(svgEl)` | Same radials close | `tokens.motion.uiCloseMs` |
+| `tweenSliceSelect(sliceEl)` | Slice idle → hovered → selected (80ms ease-out) | hardcoded (one-off) |
+| `tweenHoldFlash(sliceEls)` | Selected slices pulse while the hold-arm timer runs | `tokens.motion.uiFlashMs` |
+| `tweenPieceMove(meshes, fromXZ, toXZ)` | Lift / arc / settle for a 1-stack or full-stack move | 420ms split across phases |
+| `tweenSplitDetach(meshes, pointerStream)` | Selected slice-pucks detach and follow the pointer in worldspace | 300ms detach, then live |
+| `tweenBoardTip(camera, towardPlayer)` | The X-axis tip toward whoever owns the turn | `tokens.motion.boardTipMs` |
+| `tweenCoinSpin(coin, faceUp)` | Coin spins, decelerates, lands on the chosen face | `tokens.motion.coinSpinMs` |
+| `reducedMotion` | Drop-in alternative used by every factory above when reduced-motion is on | 0.001s for UI; 200ms linear translate for pieces |
 
-Reduce-motion users (`prefers-reduced-motion` OR `kv.get('settings', 'reducedMotion')`) get the fallback for all variants and a flat 200ms linear translate for 3D pieces — no arcs, no bounces.
+Reduce-motion users (`prefers-reduced-motion` OR `kv.get('settings', 'reducedMotion')`) get the reduced-motion path automatically — no arcs, no bounces, no hold-flash pulse.
 
 ---
 
