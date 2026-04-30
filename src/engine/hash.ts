@@ -110,6 +110,10 @@ function chainTag(chain: SplitChain): bigint {
 	let h = CHAIN_PRESENT_TAG;
 	h ^= BigInt(chain.source.col) << 8n;
 	h ^= BigInt(chain.source.row);
+	// The owner participates in the hash: a chain owned by red and a
+	// chain with identical source + detachments owned by white are
+	// different game states (different player is obligated to act).
+	h ^= chain.owner === "red" ? 0xa5n << 16n : 0x5an << 16n;
 	for (const run of chain.remainingDetachments) {
 		for (const idx of run) {
 			h = ((h << 1n) | (h >> 63n)) & MASK64;

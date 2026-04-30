@@ -203,6 +203,7 @@ describe("applyAction — chain steps", () => {
 			turn: "red",
 			chain: {
 				source: { col: 4, row: 4 },
+				owner: "red",
 				remainingDetachments: [[2]],
 			},
 			winner: null,
@@ -212,5 +213,63 @@ describe("applyAction — chain steps", () => {
 			runs: [{ indices: [0], to: { col: 4, row: 5 } }], // wrong: head expects [2]
 		};
 		expect(() => applyAction(state, action)).toThrow(/do not match expected/);
+	});
+
+	it("rejects chain continuation when it's not the chain owner's turn", () => {
+		// White on turn but red owns the pending chain. White's turn
+		// should NOT enumerate chain continuations and applyAction
+		// should reject any attempt to continue the chain.
+		let b = emptyBoard();
+		for (let h = 0; h < 4; h += 1) {
+			b = setPiece(b, { col: 4, row: 4, height: h, color: "red" });
+		}
+		const state: GameState = {
+			board: b,
+			turn: "white",
+			chain: {
+				source: { col: 4, row: 4 },
+				owner: "red",
+				remainingDetachments: [[1]],
+			},
+			winner: null,
+		};
+		// enumerate falls through to normal-moves enumeration for
+		// white — the white-owned cells in this constructed board
+		// happen to be empty, so no legal actions, but the gate
+		// is what we're testing. Confirm directly with applyAction.
+		const action: Action = {
+			from: { col: 4, row: 4 },
+			runs: [{ indices: [1], to: { col: 4, row: 5 } }],
+		};
+		expect(() => applyAction(state, action)).toThrow(/owned by red, not white/);
+	});
+
+	it("allows chain continuation when residual top is the opponent's colour but it's the chain owner's turn", () => {
+		// Pre-arrange: red is mid-chain on (4,4). The residual stack
+		// has a white piece on top (from prior chonking), so
+		// cellOwner === white, but state.turn === red === chain.owner.
+		// Without the chain-owner exemption, the standard owner check
+		// would reject the continuation.
+		let b = emptyBoard();
+		b = setPiece(b, { col: 4, row: 4, height: 0, color: "red" });
+		b = setPiece(b, { col: 4, row: 4, height: 1, color: "white" });
+		// Adjacent destination: a 1-stack the chain head can land on.
+		b = setPiece(b, { col: 4, row: 5, height: 0, color: "red" });
+		const state: GameState = {
+			board: b,
+			turn: "red",
+			chain: {
+				source: { col: 4, row: 4 },
+				owner: "red",
+				remainingDetachments: [[1]], // bottom piece (top-down 1)
+			},
+			winner: null,
+		};
+		const action: Action = {
+			from: { col: 4, row: 4 },
+			runs: [{ indices: [1], to: { col: 4, row: 5 } }],
+		};
+		// Should NOT throw on the owner check.
+		expect(() => applyAction(state, action)).not.toThrow();
 	});
 });

@@ -145,8 +145,23 @@ export function applyAction(state: GameState, action: Action): GameState {
 		);
 	}
 
+	// Owner check: the top piece must belong to the side on turn —
+	// EXCEPT during the chain owner's continuation. RULES.md §5.4 step
+	// 2 says control flips even mid-chain, so the chain owner's
+	// residual source can have a top that no longer matches their own
+	// colour (after a chonk-mix scenario). Without this exemption, the
+	// chain owner would be unable to fulfil their queued obligation.
+	// The chain.owner field is the authoritative source: only the
+	// chain owner can apply chain continuations, and only when it's
+	// their turn (RULES.md §5.4 — opponent plays normally on their
+	// intervening turns; chain stays pending).
 	const owner = cellOwner(state.board, action.from);
-	if (owner !== state.turn) {
+	const isChainContinuation =
+		state.chain !== null &&
+		state.chain.owner === state.turn &&
+		state.chain.source.col === action.from.col &&
+		state.chain.source.row === action.from.row;
+	if (!isChainContinuation && owner !== state.turn) {
 		throw new IllegalActionError(
 			`top of (${action.from.col}, ${action.from.row}) is owned by ${owner}, not ${state.turn}`,
 		);
@@ -156,8 +171,12 @@ export function applyAction(state: GameState, action: Action): GameState {
 		throw new IllegalActionError("action has no runs");
 	}
 
-	// If a chain is in progress, the action must continue it.
-	if (state.chain) {
+	// If a chain is in progress AND it's the chain owner's turn, the
+	// action MUST continue the chain. Per RULES.md §5.4 step 2,
+	// control flips even mid-chain, so the chain only constrains the
+	// owner's turns; the opponent plays normally and `state.chain`
+	// just stays pending until control flips back.
+	if (state.chain && state.chain.owner === state.turn) {
 		if (
 			state.chain.source.col !== action.from.col ||
 			state.chain.source.row !== action.from.row
@@ -263,16 +282,24 @@ export function applyAction(state: GameState, action: Action): GameState {
 	if (state.chain) {
 		const remaining = state.chain.remainingDetachments.slice(1);
 		if (remaining.length > 0) {
+			// Continuing an existing chain — keep the original owner.
+			// Only the chain owner can reach this branch (the owner
+			// check + chain.owner === state.turn gate above guarantee
+			// it), so state.chain.owner === state.turn here.
 			newChain = {
 				source: action.from,
+				owner: state.chain.owner,
 				remainingDetachments: remaining.map((run) =>
 					rebaseTopDownIndices(run, removedTopDown),
 				),
 			};
 		}
 	} else if (action.runs.length > 1) {
+		// Initiating a new chain — owner is the side currently on turn
+		// (they're the one committing this multi-run action).
 		newChain = {
 			source: action.from,
+			owner: state.turn,
 			remainingDetachments: action.runs
 				.slice(1)
 				.map((r) => rebaseTopDownIndices([...r.indices], removedTopDown)),
@@ -331,7 +358,11 @@ function rebaseTopDownIndices(
 export function enumerateLegalActions(state: GameState): Action[] {
 	if (state.winner) return [];
 
-	if (state.chain) {
+	// Chain continuations are only legal on the chain owner's turn.
+	// On the opponent's turn the chain stays pending (RULES.md §5.4
+	// step 2) and the opponent plays normally — so we fall through to
+	// the standard owned-cells enumeration below.
+	if (state.chain && state.chain.owner === state.turn) {
 		const source = state.chain.source;
 		const head = state.chain.remainingDetachments[0];
 		if (!head) return [];

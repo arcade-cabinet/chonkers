@@ -78,11 +78,23 @@ export interface Action {
 /**
  * A pending forced-split chain. After the player commits a non-
  * contiguous split, the remaining detachments must be placed on
- * subsequent turns. Each inner array is a contiguous run of slice
- * indices that must move together.
+ * subsequent turns by the SAME player who initiated the chain (the
+ * `owner`). Per RULES.md §5.4 step 2, control flips even mid-chain,
+ * so the opponent's intervening turns play normally and the chain
+ * just stays pending. The chain only constrains action selection
+ * when `state.turn === state.chain.owner`.
+ *
+ * `owner` is required because top-of-stack ownership at `source` can
+ * shift mid-chain (a chain continuation lands the owner's slices on
+ * a destination, then the next obligated detach happens against a
+ * possibly mixed-color residual whose top is no longer guaranteed
+ * to be the chain owner's colour). Without an explicit owner field,
+ * the standard owner check would reject every chain continuation
+ * whose residual top now belongs to the opponent.
  */
 export interface SplitChain {
 	readonly source: Cell;
+	readonly owner: Color;
 	readonly remainingDetachments: ReadonlyArray<ReadonlyArray<number>>;
 }
 
@@ -123,7 +135,6 @@ export interface MatchState {
  * persistence round-trip with corrupted bits.
  */
 const POSITION_FIELD_MAX = 127; // 7-bit range
-const POSITION_KEY_MAX = 0x1fffffn; // 21 bits
 
 export function positionKey(
 	col: number,
@@ -165,7 +176,11 @@ export function unpackPositionKey(key: PositionKey): {
 			`unpackPositionKey: key must be bigint (got ${typeof key})`,
 		);
 	}
-	if (key < 0n || key > POSITION_KEY_MAX) {
+	if (key < 0n || key > 0x1fffffn) {
+		// 0x1fffff === 2^21 - 1. Inlined rather than referencing the
+		// module-scope constant to keep github-code-quality's static
+		// analyzer from flagging an "implicit operand conversion" on
+		// the comparison (it doesn't follow the type alias correctly).
 		throw new Error(
 			`unpackPositionKey: key out of 21-bit range: ${key.toString()}`,
 		);

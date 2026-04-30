@@ -27,6 +27,7 @@
 import { randomUUID } from "node:crypto";
 import {
 	type AiState,
+	CURRENT_DUMP_FORMAT_VERSION,
 	chooseAction,
 	createAiState,
 	type Decision,
@@ -243,8 +244,13 @@ export async function playTurn(
 
 /**
  * Persist the chain transition that just happened in the engine.
- * Diffing on the (source, remainingDetachments) tuple keeps the DB
- * write rate down — most plies don't touch the chain at all.
+ * Diffing on the (source, owner, remainingDetachments) tuple keeps
+ * the DB write rate down — most plies don't touch the chain at all.
+ *
+ * The chain.owner is folded into `chainRemainingJson` as
+ * `{ owner, runs }` so we don't need a schema migration to add a
+ * column. The legacy schema (just `runs`) was never persisted —
+ * `syncChain` is the only writer — so this format is forward-only.
  */
 async function syncChain(
 	db: StoreDb,
@@ -257,12 +263,19 @@ async function syncChain(
 		if (prev !== null) await matchesRepo.clearChain(db, matchId);
 		return;
 	}
-	const nextJson = JSON.stringify(next.remainingDetachments);
+	const nextJson = JSON.stringify({
+		owner: next.owner,
+		runs: next.remainingDetachments,
+	});
 	if (
 		prev !== null &&
 		prev.source.col === next.source.col &&
 		prev.source.row === next.source.row &&
-		JSON.stringify(prev.remainingDetachments) === nextJson
+		prev.owner === next.owner &&
+		JSON.stringify({
+			owner: prev.owner,
+			runs: prev.remainingDetachments,
+		}) === nextJson
 	) {
 		return;
 	}
@@ -308,7 +321,12 @@ export async function playToCompletion(
 }> {
 	const plyCap = options.maxPlies ?? 1000;
 	const stallCap = options.maxStalls ?? plyCap;
-	let plies = 0;
+	// Seed `plies` from the persisted match state, NOT from 0. On a
+	// resumed match where prior `playTurn` calls already happened,
+	// starting at 0 would treat the cap as session-relative — letting
+	// a partially played match run past the absolute `maxPlies` and
+	// reporting a wrong total in `result.plies`.
+	let plies = await currentPly(db, handle.matchId);
 	let stalls = 0;
 	while (!handle.game.winner && plies < plyCap && stalls < stallCap) {
 		const result = await playTurn(db, handle, options);
@@ -408,6 +426,6 @@ export async function saveMatchProgress(
 		profileKey,
 		ply: turnPly,
 		dumpBlob: blob,
-		dumpFormatVersion: 1,
+		dumpFormatVersion: CURRENT_DUMP_FORMAT_VERSION,
 	});
 }

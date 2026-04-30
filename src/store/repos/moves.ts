@@ -113,7 +113,7 @@ export async function listMovesByMatch(
 }
 
 /**
- * Insert a move and bump `matches.ply_count` in one atomic step.
+ * Insert a move and bump `matches.ply_count` in one atomic ply-claim.
  *
  * Implementation: a single `UPDATE matches SET ply_count = ply_count + 1
  * WHERE id = ? RETURNING ply_count - 1 AS ply` claims a ply slot.
@@ -124,19 +124,35 @@ export async function listMovesByMatch(
  * uses the embedded capacitor-sqlite plugin and Node better-sqlite3
  * for tests, both of which serialise writes at the file level.)
  *
- * If the subsequent INSERT throws, the matches.ply_count bump is
- * preserved — leaving `ply_count` one ahead of the move log. The
- * broker treats appendMove failures as fatal (the match is aborted
- * and `finishedAt` stays null, so analytics' `refreshOnMatchEnd`
- * skips it), so the invariant we protect is "ply_count is never
- * BEHIND the move log"; "ply_count one ahead after a fatal abort"
- * is inert.
+ * The UPDATE-RETURNING and the subsequent INSERT are SEPARATE
+ * commits. If the INSERT throws (or the process dies between them),
+ * `matches.ply_count` is permanently one ahead of the move log,
+ * leaving a gap at the claimed ply that is unrecoverable on the
+ * same match. This is the "torn write window" — and it is acceptable
+ * here ONLY because:
  *
- * Avoids drizzle's `db.transaction()`, which is incompatible across
- * runtimes: drizzle-orm/better-sqlite3 forbids async tx callbacks
- * (the Node test tier), drizzle-orm/sqlite-proxy requires them (the
- * capacitor-sqlite runtime tier). The single-statement claim works
- * on both.
+ *   1. The broker calls this helper inside `playTurn`, and any throw
+ *      propagates up; `playToCompletion` exits the loop without
+ *      finalising the match. `matches.finishedAt` stays null.
+ *   2. Analytics' `refreshOnMatchEnd` early-bails on any match
+ *      whose `finishedAt` is null, so the divergence never poisons
+ *      aggregates.
+ *   3. There is no resume-and-retry path on the same match — the
+ *      broker treats the throw as fatal and tears down the in-
+ *      memory handle. A new match (different matchId) starts from
+ *      ply 0 and is unaffected.
+ *
+ * The invariant we protect is "ply_count is never BEHIND the move
+ * log"; "ply_count one ahead after a fatal abort" is inert.
+ *
+ * Why not `db.transaction()`? Drizzle's transaction wrapper is
+ * incompatible across runtimes: drizzle-orm/better-sqlite3 forbids
+ * async tx callbacks (the Node test tier), while
+ * drizzle-orm/sqlite-proxy requires them (the capacitor-sqlite
+ * runtime tier). A single-statement claim works on both. SQLite
+ * itself does not support a single statement that performs both an
+ * UPDATE and a dependent INSERT — `WITH ... AS (UPDATE ... RETURNING ...) INSERT INTO ...`
+ * is a Postgres-only construct.
  */
 export async function appendMoveAndBumpPly(
 	db: StoreDb,
