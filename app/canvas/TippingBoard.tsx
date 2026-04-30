@@ -43,7 +43,7 @@ import { useFrame } from "@react-three/fiber";
 import { useTrait } from "koota/react";
 import type { ReactNode } from "react";
 import { useRef } from "react";
-import * as THREE from "three";
+import type * as THREE from "three";
 import { AiThinking, Match } from "@/sim";
 import { useWorldEntity } from "../hooks/useWorldEntity";
 

@@ -5,12 +5,15 @@ import * as THREE from "three";
 import { tokens } from "@/design/tokens";
 import { ASSETS } from "@/utils/manifest";
 import { Bezel } from "./Bezel";
+import { BezelGestures } from "./BezelGestures";
 import { Board } from "./Board";
 import { CellHitboxGrid } from "./CellHitboxGrid";
 import { Lighting } from "./Lighting";
 import { Pieces } from "./Pieces";
 import { SelectionOverlay } from "./SelectionOverlay";
 import { TippingBoard } from "./TippingBoard";
+
+const BEZEL_FRAME_THICKNESS = 0.45;
 
 // Camera frames the bezel from slightly above + slightly back. The
 // scene composition reads as "tabletop-from-above" — the BEZEL is
@@ -58,6 +61,11 @@ export function Scene() {
 				<Lighting />
 				{/* Bezel is flat to the camera plane (no rotation) */}
 				<Bezel innerWidth={BOARD_INNER_WIDTH} innerDepth={BOARD_INNER_DEPTH} />
+				<BezelGestures
+					innerWidth={BOARD_INNER_WIDTH}
+					innerDepth={BOARD_INNER_DEPTH}
+					frameThickness={BEZEL_FRAME_THICKNESS}
+				/>
 				{/* Board content tilts on its center axle. Resting state
 				 * tips toward the human; AI's turn tips back toward AI;
 				 * win tips toward the loser as a "table dropped" beat. */}

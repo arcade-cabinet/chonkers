@@ -31,7 +31,7 @@ import {
 	Selection,
 } from "@/sim";
 import { useSimActions } from "../boot";
-import { CellClickProvider } from "../canvas/CellClickContext";
+import { CanvasHandlersProvider } from "../canvas/CellClickContext";
 import { Scene } from "../canvas/Scene";
 import { useHaptics } from "../hooks/useHaptics";
 import { useWorldEntity } from "../hooks/useWorldEntity";
@@ -168,9 +168,14 @@ export function PlayView() {
 				overflow: "hidden",
 			}}
 		>
-			<CellClickProvider value={(cell) => void onCellClick(cell)}>
+			<CanvasHandlersProvider
+				value={{
+					onCellClick: (cell) => void onCellClick(cell),
+					onForfeit,
+				}}
+			>
 				<Scene />
-			</CellClickProvider>
+			</CanvasHandlersProvider>
 			{/* HUD overlay */}
 			<Box
 				p="3"
