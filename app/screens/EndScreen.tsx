@@ -5,9 +5,8 @@
  *
  * The "Play again" button calls quitMatch + immediately starts a
  * new match with the same profiles + humanColor. "Main menu"
- * just calls quitMatch and lets the title screen handle the next
- * match config. Both buttons resolve the dead-end the prior
- * commit's bare placeholder created.
+ * just calls quitMatch and lets the lobby handle the next match
+ * config.
  */
 
 import { Button, Container, Flex, Heading, Text } from "@radix-ui/themes";

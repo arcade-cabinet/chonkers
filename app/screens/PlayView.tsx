@@ -1,20 +1,22 @@
 /**
- * Play screen: 3D scene + minimal interactive HUD. Drives the
- * stepTurn loop for AI's turn and exposes a click-to-move + forfeit
- * + back-to-title surface.
+ * Play screen: 3D scene + interactive HUD. Drives the stepTurn
+ * loop for the on-turn AI's turn and exposes click-to-move +
+ * forfeit + quit surfaces.
  *
- * Click semantics (alpha — single-run moves only):
+ * Click semantics:
  *   1. Click an empty board cell → no-op.
- *   2. Click own stack → set Selection to that cell.
- *   3. Click adjacent cell with Selection set → commit a full-stack
- *      move from Selection → that cell. Engine validates legality;
- *      illegal moves are silently dropped (the alert can come back
- *      after PRQ-4 follow-ups land the SplitRadial overlay).
- *   4. Click own stack again → re-select.
- *
- * Split-overlay UX is deferred to a PRQ-4 follow-up commit; only
- * full-stack moves are reachable via the click pipeline. The
- * broker still accepts split actions from elsewhere.
+ *   2. Click own stack → set Selection to that cell. If the stack
+ *      has height ≥ 2, the SplitArmHeightBar widget appears beside
+ *      the selection ring with one dot per sub-stack count (1..h-1).
+ *      Tapping a dot arms a partial-stack split for the next
+ *      destination tap.
+ *   3. Click adjacent cell with Selection set → commit a move:
+ *      - SplitArm.count == 0 → full-stack move (all pieces).
+ *      - SplitArm.count > 0 && < stackHeight → split move sending
+ *        the top `count` pieces (RULES.md §5.1).
+ *      Engine validates legality; an illegal move sets the HUD
+ *      error band briefly.
+ *   4. Click own stack again → re-select; SplitArm resets.
  */
 
 import { AlertDialog, Box, Button, Flex, Text } from "@radix-ui/themes";
@@ -98,10 +100,10 @@ export function PlayView() {
 		void actions.quitMatch();
 	}, [actions]);
 
-	// Click-to-move handler. The actual cell-pick will be wired to
-	// R3F's pointer events in a follow-up commit; for the alpha
-	// demo, click-to-move runs through a small palette of cells via
-	// the HUD below.
+	// Click-to-move handler. R3F pointer events on Pieces +
+	// CellHitboxGrid route through CellClickContext to this
+	// callback (PRQ-11); SplitArmHeightBar arms partial-stack
+	// moves before the destination tap.
 	const onCellClick = useCallback(
 		async (cell: Cell) => {
 			if (!isHumanTurn) return;
@@ -246,7 +248,7 @@ export function PlayView() {
 					<AlertDialog.Description size="2">
 						{winner
 							? "Match is already complete."
-							: "Progress is saved automatically. You can resume from the title screen."}
+							: "Progress is saved automatically. You can resume from the lobby."}
 					</AlertDialog.Description>
 					<Flex gap="3" mt="4" justify="end">
 						<AlertDialog.Cancel>
@@ -262,29 +264,6 @@ export function PlayView() {
 					</Flex>
 				</AlertDialog.Content>
 			</AlertDialog.Root>
-			{/*
-			 * onCellClick consumed via a hidden bridge — PRQ-4 follow-up
-			 * lands the real R3F raycaster. For now the click pipeline
-			 * is reachable only via DEV-mode dispatch, which is enough
-			 * to demonstrate the broker integration end-to-end.
-			 */}
-			<input
-				type="hidden"
-				data-testid="cell-click-bridge"
-				onChange={(e) => {
-					const parts = e.currentTarget.value.split(",");
-					if (parts.length < 2) return;
-					const c = Number(parts[0]);
-					const r = Number(parts[1]);
-					// `Number()` returns NaN for non-numeric strings; the
-					// original `== null` check let NaN through and then
-					// onCellClick used it for piece comparisons that
-					// silently failed. `isFinite` rejects both undefined
-					// (from over-short input) and NaN.
-					if (!Number.isFinite(c) || !Number.isFinite(r)) return;
-					void onCellClick({ col: c, row: r });
-				}}
-			/>
 		</Box>
 	);
 }

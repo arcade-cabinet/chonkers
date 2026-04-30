@@ -1,5 +1,5 @@
 /**
- * Lobby — the new title screen. The board sits flat in the bezel
+ * Lobby — the entry screen. The board sits flat in the bezel
  * (no tilt), two demo pieces (red + white) flank the center axle,
  * and bezel-inlaid play / fast-forward buttons inlaid in the front
  * slab. Tapping a demo piece OR the play button initiates the new-

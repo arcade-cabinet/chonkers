@@ -62,13 +62,13 @@ src/                               # PURE TYPESCRIPT — no JSX, no React, no DO
 
 app/                               # ALL .tsx LIVES HERE — React, R3F, Radix, framer-motion
 ├── main.tsx, App.tsx, index.html
-├── canvas/                        # R3F scene
-├── screens/                       # Radix full-screen views
-├── components/                    # Radix atoms incl. SplitRadial
-├── input/                         # Pointer/touch pipeline
-├── hooks/                         # usePrefs, useFrameloop, etc.
-├── boot/                          # Boot + ErrorBoundary
-└── css/
+├── canvas/                        # R3F scene: Bezel, Board, Pieces, TippingBoard,
+│                                  # SelectionOverlay, SplitArmHeightBar, CellHitboxGrid,
+│                                  # CoinFlipChip, DemoPieces, BezelButtons, BezelGestures
+├── screens/                       # Radix full-screen views (LobbyView, PlayView, EndScreen, PauseView)
+├── hooks/                         # useWorldEntity, useHaptics, etc.
+├── boot/                          # Boot + ErrorBoundary + SimContext
+└── css/                           # Global CSS + runtime @font-face installer (fonts.ts)
 
 scripts/                           # Build-time scripts incl. build-game-db.mjs
 drizzle/                           # drizzle-kit-generated migration SQL (committed to git)

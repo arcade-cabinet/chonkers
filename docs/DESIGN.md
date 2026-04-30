@@ -56,7 +56,7 @@ The palette is **derived from the curated PBR textures** in `public/assets/pbr/`
 | `accent.split` | `#3FB67A` | Split-segment flash on hold-ready |
 | `surface.scrim` | `rgba(15, 10, 5, 0.72)` | Modal backdrop, pause overlay |
 
-The `splitRadial.*` sub-tree adds slice-state colours (idle, hovered, selected, hold-ready, committed-opacity) for `app/components/SplitRadial.tsx`. The `turnBadge.*` sub-tree adds red/white colour banding for `app/components/TurnBadge.tsx`. These all reference the same wood/ink/accent base colours so the palette stays cohesive.
+The `splitRadial.*` sub-tree adds slice-state colours (idle, hovered, selected, hold-ready, committed-opacity) used by the split-arm UI (`app/canvas/SplitArmHeightBar.tsx` ships first; a future radial overlay reuses the same colour grammar). The `turnBadge.*` sub-tree adds red/white colour banding for the in-HUD turn pill. These all reference the same wood/ink/accent base colours so the palette stays cohesive.
 
 Tokens are defined in `src/design/tokens.ts` (one `tokens as const` export) and exposed to Radix Themes via `radixTheme` in `src/design/theme.ts` (`accentColor: 'amber'` matching `accent.select`), plus to CSS as `--ck-*` custom properties in `app/css/style.css`. All three sources stay in sync.
 
@@ -161,8 +161,8 @@ The 2D variants live in `src/design/motion.ts` as a shared library. Visual-shell
 
 | Variant | Where it's used | Token |
 |---------|-----------------|-------|
-| `radialOpen` | `app/components/SplitRadial.tsx` open animation | `tokens.motion.uiOpenMs` |
-| `radialClose` | `app/components/SplitRadial.tsx` close (faster than open) | `tokens.motion.uiCloseMs` |
+| `radialOpen` | Future radial-overlay open (split / context menus) | `tokens.motion.uiOpenMs` |
+| `radialClose` | Future radial-overlay close | `tokens.motion.uiCloseMs` |
 | `sliceSelect` | Slice idle → hovered → selected (80ms ease-out) | hardcoded (one-off) |
 | `holdFlash` | Selected slice pulses while the hold-arm timer runs | `tokens.motion.uiFlashMs` |
 | `modalIn` / `modalOut` | Forfeit confirm, settings, game-over screen | `tokens.motion.modalMs` / `uiCloseMs` |

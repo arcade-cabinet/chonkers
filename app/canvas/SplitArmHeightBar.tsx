@@ -90,7 +90,7 @@ export function SplitArmHeightBar() {
 			{dots.map(({ k, y }) => {
 				const isArmed = armed === k;
 				return (
-					// biome-ignore lint/a11y/noStaticElementInteractions: <mesh> is R3F three.js, not DOM. Equivalent DOM affordance is the keyboard arrows + Enter for split arming (out of scope for this bar but tracked in PRQ-A1 follow-up keyboard support).
+					// biome-ignore lint/a11y/noStaticElementInteractions: <mesh> is R3F three.js, not DOM. The split-arm action also reachable via the koota actions surface for keyboard / accessibility wrappers.
 					<mesh
 						key={k}
 						position={[0, y, 0]}

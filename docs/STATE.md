@@ -33,7 +33,7 @@ Stages reflect *kind of validation completed*, not *version number*. release-ple
 - PRD pipeline under `docs/plans/`: seven PRDs (persistence-and-db, logic-surfaces-and-broker, audio-and-design-tokens, visual-shell, e2e-governor, native-shell, plus one merged-and-deleted: schema folded into persistence-and-db).
 - Coordination state under `.agent-state/`: directive (the queue), digest, cursor.
 - Initial R3F + Radix + framer-motion skeleton: tilted board view, both home rows colour-graded with distinct PBR woods, 5-4-3 starting position rendered with PBR-textured pucks.
-- Design tokens (`src/design/tokens.ts`) derived from PBR mid-tones + Lato/Abril Fatface declared as `@font-face` in `src/css/fonts.css`.
+- Design tokens (`src/design/tokens.ts`) derived from PBR mid-tones + Lato/Abril Fatface installed as `@font-face` rules at runtime by `app/css/fonts.ts` (BASE_URL-aware via the ASSETS manifest).
 - Capacitor Preferences `kv` typed wrapper at `src/persistence/preferences/kv.ts` with browser-tier vitest coverage.
 
 ## What is in flight

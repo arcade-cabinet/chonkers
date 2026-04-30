@@ -51,7 +51,7 @@ Each player starts with **12 pieces** in a 5-4-3 triangular formation:
   - Row 3: cols 3, 4, 5 (3 pieces — apex)
 - **White** mirrors row-symmetrically across row 5 (white in rows 7, 8, 9).
 
-> **Symmetric layout:** the canonical 5-4-3 layout used by `src/game/initialState.ts` is the implementation source of truth. The columns above are illustrative — the game state generator is the single source for exact starting cells. Any divergence from `initialState.ts` is a documentation bug.
+> **Symmetric layout:** the canonical 5-4-3 layout used by `src/engine/initialState.ts` is the implementation source of truth. The columns above are illustrative — the game state generator is the single source for exact starting cells. Any divergence from `initialState.ts` is a documentation bug.
 
 Row 0, row 5, and row 10 are unoccupied at game start.
 

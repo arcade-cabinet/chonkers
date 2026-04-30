@@ -21,7 +21,7 @@ Sim broker (src/sim/) ──── coordinates engine + ai + store + persistence
     ├─► Analytics (src/analytics/) materialised aggregate queries
     │
     ├─► R3F render tree   (app/canvas/)     subscribes to koota
-    ├─► Radix UI shell    (app/screens/, app/components/)  subscribes to koota
+    ├─► Radix UI shell    (app/screens/)                  subscribes to koota
     │
     └─► Audio bus        (src/audio/)       dispatched as side-effects from sim broker
 
@@ -67,13 +67,11 @@ Provable rules:
 | `src/audio/` | Howler-backed audio bus. Seven role-keyed clips. Volume reads from kv. | Pure TS; HTMLAudioElement under the hood. |
 | `src/design/` | Design tokens, Radix theme config, framer-motion variant library. | Pure TS. |
 | `src/utils/` | Pure utilities: coords, type guards, asserts. | Pure TS. |
-| `app/canvas/` | R3F scene tree: board mesh, piece pucks, lighting, environment, overlay anchor. | All `.tsx`. |
-| `app/screens/` | Radix full-screen views: title, settings, pause, win, lose. | All `.tsx`. |
-| `app/components/` | Radix atoms shared across screens, including `SplitRadial` (the SVG radial overlay). | All `.tsx`. |
-| `app/input/` | Pointer/touch pipeline: pointer normalisation, hold-timer, drag-tracker. | All `.tsx`. |
-| `app/hooks/` | React hooks: `usePrefs` (kv reads), `useFrameloop`, `useMatchSubscription` (koota). | All `.tsx`. |
-| `app/boot/` | App boot sequence + ErrorBoundary. | All `.tsx`. |
-| `app/css/` | Global CSS + `@font-face` declarations. | |
+| `app/canvas/` | R3F scene tree: board mesh, piece pucks, bezel, lighting, environment, selection + split-arm overlays, click pipeline. | All `.tsx`. |
+| `app/screens/` | Radix full-screen views: lobby, play, win, lose, spectator-result, paused. | All `.tsx`. |
+| `app/hooks/` | React hooks: `useWorldEntity`, `useHaptics`, etc. | All `.tsx`. |
+| `app/boot/` | App boot sequence + ErrorBoundary + SimContext. | All `.tsx`. |
+| `app/css/` | Global CSS + runtime-installed `@font-face` rules (`fonts.ts`). | |
 
 ## State management
 
