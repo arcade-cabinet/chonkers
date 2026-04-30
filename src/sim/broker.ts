@@ -24,7 +24,12 @@
  *     per docs/AI.md + docs/DB.md.
  */
 
-import { randomUUID } from "node:crypto";
+// Browsers expose `crypto.randomUUID()` on the Web Crypto API; Node
+// 19+ exposes the same on `globalThis.crypto`. Importing from
+// `node:crypto` only works in Node and breaks the bundled web build
+// (Vite leaves the `node:` import unresolved → "randomUUID is not a
+// function" at runtime). The global form works on both runtimes.
+const randomUUID = (): string => globalThis.crypto.randomUUID();
 import {
 	type AiState,
 	CURRENT_DUMP_FORMAT_VERSION,

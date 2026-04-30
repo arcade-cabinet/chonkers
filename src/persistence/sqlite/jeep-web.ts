@@ -40,6 +40,48 @@ function resolveWasmPath(): string {
 }
 
 /**
+ * Patch `XMLHttpRequest.open` so jeep-sqlite's hardcoded
+ * `/assets/databases/...` requests resolve under non-root deployments
+ * (GitHub Pages project sites under `/chonkers/`).
+ *
+ * jeep-sqlite's `_copyFromAssets` + `copyDatabase` paths construct
+ * URLs as `/assets/databases/databases.json` and
+ * `/assets/databases/<name>.db` and request them via XMLHttpRequest.
+ * The `wasmpath` attribute does NOT affect this — it only routes
+ * the WASM fetch. Vite's `base: '/chonkers/'` puts the actual
+ * files at `/chonkers/assets/databases/...`, so without rewriting,
+ * every Pages deployment 404s on first boot.
+ *
+ * The rewrite is scoped to absolute `/assets/` paths only and
+ * only when BASE_URL !== "/" — root-deployed and Capacitor
+ * (file://) builds are untouched.
+ */
+function installAssetsPathShim(): void {
+	const base = import.meta.env.BASE_URL ?? "/";
+	if (base === "/" || base === "./") return;
+	const prefix = base.endsWith("/") ? base.slice(0, -1) : base;
+	const open = XMLHttpRequest.prototype.open;
+	const REWRITE_RE = /^\/assets\//;
+	// biome-ignore lint/suspicious/noExplicitAny: XHR's overloads have
+	// many positional shapes; we forward `arguments` verbatim.
+	XMLHttpRequest.prototype.open = function patchedOpen(
+		this: XMLHttpRequest,
+		method: string,
+		url: string | URL,
+		// biome-ignore lint/suspicious/noExplicitAny: see above
+		...rest: any[]
+	) {
+		if (typeof url === "string" && REWRITE_RE.test(url)) {
+			const rewritten = `${prefix}${url}`;
+			// biome-ignore lint/suspicious/noExplicitAny: see above
+			return (open as any).call(this, method, rewritten, ...rest);
+		}
+		// biome-ignore lint/suspicious/noExplicitAny: see above
+		return (open as any).call(this, method, url, ...rest);
+	} as typeof XMLHttpRequest.prototype.open;
+}
+
+/**
  * Register the jeep-sqlite custom element. Idempotent across calls
  * within the same process: the first call performs the registration,
  * subsequent calls return the same resolved promise. On failure, the
@@ -56,6 +98,13 @@ export function registerJeepSqlite(): Promise<void> {
 			registered = true;
 			return;
 		}
+
+		// MUST run before jeep-sqlite's first `_copyFromAssets` call
+		// — that fires inside `defineJeepSqlite` → custom-element
+		// `componentWillLoad` → `loadJSON` (XHR). Installing the
+		// shim earlier than that is the difference between a
+		// working Pages deploy and a 404 cascade.
+		installAssetsPathShim();
 
 		defineJeepSqlite(window);
 		await customElements.whenDefined("jeep-sqlite");
