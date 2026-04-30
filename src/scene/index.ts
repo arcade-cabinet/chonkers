@@ -5,34 +5,45 @@
  * `#scene-canvas` and the diegetic UI overlay tree to `#overlay`,
  * both declared in the root `index.html`.
  *
- * PRQ-T1 landed renderer + camera + lighting + board.
- * PRQ-T2 added pieces.
- * PRQ-T3+T4 merged adds: sim-world bootstrap (KV-backed), koota
- * subscription, raycaster input, selection ring + valid-move
- * markers, gsap board-tip (the diegetic turn-end pivot), AI-turn
- * dispatch.
- *
- * Diegetic SVG UI surfaces (lobby Play/Resume, splitting radial,
- * pause, end-game) come in PRQ-T5+T6 / T7+T8.
+ * Flow:
+ *  - Boot: show lobby (demo pucks + Play/Resume radials). Screen=title.
+ *  - Tap Play: actions.newMatch(), Screen flips to "play", board
+ *    pieces sync, AI auto-dispatch on its turn.
+ *  - Tap Resume: loadActiveMatch() → rebuild handle from snapshot,
+ *    flip to "play".
+ *  - In play: tap piece → select. Tap legal target → commit.
+ *    Tap a stack height ≥ 2 → splitting radial opens on top puck.
+ *    Hold a slice 3s → flash + arm. Drag past threshold → commit.
+ *  - Pivot drag toward opponent → end turn (the diegetic gesture).
+ *  - Triple-tap bezel → pause radial on centre cell.
+ *  - Match end → end-game radial on the winning stack.
+ *  - Audio dispatched on Match.lastMove + winner transitions.
+ *  - Haptics on selection start, chonk landing, hold-arm.
  */
 
 import * as THREE from "three";
+import { getAudioBus } from "@/audio";
 import { tokens } from "@/design";
 import {
 	type Action,
 	applyAction as applyEngineAction,
+	type Color,
+	enumerateLegalActions,
 	type GameState,
 } from "@/engine";
 import {
+	type ActiveMatchSnapshot,
 	clearActiveMatch,
+	loadActiveMatch,
 	saveActiveMatch,
 	snapshotFromHandle,
 } from "@/persistence";
+import { decideFirstPlayer } from "@/sim";
 import {
 	AiThinking,
-	FALLBACK_PIECES,
 	Match,
 	type PiecePlacement,
+	Screen,
 	Selection,
 	type SelectionSnapshot,
 } from "@/sim/traits";
@@ -40,22 +51,37 @@ import { buildSimActions, createSimWorld, type SimWorld } from "@/sim/world";
 import { tweenBoardTip } from "./animations";
 import { buildBoard } from "./board";
 import { buildCamera, resizeCamera } from "./camera";
+import { buildCoinFlip, type CoinFlipHandle } from "./coinFlip";
+import { buildDemoPucks, type DemoPucksHandle } from "./demoPucks";
 import { type InputHandles, installInput } from "./input";
 import { installLighting } from "./lighting";
+import {
+	buildLobbyAffordances,
+	type LobbyAffordanceHandle,
+} from "./overlay/lobbyAffordances";
+import { type MenuRadialHandle, openMenuRadial } from "./overlay/menuRadial";
 import { buildSplitRadial } from "./overlay/splitRadial";
 import { buildPieces, loadPieceMaterials } from "./pieces";
 
-const canvas = document.getElementById("scene-canvas");
-const overlay = document.getElementById("overlay");
+function findCanvas(): HTMLCanvasElement {
+	const c = document.getElementById("scene-canvas");
+	if (!(c instanceof HTMLCanvasElement)) {
+		throw new Error(
+			'scene boot: <canvas id="scene-canvas"> missing from index.html',
+		);
+	}
+	return c;
+}
+function findOverlay(): HTMLDivElement {
+	const o = document.getElementById("overlay");
+	if (!(o instanceof HTMLDivElement)) {
+		throw new Error('scene boot: <div id="overlay"> missing from index.html');
+	}
+	return o;
+}
 
-if (!(canvas instanceof HTMLCanvasElement)) {
-	throw new Error(
-		'scene boot: <canvas id="scene-canvas"> missing from index.html',
-	);
-}
-if (!(overlay instanceof HTMLDivElement)) {
-	throw new Error('scene boot: <div id="overlay"> missing from index.html');
-}
+const canvas: HTMLCanvasElement = findCanvas();
+const overlay: HTMLDivElement = findOverlay();
 
 function fitCanvas(c: HTMLCanvasElement): void {
 	const dpr = Math.min(window.devicePixelRatio, 2);
@@ -87,8 +113,13 @@ scene.add(board.group);
 
 const pieceMaterials = loadPieceMaterials();
 const pieces = buildPieces(pieceMaterials);
-// Pieces ride ON the board group so they tilt with the pivot.
 board.group.add(pieces.group);
+
+const demoPucks: DemoPucksHandle = buildDemoPucks(pieceMaterials);
+board.group.add(demoPucks.group);
+
+const coin: CoinFlipHandle = buildCoinFlip(pieceMaterials);
+board.group.add(coin.group);
 
 window.addEventListener("resize", () => {
 	fitCanvas(canvas);
@@ -98,15 +129,19 @@ window.addEventListener("resize", () => {
 fitCanvas(canvas);
 resizeCamera(camera, canvas);
 
-// === Sim world bootstrap ===
-const matchStartedAt = Date.now();
-const humanColorForSnapshot: "red" | "white" | null = "red";
+// === Sim world bootstrap (no auto-newMatch — lobby first) ===
+const matchStartedAt = { current: Date.now() };
+const humanColorForSnapshot: { current: Color | null } = { current: "red" };
 
 const sim: SimWorld = createSimWorld({
 	onPlyCommit: async (handle) => {
 		try {
 			await saveActiveMatch(
-				snapshotFromHandle(handle, humanColorForSnapshot, matchStartedAt),
+				snapshotFromHandle(
+					handle,
+					humanColorForSnapshot.current,
+					matchStartedAt.current,
+				),
 			);
 		} catch (err) {
 			console.warn("[scene] saveActiveMatch failed", err);
@@ -123,17 +158,33 @@ const sim: SimWorld = createSimWorld({
 
 const actions = buildSimActions(sim)(sim.world);
 
-actions.newMatch({
-	redProfile: "balanced-medium",
-	whiteProfile: "balanced-medium",
-	humanColor: humanColorForSnapshot,
-});
+// Audio bus — lazy init on first user interaction.
+let audioReady = false;
+async function ensureAudio(): Promise<void> {
+	if (audioReady) return;
+	try {
+		await getAudioBus();
+		audioReady = true;
+	} catch (err) {
+		console.warn("[scene] audio bus init failed", err);
+	}
+}
+async function playSfx(role: import("@/audio").AudioRole): Promise<void> {
+	try {
+		const bus = await getAudioBus();
+		bus.play(role);
+	} catch {
+		// Audio is best-effort; silent on failure.
+	}
+}
 
-// === Subscriptions (poll-based; once per rAF). Each sub compares
-// the latest snapshot against a cached prior and reacts on diff.
+// === Subscriptions (poll-based; once per rAF). ===
 let priorPiecesSig = "";
 let priorSelectionSig = "";
 let priorTurn: "red" | "white" | null = null;
+let priorScreen: string | null = null;
+let priorPlyCount = -1;
+let priorWinner: Color | null | undefined = undefined;
 
 function piecesSignature(pcs: ReadonlyArray<PiecePlacement>): string {
 	return pcs
@@ -158,12 +209,21 @@ const inputCtx: InputHandles = installInput({
 		const m = sim.worldEntity.get(Match);
 		if (!m || m.humanColor === null) return false;
 		const thinking = sim.worldEntity.get(AiThinking)?.value ?? false;
-		return m.turn === m.humanColor && !thinking && m.winner === null;
+		const screen = sim.worldEntity.get(Screen)?.value;
+		return (
+			screen === "play" &&
+			m.turn === m.humanColor &&
+			!thinking &&
+			m.winner === null
+		);
 	},
-	humanColor: (): "red" | "white" | null =>
+	humanColor: (): Color | null =>
 		sim.worldEntity.get(Match)?.humanColor ?? null,
 	setSelection: (cell): void => {
 		actions.setSelection(cell);
+		if (cell !== null) {
+			void playSelectionHaptic();
+		}
 	},
 	commitAction: (action: Action): void => {
 		void commitHumanAction(action);
@@ -173,25 +233,87 @@ const inputCtx: InputHandles = installInput({
 	},
 });
 
+async function playSelectionHaptic(): Promise<void> {
+	try {
+		const { Haptics } = await import("@capacitor/haptics");
+		await Haptics.selectionStart();
+	} catch {
+		// Haptics unsupported — silent.
+	}
+}
+
+async function playChonkHaptic(): Promise<void> {
+	try {
+		const { Haptics, ImpactStyle } = await import("@capacitor/haptics");
+		await Haptics.impact({ style: ImpactStyle.Heavy });
+	} catch {
+		// silent
+	}
+}
+
 async function commitHumanAction(action: Action): Promise<void> {
 	const handle = sim.handle;
 	if (!handle) return;
-	// Apply locally; trait sync happens via rAF poll below; then the
-	// AI takes its turn. PRQ-T5+T6 swaps in actions.commitHumanAction
-	// (which already exists in world.ts) once split actions need
-	// chain-aware handling — for now this fast path is sufficient.
+	// Detect chonk: the destination cell already has pieces before
+	// applyAction lands.
+	const dest = action.runs[0]?.to;
+	const wasChonk = dest
+		? handle.game.board.has((BigInt(dest.col) << 16n) | BigInt(dest.row))
+		: false;
 	handle.game = applyEngineAction(handle.game, action);
 	actions.setSelection(null);
+	if (wasChonk) void playChonkHaptic();
 	await actions.stepTurn();
 }
 
-// Splitting radial — opens on the top puck of the selected stack
-// when stack height ≥ 2.
+// === Splitting radial ===
 const splitRadial = buildSplitRadial({
 	host: overlay,
 	camera,
 	canvas,
+	onArm: () => {
+		void (async () => {
+			try {
+				const { Haptics, ImpactStyle } = await import("@capacitor/haptics");
+				await Haptics.impact({ style: ImpactStyle.Medium });
+			} catch {
+				// silent
+			}
+		})();
+	},
+	onCommit: (selectedSlices) => {
+		void commitSplitFromSlices(selectedSlices);
+	},
 });
+
+async function commitSplitFromSlices(
+	selectedSlices: ReadonlyArray<number>,
+): Promise<void> {
+	const sel = sim.worldEntity.get(Selection)?.cell;
+	const handle = sim.handle;
+	if (!sel || !handle) return;
+	// Find a legal action whose `from` matches selection AND whose
+	// total `runs.flatMap(r => r.indices)` matches `selectedSlices`.
+	const all = enumerateLegalActions(handle.game);
+	for (const action of all) {
+		if (action.from.col !== sel.col || action.from.row !== sel.row) continue;
+		const allIndices = action.runs.flatMap((r) => [...r.indices]).sort();
+		const target = [...selectedSlices].sort();
+		if (allIndices.length !== target.length) continue;
+		let match = true;
+		for (let i = 0; i < target.length; i += 1) {
+			if (allIndices[i] !== target[i]) {
+				match = false;
+				break;
+			}
+		}
+		if (match) {
+			await commitHumanAction(action);
+			return;
+		}
+	}
+	// No match — silently no-op. The radial is already closed.
+}
 
 function refreshSplitRadial(): void {
 	const sel = sim.worldEntity.get(Selection) ?? { cell: null };
@@ -233,12 +355,256 @@ function countStackHeight(
 	return h;
 }
 
+// === Lobby affordances ===
+const lobby: LobbyAffordanceHandle = buildLobbyAffordances({
+	host: overlay,
+	camera,
+	canvas,
+});
+
+async function startNewMatch(humanColor: Color | null = "red"): Promise<void> {
+	await ensureAudio();
+	humanColorForSnapshot.current = humanColor;
+	matchStartedAt.current = Date.now();
+	actions.newMatch({
+		redProfile: "balanced-medium",
+		whiteProfile: "balanced-medium",
+		humanColor,
+	});
+	const handle = sim.handle;
+	if (handle) {
+		const firstPlayer = decideFirstPlayer(handle.coinFlipSeed);
+		await coin.flip(firstPlayer);
+		coin.hide();
+	}
+	void playSfx("ambient");
+	void (async () => {
+		try {
+			const bus = await getAudioBus();
+			bus.startAmbient();
+		} catch {
+			// silent
+		}
+	})();
+}
+
+async function resumeFromSnapshot(
+	snapshot: ActiveMatchSnapshot,
+): Promise<void> {
+	await ensureAudio();
+	humanColorForSnapshot.current = snapshot.humanColor;
+	matchStartedAt.current = snapshot.startedAt;
+	actions.newMatch({
+		redProfile: snapshot.redProfile,
+		whiteProfile: snapshot.whiteProfile,
+		humanColor: snapshot.humanColor,
+		coinFlipSeed: snapshot.coinFlipSeed,
+	});
+	const handle = sim.handle;
+	if (!handle) return;
+	for (const action of snapshot.actions) {
+		handle.game = applyEngineAction(handle.game, action);
+	}
+	// Sync match traits with the new ply count + state.
+	actions.syncTraits({
+		humanColor: snapshot.humanColor,
+		plyCount: snapshot.actions.length,
+	});
+}
+
+let resumeAvailable = false;
+void (async () => {
+	const saved = await loadActiveMatch();
+	resumeAvailable = saved !== null;
+	refreshLobby();
+})();
+
+function refreshLobby(): void {
+	const screen = sim.worldEntity.get(Screen)?.value;
+	if (screen === "title") {
+		demoPucks.group.visible = true;
+		lobby.show({
+			playTarget: demoPucks.redPuck,
+			resumeTarget: demoPucks.whitePuck,
+			resumeEnabled: resumeAvailable,
+			onPlay: () => {
+				lobby.hide();
+				demoPucks.group.visible = false;
+				void startNewMatch("red");
+			},
+			onResume: () => {
+				lobby.hide();
+				demoPucks.group.visible = false;
+				void (async () => {
+					const saved = await loadActiveMatch();
+					if (saved) await resumeFromSnapshot(saved);
+				})();
+			},
+		});
+	} else {
+		demoPucks.group.visible = false;
+		lobby.hide();
+	}
+}
+
+refreshLobby();
+
+// === End-game radial ===
+let endGameRadial: MenuRadialHandle | null = null;
+function openEndGameRadial(winner: Color, humanColor: Color | null): void {
+	if (endGameRadial) return;
+	// Anchor on a winning home-row piece if possible; fall back to
+	// board centre.
+	const winnerHomeRow = winner === "red" ? 10 : 0; // opponent's home
+	const match = sim.worldEntity.get(Match);
+	let target: THREE.Object3D | null = null;
+	if (match) {
+		for (const p of match.pieces) {
+			if (p.row === winnerHomeRow && p.color === winner) {
+				const top = pieces.topPuckAt(p.col, p.row);
+				if (top) {
+					target = top;
+					break;
+				}
+			}
+		}
+	}
+	if (!target) {
+		// Fallback: board centre. Spawn an invisible anchor.
+		const anchor = new THREE.Object3D();
+		anchor.position.set(0, 0.6, 0);
+		board.group.add(anchor);
+		target = anchor;
+	}
+
+	const heading =
+		humanColor === null
+			? `${winner === "red" ? "Red" : "White"} wins`
+			: humanColor === winner
+				? "You win"
+				: "You lose";
+
+	endGameRadial = openMenuRadial({
+		host: overlay,
+		camera,
+		canvas,
+		target,
+		slices: [
+			{
+				label: "Play again",
+				onSelect: () => {
+					endGameRadial = null;
+					actions.quitMatch();
+				},
+			},
+			{
+				label: heading,
+				onSelect: () => {
+					endGameRadial = null;
+					actions.quitMatch();
+				},
+			},
+		],
+	});
+}
+
+// === Pause radial (bezel triple-tap detector) ===
+let pauseRadial: MenuRadialHandle | null = null;
+const knockTimes: number[] = [];
+function registerKnock(): void {
+	const now = performance.now();
+	knockTimes.push(now);
+	while (knockTimes.length > 0) {
+		const first = knockTimes[0];
+		if (first === undefined) break;
+		if (now - first > tokens.motion.knockWindowMs) knockTimes.shift();
+		else break;
+	}
+	if (knockTimes.length >= 3) {
+		knockTimes.length = 0;
+		openPauseRadial();
+	}
+}
+
+function openPauseRadial(): void {
+	if (pauseRadial) return;
+	const screen = sim.worldEntity.get(Screen)?.value;
+	if (screen !== "play") return;
+	const anchor = new THREE.Object3D();
+	anchor.position.set(0, 0.6, 0);
+	board.group.add(anchor);
+	pauseRadial = openMenuRadial({
+		host: overlay,
+		camera,
+		canvas,
+		target: anchor,
+		slices: [
+			{
+				label: "Resume",
+				onSelect: () => {
+					pauseRadial = null;
+					board.group.remove(anchor);
+				},
+			},
+			{
+				label: "Forfeit",
+				onSelect: () => {
+					pauseRadial = null;
+					board.group.remove(anchor);
+					void actions.forfeit();
+				},
+			},
+			{
+				label: "Quit",
+				onSelect: () => {
+					pauseRadial = null;
+					board.group.remove(anchor);
+					void clearActiveMatch();
+					actions.quitMatch();
+				},
+			},
+		],
+	});
+}
+
+// Triple-tap detector on bezel: any pointer-down outside the board
+// raycast hit area counts as a "knock". The simplest implementation:
+// when the input pipeline's onPointerDown fires but cellAtPointer
+// returns null AND no selection is active, register a knock. Doing
+// this here in the scene index keeps the input pipeline pure.
+canvas.addEventListener(
+	"pointerdown",
+	(e) => {
+		// Only react when no selection is active and the click is
+		// well outside the board area. Use the canvas bounding rect
+		// to roughly detect "outside the inner playfield" — anywhere
+		// in the corner ~120px from any edge counts as bezel.
+		const sel = sim.worldEntity.get(Selection)?.cell;
+		if (sel !== null && sel !== undefined) return;
+		const rect = canvas.getBoundingClientRect();
+		const inset = Math.min(rect.width, rect.height) * 0.18;
+		const isCorner =
+			e.clientX < rect.left + inset ||
+			e.clientX > rect.right - inset ||
+			e.clientY < rect.top + inset ||
+			e.clientY > rect.bottom - inset;
+		if (isCorner) registerKnock();
+	},
+	true, // capture so we see it before input.ts's handler
+);
+
 let rafId = 0;
 function tick(): void {
 	rafId = requestAnimationFrame(tick);
 	const match = sim.worldEntity.get(Match);
 	const sel = sim.worldEntity.get(Selection) ?? { cell: null };
 	const aiThinking = sim.worldEntity.get(AiThinking)?.value ?? false;
+	const screen = sim.worldEntity.get(Screen)?.value;
+
+	if (screen !== priorScreen) {
+		priorScreen = screen ?? null;
+		refreshLobby();
+	}
 
 	if (match) {
 		const sig = piecesSignature(match.pieces);
@@ -261,9 +627,33 @@ function tick(): void {
 				void actions.stepTurn();
 			}
 		}
-	} else if (priorPiecesSig === "") {
-		pieces.sync(FALLBACK_PIECES);
-		priorPiecesSig = "fallback";
+		// Audio dispatch on ply change.
+		if (match.plyCount !== priorPlyCount) {
+			if (priorPlyCount >= 0 && match.plyCount > priorPlyCount) {
+				// A move just landed. Play "move" by default; chonk haptic
+				// already fired in commitHumanAction for the human side.
+				void playSfx("move");
+			}
+			priorPlyCount = match.plyCount;
+		}
+		// Winner change → end-game radial + sting.
+		if (match.winner !== priorWinner) {
+			if (match.winner !== null && priorWinner !== undefined) {
+				void playSfx("sting");
+				const humanColor = match.humanColor;
+				if (humanColor !== null) {
+					void playSfx(humanColor === match.winner ? "win" : "lose");
+				}
+				openEndGameRadial(match.winner, humanColor);
+			}
+			priorWinner = match.winner;
+		}
+	} else if (priorPiecesSig !== "") {
+		// No active match — clear pieces so the lobby demo pucks own the
+		// stage. (Don't render FALLBACK_PIECES; it was a placeholder for
+		// the pre-lobby boot path that no longer exists.)
+		pieces.sync([]);
+		priorPiecesSig = "";
 	}
 
 	const selSig = selectionSignature(sel);
@@ -274,14 +664,19 @@ function tick(): void {
 	}
 
 	splitRadial.update();
+	lobby.update();
+	pauseRadial?.update();
+	endGameRadial?.update();
 
 	renderer.render(scene, camera);
 }
 
 tick();
 
-// Debug hook for browser-verify of the splitting radial. PRQ-T9 will
-// formalise this as a `?testHook=1`-gated `window.__chonkers` surface.
+// Dev-only debug surface — gated by import.meta.env.DEV (production
+// strips this branch entirely via tree-shake; verified in PRQ-T6
+// commit message). PRQ-T9 will replace with the formal
+// ?testHook=1-gated window.__chonkers surface.
 if (typeof window !== "undefined" && import.meta.env.DEV) {
 	(window as unknown as { __debug: object }).__debug = {
 		openRadialAt: (col: number, row: number, height: number): boolean => {
@@ -291,6 +686,8 @@ if (typeof window !== "undefined" && import.meta.env.DEV) {
 			return true;
 		},
 		closeRadial: (): void => splitRadial.close(),
+		openPauseRadial,
+		startNewMatch: () => void startNewMatch("red"),
 	};
 }
 
@@ -299,7 +696,12 @@ if (import.meta.hot) {
 		cancelAnimationFrame(rafId);
 		inputCtx.dispose();
 		pieces.dispose();
+		demoPucks.dispose();
+		coin.dispose();
 		splitRadial.dispose();
+		lobby.dispose();
+		pauseRadial?.close();
+		endGameRadial?.close();
 		renderer.dispose();
 	});
 }
