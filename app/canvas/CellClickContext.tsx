@@ -14,7 +14,14 @@ export interface CanvasHandlers {
 	readonly onForfeit: () => void;
 }
 
-const CanvasHandlersContext = createContext<CanvasHandlers | null>(null);
+// Exported so `<Scene />` can wrap its R3F subtree in a
+// `useContextBridge` from drei. Modern R3F (v9) propagates React
+// context across the Canvas boundary, but the bridge is a defensive
+// belt-and-suspenders — costless on hot paths and keeps the click
+// pipeline robust against future R3F internals changes.
+export const CanvasHandlersContext = createContext<CanvasHandlers | null>(
+	null,
+);
 
 export const CanvasHandlersProvider = CanvasHandlersContext.Provider;
 

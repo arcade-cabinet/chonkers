@@ -313,8 +313,16 @@ export function buildSimActions(sim: SimWorld) {
 		 */
 		async findResumableMatch(): Promise<string | null> {
 			const all = await matchesRepo.listMatches(sim.db);
-			const unfinished = all.find((m) => m.finishedAt === null);
-			return unfinished?.id ?? null;
+			// Sort unfinished matches by startedAt DESC so the user
+			// always lands on the most recent unfinished match. Without
+			// the explicit sort, listMatches's NULL-finishedAt rows have
+			// no defined relative order in SQL — a crash-recovery
+			// scenario with two unfinished matches could pick the older
+			// one and lose the user's most recent context.
+			const unfinished = all
+				.filter((m) => m.finishedAt === null)
+				.sort((a, b) => b.startedAt - a.startedAt);
+			return unfinished[0]?.id ?? null;
 		},
 
 		setSelection(cell: { col: number; row: number } | null): void {

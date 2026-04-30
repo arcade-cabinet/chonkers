@@ -14,7 +14,7 @@
 
 import { useTexture } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { tokens } from "@/design/tokens";
 import type { Color } from "@/sim";
@@ -56,7 +56,10 @@ export function CoinFlipChip({
 		normal: ASSETS.pbr.whitePiece.normal,
 		roughness: ASSETS.pbr.whitePiece.roughness,
 	});
-	useMemo(() => {
+	// Texture configuration is a side effect, not a memoized value;
+	// useEffect makes the lifecycle explicit and avoids re-running on
+	// each memo cache invalidation.
+	useEffect(() => {
 		red.diffuse.colorSpace = THREE.SRGBColorSpace;
 		white.diffuse.colorSpace = THREE.SRGBColorSpace;
 	}, [red, white]);
@@ -97,6 +100,17 @@ export function CoinFlipChip({
 		() => [edgeMaterial, whiteMaterial, redMaterial],
 		[edgeMaterial, whiteMaterial, redMaterial],
 	);
+
+	// MeshStandardMaterial allocates GPU resources; without an
+	// unmount disposer, repeatedly mounting/unmounting the chip
+	// (every coin-flip ceremony) leaks GPU memory until tab close.
+	useEffect(() => {
+		return () => {
+			redMaterial.dispose();
+			whiteMaterial.dispose();
+			edgeMaterial.dispose();
+		};
+	}, [redMaterial, whiteMaterial, edgeMaterial]);
 
 	useFrame(() => {
 		const m = meshRef.current;

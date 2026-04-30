@@ -31,22 +31,27 @@ interface Props {
 }
 
 export function Bezel({ innerWidth, innerDepth }: Props) {
-	const { diffuse, normal, roughness, ao } = useTexture({
+	// aoMap is intentionally NOT loaded — Three.js requires a uv2
+	// attribute on the geometry to sample the AO map, and our
+	// boxGeometry meshes only carry the default uv channel. Without
+	// uv2, aoMap is silently ignored in some builds and produces
+	// wrong shading in others. The bezel diffuse texture has AO
+	// baked in, so the visual signal is preserved.
+	const { diffuse, normal, roughness } = useTexture({
 		diffuse: ASSETS.pbr.bezel.diffuse,
 		normal: ASSETS.pbr.bezel.normal,
 		roughness: ASSETS.pbr.bezel.roughness,
-		ao: ASSETS.pbr.bezel.ao,
 	});
 
 	useMemo(() => {
-		for (const t of [diffuse, normal, roughness, ao]) {
+		for (const t of [diffuse, normal, roughness]) {
 			t.wrapS = THREE.RepeatWrapping;
 			t.wrapT = THREE.RepeatWrapping;
 			t.repeat.set(2, 0.6);
 			t.anisotropy = 8;
 		}
 		diffuse.colorSpace = THREE.SRGBColorSpace;
-	}, [diffuse, normal, roughness, ao]);
+	}, [diffuse, normal, roughness]);
 
 	const outerWidth = innerWidth + FRAME_THICKNESS * 2;
 	const outerDepth = innerDepth + FRAME_THICKNESS * 2;
@@ -65,7 +70,6 @@ export function Bezel({ innerWidth, innerDepth }: Props) {
 			map={diffuse}
 			normalMap={normal}
 			roughnessMap={roughness}
-			aoMap={ao}
 			roughness={0.82}
 			metalness={0}
 		/>

@@ -42,28 +42,39 @@ export function PiecePlacementReveal() {
 	const ceremony = useTrait(worldEntity, Ceremony);
 	const match = useTrait(worldEntity, Match);
 
-	const ordered = useMemo(() => {
-		if (!match || !ceremony) return [];
+	const ordered = useMemo<{
+		items: Array<{
+			p: PiecePlacement;
+			phase: "placing-first" | "placing-second";
+		}>;
+		boundary: number;
+	}>(() => {
+		if (!match || !ceremony) return { items: [], boundary: 0 };
 		const first = ceremony.firstPlayer;
 		const second = first === "red" ? "white" : "red";
 		const firstPieces = match.pieces.filter((p) => p.color === first);
 		const secondPieces = match.pieces.filter((p) => p.color === second);
-		return [
-			...firstPieces.map((p) => ({ p, phase: "placing-first" as const })),
-			...secondPieces.map((p) => ({ p, phase: "placing-second" as const })),
-		];
+		// boundary = index of the first placing-second piece. Computing
+		// it once here keeps the per-piece staggerIndex calc O(1)
+		// instead of O(n) per element (was O(n²) overall via findIndex
+		// inside a map).
+		return {
+			items: [
+				...firstPieces.map((p) => ({ p, phase: "placing-first" as const })),
+				...secondPieces.map((p) => ({ p, phase: "placing-second" as const })),
+			],
+			boundary: firstPieces.length,
+		};
 	}, [match, ceremony]);
 
 	if (!match || !ceremony) return null;
 
 	return (
 		<group>
-			{ordered.map(({ p, phase }, i) => {
+			{ordered.items.map(({ p, phase }, i) => {
 				const startedAtMs = ceremony.startedAtMs;
 				const groupIndex =
-					phase === "placing-first"
-						? i
-						: i - ordered.findIndex((x) => x.phase === "placing-second");
+					phase === "placing-first" ? i : i - ordered.boundary;
 				return (
 					<RevealedPiece
 						key={`${p.col}-${p.row}-${p.height}-${p.color}`}

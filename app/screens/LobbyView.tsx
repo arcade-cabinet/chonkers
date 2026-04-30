@@ -158,12 +158,27 @@ export function LobbyView() {
 		// use the same profile in the lobby — the picker exposes a
 		// single AI difficulty/disposition; setting RED vs WHITE
 		// asymmetric profiles is a future user-defined-AI feature.
-		await actions.newMatch({
-			redProfile: profile,
-			whiteProfile: profile,
-			humanColor,
-			coinFlipSeed: seed,
-		});
+		try {
+			await actions.newMatch({
+				redProfile: profile,
+				whiteProfile: profile,
+				humanColor,
+				coinFlipSeed: seed,
+			});
+		} catch {
+			// newMatch can fail if the persistence layer rejects the
+			// matches row write (db locked, schema mismatch, etc.).
+			// Without recovery the ceremony hangs in "demo-clearing"
+			// and the demo pieces stay mid-air. Reset to idle so the
+			// user can try again from a clean lobby state.
+			actions.setCeremony({
+				phase: "idle",
+				firstPlayer,
+				pieceProgress: 0,
+				startedAtMs: 0,
+			});
+			return;
+		}
 
 		// newMatch flips Screen to "play" immediately; we override
 		// back to "lobby" until the ceremony finishes so the lobby

@@ -23,7 +23,7 @@
 
 import type { ThreeEvent } from "@react-three/fiber";
 import { useTrait } from "koota/react";
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import { tokens } from "@/design/tokens";
 import { Match } from "@/sim";
 import { useWorldEntity } from "../hooks/useWorldEntity";
@@ -55,6 +55,13 @@ export function BezelGestures({
 	// player's side bezel. Resets on color change or winner so a
 	// stale knock from a prior match doesn't fire mid-new-match.
 	const knockTaps = useRef<number[]>([]);
+	useEffect(() => {
+		// Clear the ring buffer whenever the player's color changes or
+		// a winner is declared. Without this, a rapid triple-tap right
+		// before "match over" could carry over and fire forfeit on the
+		// first tap of the next match.
+		knockTaps.current.length = 0;
+	}, [humanColor, winner]);
 
 	// Active state — disable when there's no human or game's over.
 	const active = humanColor !== null && !winner;

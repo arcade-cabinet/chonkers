@@ -1,4 +1,4 @@
-import { Environment } from "@react-three/drei";
+import { Environment, useContextBridge } from "@react-three/drei";
 import { Canvas } from "@react-three/fiber";
 import { Suspense } from "react";
 import * as THREE from "three";
@@ -7,6 +7,7 @@ import { ASSETS } from "@/utils/manifest";
 import { Bezel } from "./Bezel";
 import { BezelGestures } from "./BezelGestures";
 import { Board } from "./Board";
+import { CanvasHandlersContext } from "./CellClickContext";
 import { CellHitboxGrid } from "./CellHitboxGrid";
 import { Lighting } from "./Lighting";
 import { MoveAnimation } from "./MoveAnimation";
@@ -49,6 +50,12 @@ const BOARD_INNER_DEPTH = rows * cellSize;
  * targets the bezel center on first frame.
  */
 export function Scene() {
+	// Bridge React context across the R3F Canvas boundary. Modern R3F
+	// (v9) propagates context by default, but `useContextBridge` is a
+	// belt-and-suspenders guarantee that the click + forfeit handlers
+	// installed by PlayView/LobbyView reach Pieces / CellHitboxGrid /
+	// BezelGestures inside the Canvas tree. Cost: one wrapper render.
+	const ContextBridge = useContextBridge(CanvasHandlersContext);
 	return (
 		<Canvas
 			shadows
@@ -66,29 +73,34 @@ export function Scene() {
 			}}
 			onCreated={({ camera }) => camera.lookAt(0, 0, 0)}
 		>
-			<color attach="background" args={[tokens.surface.canvasClear]} />
-			<Suspense fallback={null}>
-				<Environment files={ASSETS.hdri} />
-				<Lighting />
-				{/* Bezel is flat to the camera plane (no rotation) */}
-				<Bezel innerWidth={BOARD_INNER_WIDTH} innerDepth={BOARD_INNER_DEPTH} />
-				<BezelGestures
-					innerWidth={BOARD_INNER_WIDTH}
-					innerDepth={BOARD_INNER_DEPTH}
-					frameThickness={tokens.bezel.frameThickness}
-				/>
-				{/* Board content tilts on its center axle. Resting state
-				 * tips toward the human; AI's turn tips back toward AI;
-				 * win tips toward the loser as a "table dropped" beat. */}
-				<TippingBoard>
-					<Board />
-					<Pieces />
-					<MoveAnimation />
-					<SelectionOverlay />
-					<SplitArmHeightBar />
-					<CellHitboxGrid />
-				</TippingBoard>
-			</Suspense>
+			<ContextBridge>
+				<color attach="background" args={[tokens.surface.canvasClear]} />
+				<Suspense fallback={null}>
+					<Environment files={ASSETS.hdri} />
+					<Lighting />
+					{/* Bezel is flat to the camera plane (no rotation) */}
+					<Bezel
+						innerWidth={BOARD_INNER_WIDTH}
+						innerDepth={BOARD_INNER_DEPTH}
+					/>
+					<BezelGestures
+						innerWidth={BOARD_INNER_WIDTH}
+						innerDepth={BOARD_INNER_DEPTH}
+						frameThickness={tokens.bezel.frameThickness}
+					/>
+					{/* Board content tilts on its center axle. Resting state
+					 * tips toward the human; AI's turn tips back toward AI;
+					 * win tips toward the loser as a "table dropped" beat. */}
+					<TippingBoard>
+						<Board />
+						<Pieces />
+						<MoveAnimation />
+						<SelectionOverlay />
+						<SplitArmHeightBar />
+						<CellHitboxGrid />
+					</TippingBoard>
+				</Suspense>
+			</ContextBridge>
 		</Canvas>
 	);
 }

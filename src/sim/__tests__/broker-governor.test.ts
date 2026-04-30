@@ -3,10 +3,17 @@
  * pairings, asserting balance ratios per docs/AI.md.
  *
  * Acceptance per PRQ-12:
- *   - hard-vs-easy: hard wins at least 70% (easy clearly loses)
+ *   - hard-vs-easy: hard wins at least 70% (easy clearly loses).
+ *     Asserted in BOTH color orientations (hard-as-red vs easy-as-
+ *     white AND hard-as-white vs easy-as-red) so a first-move /
+ *     color bias can't mask a hard-as-white regression.
  *   - aggressive-vs-aggressive avg-moves-per-game ≥20% lower than
- *     defensive-vs-defensive (dispositions distinguishable)
- *   - all 9 pairings actually played at least 50 times
+ *     defensive-vs-defensive (dispositions distinguishable).
+ *   - every pairing got at least one sample. With 1000 runs across
+ *     81 pairings the least-runs scheduler distributes ~12 runs/cell,
+ *     which is enough to surface zero-sample regressions but too thin
+ *     to assert per-cell win rates with confidence — those land at
+ *     the 10000-run rc gate, not here.
  *
  * Like the 100-run alpha gate this runs in `replay` mode for host-
  * independent determinism, with deterministic per-run seeds.
@@ -116,18 +123,33 @@ describe("broker — beta governor (1000-run, all 9 profiles)", () => {
 				expect(c.matches).toBeGreaterThan(0);
 			}
 
-			// Acceptance 2: hard-vs-easy → hard wins ≥70%
-			const hardVsEasy = matrix.filter(
+			// Acceptance 2: hard-vs-easy → hard wins ≥70% in BOTH
+			// orientations. Asserting only hard-as-red would let a
+			// hard-as-white regression slip through if there's a
+			// first-move / color bias in the engine. Each direction is
+			// summed into a single win-rate; the per-cell sample size
+			// at 1000 runs is too thin to assert per-cell rates.
+			const hardAsRed = matrix.filter(
 				(c) => c.red.endsWith("-hard") && c.white.endsWith("-easy"),
 			);
-			for (const c of hardVsEasy) {
-				const concluded = c.redWins + c.whiteWins;
-				if (concluded < 5) continue; // skip undersampled cells
-				const hardWinRate = c.redWins / concluded;
-				console.log(
-					`hard-vs-easy ${c.red}/${c.white}: hard win rate=${(hardWinRate * 100).toFixed(0)}% (${c.redWins}/${concluded})`,
+			const hardAsWhite = matrix.filter(
+				(c) => c.red.endsWith("-easy") && c.white.endsWith("-hard"),
+			);
+			for (const [label, cells, hardWinKey] of [
+				["hard-as-red", hardAsRed, "redWins"] as const,
+				["hard-as-white", hardAsWhite, "whiteWins"] as const,
+			]) {
+				const totalConcluded = cells.reduce(
+					(s, c) => s + c.redWins + c.whiteWins,
+					0,
 				);
-				expect(hardWinRate).toBeGreaterThanOrEqual(0.7);
+				if (totalConcluded < 5) continue;
+				const totalHardWins = cells.reduce((s, c) => s + c[hardWinKey], 0);
+				const rate = totalHardWins / totalConcluded;
+				console.log(
+					`${label}: hard win rate=${(rate * 100).toFixed(0)}% (${totalHardWins}/${totalConcluded})`,
+				);
+				expect(rate).toBeGreaterThanOrEqual(0.7);
 			}
 
 			// Acceptance 3: aggressive-aggressive avg-ply < defensive-defensive avg-ply by ≥20%

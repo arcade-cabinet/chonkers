@@ -34,7 +34,7 @@ const WHITE = easyKeys[1];
 if (!RED || !WHITE) throw new Error("missing easy profiles");
 
 describe("createSimWorld", () => {
-	it("initial state has Screen=title and no Match", async () => {
+	it("initial state has Screen=lobby and no Match", async () => {
 		const { db } = makeTestDb();
 		const sim = createSimWorld({ db });
 		expect(sim.worldEntity.get(Screen)?.value).toBe("lobby");
