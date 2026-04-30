@@ -29,14 +29,14 @@
 
 import { Box } from "@radix-ui/themes";
 import { useTrait } from "koota/react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
 	Ceremony,
 	type Color,
 	decideFirstPlayer,
 	freshCoinFlipSeed,
 } from "@/sim";
-import { useSimActions } from "../boot";
+import { useAudio, useSimActions } from "../boot";
 import { CanvasHandlersProvider } from "../canvas/CellClickContext";
 import { LobbyScene } from "../canvas/LobbyScene";
 import { useWorldEntity } from "../hooks/useWorldEntity";
@@ -54,6 +54,7 @@ export function LobbyView() {
 	const worldEntity = useWorldEntity();
 	const ceremony = useTrait(worldEntity, Ceremony);
 	const actions = useSimActions();
+	const audio = useAudio();
 	const [resumableId, setResumableId] = useState<string | null>(null);
 
 	useEffect(() => {
@@ -66,7 +67,31 @@ export function LobbyView() {
 		};
 	}, [actions]);
 
+	// Ambient bg loop runs while the lobby is mounted. Stops on
+	// unmount (PlayView mounts; ambient layer continues IF we
+	// chose to keep it across screens — for now stop it so play
+	// has its own audio focus).
+	useEffect(() => {
+		audio.startAmbient();
+		return () => {
+			audio.stopAmbient();
+		};
+	}, [audio]);
+
 	const isCeremonyActive = (ceremony?.phase ?? "idle") !== "idle";
+
+	// Coin-flip phase entry plays the sting once. Read the
+	// ceremony phase off the trait and play sting when we just
+	// entered "coin-flip".
+	const lastPhaseRef = useRef(ceremony?.phase ?? "idle");
+	useEffect(() => {
+		const phase = ceremony?.phase ?? "idle";
+		const prior = lastPhaseRef.current;
+		if (prior !== "coin-flip" && phase === "coin-flip") {
+			audio.play("sting");
+		}
+		lastPhaseRef.current = phase;
+	}, [ceremony, audio]);
 
 	const startNewMatch = useCallback(async () => {
 		if (isCeremonyActive) return;

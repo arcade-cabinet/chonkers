@@ -22,7 +22,7 @@
 import { AlertDialog, Box, Button, Flex, Text } from "@radix-ui/themes";
 import { AnimatePresence, motion } from "framer-motion";
 import { useTrait } from "koota/react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { tokens } from "@/design/tokens";
 import {
 	type Action,
@@ -33,7 +33,7 @@ import {
 	Selection,
 	SplitArm,
 } from "@/sim";
-import { useSimActions } from "../boot";
+import { useAudio, useSimActions } from "../boot";
 import { CanvasHandlersProvider } from "../canvas/CellClickContext";
 import { Scene } from "../canvas/Scene";
 import { useHaptics } from "../hooks/useHaptics";
@@ -60,6 +60,7 @@ export function PlayView() {
 	const splitArm = useTrait(worldEntity, SplitArm);
 	const actions = useSimActions();
 	const haptics = useHaptics();
+	const audio = useAudio();
 	const [error, setError] = useState<string | null>(null);
 
 	const turn = match?.turn ?? "red";
@@ -86,6 +87,57 @@ export function PlayView() {
 		}, 60);
 		return () => window.clearTimeout(id);
 	}, [isAiTurn, aiThinking?.value, actions]);
+
+	// Audio dispatches on Match snapshot diffs:
+	//   - lastMove flips → "chonk" if destination had pieces
+	//     before the commit, "split" if the move's run had fewer
+	//     pieces than the source stack height, otherwise "move"
+	//   - winner flips from null → set → play sting + win/lose
+	//     voice (one shot per terminal transition)
+	type SimplePiecePos = { readonly col: number; readonly row: number };
+	const lastMoveKeyRef = useRef<string | null>(null);
+	const winnerSeenRef = useRef<"red" | "white" | null>(null);
+	const priorPiecesRef = useRef<ReadonlyArray<SimplePiecePos>>([]);
+	useEffect(() => {
+		if (!match) return;
+		const lm = match.lastMove;
+		const moveKey = lm
+			? `${lm.from.col},${lm.from.row}:${lm.to.col},${lm.to.row}:${match.plyCount}`
+			: null;
+		if (moveKey && moveKey !== lastMoveKeyRef.current) {
+			lastMoveKeyRef.current = moveKey;
+			const prior = priorPiecesRef.current;
+			const destPriorHeight = lm
+				? prior.filter((p) => p.col === lm.to.col && p.row === lm.to.row).length
+				: 0;
+			const sourcePriorHeight = lm
+				? prior.filter((p) => p.col === lm.from.col && p.row === lm.from.row)
+						.length
+				: 0;
+			const sourceCurrentHeight = lm
+				? match.pieces.filter(
+						(p) => p.col === lm.from.col && p.row === lm.from.row,
+					).length
+				: 0;
+			const isSplit = sourcePriorHeight > 0 && sourceCurrentHeight > 0;
+			const isChonk = destPriorHeight > 0;
+			if (isSplit) audio.play("split");
+			else if (isChonk) audio.play("chonk");
+			else audio.play("move");
+		}
+		priorPiecesRef.current = match.pieces;
+
+		const winner = match.winner;
+		if (winner && winnerSeenRef.current !== winner) {
+			winnerSeenRef.current = winner;
+			audio.play("sting");
+			if (match.humanColor !== null) {
+				audio.play(winner === match.humanColor ? "win" : "lose");
+			}
+		} else if (!winner) {
+			winnerSeenRef.current = null;
+		}
+	}, [match, audio]);
 
 	const onForfeit = useCallback(() => {
 		void actions.forfeit().catch((err) => {
