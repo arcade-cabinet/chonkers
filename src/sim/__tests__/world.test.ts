@@ -197,6 +197,57 @@ describe("createSimWorld", () => {
 		expect(sim.worldEntity.get(SplitSelection)?.armed).toBe(false);
 	});
 
+	it("broker does not write SplitSelection on every Match update during AI-vs-AI plies", async () => {
+		// PRQ-A1 audit regression. The forced-chain auto-arm logic
+		// in syncMatchTraits MUST be gated on actual head-detachment
+		// transitions — not fire on every trait flush. If it did,
+		// every AI ply in spectator mode would mutate SplitSelection,
+		// which would re-render every consumer of `useTrait
+		// (worldEntity, SplitSelection)` on every ply. That's the
+		// shape that caused the OOM (compounded with React-side
+		// render loops); this test catches a regression at the
+		// broker level without needing React.
+		//
+		// Setup: spectator mode so 4 stepTurns cause 4 Match writes,
+		// none of which involve a forced chain (easy-vs-easy from the
+		// opening doesn't produce non-contiguous splits in 4 plies).
+		// Expected: SplitSelection writes = 1 (the initial newMatch
+		// reset to {indices:[], armed:false}). NO additional writes
+		// during stepTurn flushes.
+		const { db } = makeTestDb();
+		const sim = createSimWorld({ db });
+		const actions = buildSimActions(sim)(sim.world);
+
+		let splitSelectionChanges = 0;
+		const unsub = sim.world.onChange(SplitSelection, () => {
+			splitSelectionChanges += 1;
+		});
+
+		await actions.newMatch({
+			redProfile: RED,
+			whiteProfile: WHITE,
+			humanColor: null,
+			coinFlipSeed: "ef".repeat(8),
+		});
+		// Capture the post-newMatch baseline. The initial set inside
+		// `createSimWorld` happens BEFORE we attached the listener,
+		// so newMatch's reset to {indices:[], armed:false} is the
+		// first write the listener sees.
+		const baseline = splitSelectionChanges;
+
+		await actions.stepTurn();
+		await actions.stepTurn();
+		await actions.stepTurn();
+		await actions.stepTurn();
+
+		// Stronger assertion: ZERO additional SplitSelection writes
+		// across 4 plies in spectator mode (no chain in flight from
+		// the standard opening).
+		expect(splitSelectionChanges - baseline).toBe(0);
+
+		unsub();
+	});
+
 	it("SplitSelection clears on quitMatch even if it was armed", async () => {
 		// PRQ-A1 audit regression. syncMatchTraits's no-handle
 		// branch must clear SplitSelection so a stale armed
