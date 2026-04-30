@@ -2,9 +2,17 @@
  * Radial split overlay — the single piece-top primitive.
  *
  * Per RULES.md §5.1 + DESIGN.md "The split overlay", this is a 2D
- * SVG radial drawn ABOVE the R3F canvas via drei's `<Html>` wrapper
- * (which positions a DOM subtree at a given world position). The
- * overlay shows H pie slices for a stack of height H, where:
+ * SVG radial drawn ABOVE the R3F canvas. The overlay is rendered
+ * via React `createPortal` to `document.body` and screen-projected
+ * every frame using `useFrame` + `camera.project()`. We do NOT use
+ * drei's `<Html>` because that component leaks DOM nodes on
+ * mount/unmount AND on position changes (drei issue #2499 — closed
+ * but still unfixed in the current 10.7.7 release; milestoned for
+ * v11/WebGPU which hasn't shipped). A drei `<Html>` would mount
+ * once per radial location and shed DOM nodes every camera tilt,
+ * which adds up to OOM during long playthroughs.
+ *
+ * The overlay shows H pie slices for a stack of height H, where:
  *
  *   - Slice index 0 is the TOP-LEFT wedge.
  *   - Slice indices count counter-clockwise: top-left → bottom-left
@@ -41,9 +49,11 @@
  * computed once per `slices` value.
  */
 
-import { Html } from "@react-three/drei";
+import { useFrame, useThree } from "@react-three/fiber";
 import { motion } from "framer-motion";
 import { useEffect, useMemo, useRef } from "react";
+import { createPortal } from "react-dom";
+import * as THREE from "three";
 import { tokens } from "@/design/tokens";
 
 export type SliceState =
@@ -279,6 +289,49 @@ export function RadialOverlay({
 	const armedRef = useRef(armed);
 	armedRef.current = armed;
 
+	// Manual screen-projection portal — replaces drei `<Html>` (drei
+	// #2499 leak). The wrapper div is created once on mount, attached
+	// to document.body, and updated every frame with the projected
+	// pixel position. createPortal renders the SVG into the wrapper.
+	// Lifecycle: useEffect creates the div, returns an unmount cleanup
+	// that detaches + removes it. Per-frame updates write to a CSS
+	// transform via the wrapper ref.
+	const { camera, gl } = useThree();
+	const wrapperRef = useRef<HTMLDivElement | null>(null);
+	const projectVecRef = useRef(new THREE.Vector3());
+	useEffect(() => {
+		const div = document.createElement("div");
+		div.style.position = "absolute";
+		div.style.top = "0";
+		div.style.left = "0";
+		div.style.pointerEvents = "auto";
+		div.style.zIndex = "100";
+		div.style.willChange = "transform";
+		document.body.appendChild(div);
+		wrapperRef.current = div;
+		return () => {
+			div.remove();
+			wrapperRef.current = null;
+		};
+	}, []);
+	useFrame(() => {
+		const div = wrapperRef.current;
+		if (!div) return;
+		const v = projectVecRef.current;
+		v.set(position[0], position[1], position[2]);
+		v.project(camera);
+		// NDC → CSS pixels relative to the canvas's bounding rect.
+		const rect = gl.domElement.getBoundingClientRect();
+		const cssX = rect.left + ((v.x + 1) / 2) * rect.width;
+		const cssY = rect.top + ((1 - v.y) / 2) * rect.height;
+		// Centre the SVG on the projected point. -50% on both axes
+		// matches drei's `center` prop semantics.
+		const half = outerRadius;
+		div.style.transform = `translate3d(${(cssX - half).toFixed(2)}px, ${(cssY - half).toFixed(2)}px, 0)`;
+		// Hide if behind the camera (z > 1 post-projection).
+		div.style.visibility = v.z < 1 ? "visible" : "hidden";
+	});
+
 	// Unmount cleanup (PRQ-A1 audit 2026-04-30 — hazard H1). The
 	// hold timer is started in handlePointerDown and cleared in
 	// pointerUp / pointerCancel / pre-arm-cancel branches. But if
@@ -377,16 +430,15 @@ export function RadialOverlay({
 	const labelOf = (i: number): string =>
 		slotLabel ? slotLabel(i) : `Slice ${i + 1} of ${slices}`;
 
-	return (
-		<Html
-			position={position as unknown as [number, number, number]}
-			center
-			zIndexRange={[100, 0]}
-			pointerEvents="auto"
-			// The drei `Html` default `transform` mode would project the
-			// SVG into 3D — we want a flat screen-space overlay instead,
-			// so leave `transform` off (drei positions the wrapper at
-			// the projected pixel of `position` and renders DOM normally).
+	// Render the SVG into the `wrapperRef.current` div via portal.
+	// On first render, the wrapper isn't created yet (useEffect runs
+	// after the first paint); guard by returning null. The next render
+	// has the ref populated and the SVG mounts. No drei dependency,
+	// no <Html> portal — direct createPortal to a div we own.
+	const wrapper = wrapperRef.current;
+	if (!wrapper) return null;
+	return createPortal(
+		<div
 			style={{
 				width: outerRadius * 2,
 				height: outerRadius * 2,
@@ -544,6 +596,7 @@ export function RadialOverlay({
 					);
 				})}
 			</motion.svg>
-		</Html>
+		</div>,
+		wrapper,
 	);
 }
