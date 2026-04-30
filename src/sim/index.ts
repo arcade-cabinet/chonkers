@@ -23,3 +23,21 @@ export {
 	saveMatchProgress,
 } from "./broker";
 export { decideFirstPlayer, freshCoinFlipSeed } from "./coinFlip";
+export {
+	AiThinking,
+	HoldProgress,
+	Match,
+	Screen,
+	type ScreenKind,
+	Selection,
+	SplitChainView,
+} from "./traits";
+export {
+	buildSimActions,
+	type CreateSimWorldOptions,
+	createSimWorld,
+	type NewMatchInput,
+	type SimActions,
+	type SimActionsBuilder,
+	type SimWorld,
+} from "./world";

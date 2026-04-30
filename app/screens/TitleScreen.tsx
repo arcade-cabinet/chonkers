@@ -1,17 +1,28 @@
 import { Box, Button, Flex, Heading, Text } from "@radix-ui/themes";
 import { motion } from "framer-motion";
 import { tokens } from "@/design/tokens";
-
-interface Props {
-	onStart: () => void;
-}
+import { useSimActions } from "../boot";
 
 /**
  * Title screen: Abril Fatface display name over the live board,
  * Lato body text, framer-motion fade-in. The 3D scene continues
  * rendering behind the scrim.
+ *
+ * Pulls `newMatch` from the sim actions context. PRQ-4 follow-up
+ * commits will add difficulty/disposition/colour selectors here;
+ * for now "New game" launches an AI-vs-AI balanced-easy match so
+ * the rest of the shell can be exercised end-to-end.
  */
-export function TitleScreen({ onStart }: Props) {
+export function TitleScreen() {
+	const actions = useSimActions();
+
+	const onStart = () => {
+		void actions.newMatch({
+			redProfile: "balanced-easy",
+			whiteProfile: "balanced-easy",
+			humanColor: null,
+		});
+	};
 	return (
 		<motion.div
 			initial={{ opacity: 0 }}
