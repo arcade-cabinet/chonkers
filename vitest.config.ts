@@ -47,7 +47,14 @@ export default defineConfig({
 					],
 					browser: {
 						enabled: true,
-						provider: playwright(),
+						provider: playwright({
+							launchOptions: {
+								// Allow Howler audio to play in headless tests
+								// without a synthetic user-gesture step. PRQ-3
+								// audio bus tests use real Howler instances.
+								args: ["--autoplay-policy=no-user-gesture-required"],
+							},
+						}),
 						headless: true,
 						instances: [{ browser: "chromium" }],
 					},

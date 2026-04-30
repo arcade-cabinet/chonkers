@@ -56,7 +56,9 @@ The palette is **derived from the curated PBR textures** in `public/assets/pbr/`
 | `accent.split` | `#3FB67A` | Split-segment flash on hold-ready |
 | `surface.scrim` | `rgba(15, 10, 5, 0.72)` | Modal backdrop, pause overlay |
 
-These are defined in `src/design/tokens.ts` and exposed to Radix Themes via `accentColor`, plus to CSS as `--ck-*` custom properties. All three sources stay in sync.
+The `splitRadial.*` sub-tree adds slice-state colours (idle, hovered, selected, hold-ready, committed-opacity) for `app/components/SplitRadial.tsx`. The `turnBadge.*` sub-tree adds red/white colour banding for `app/components/TurnBadge.tsx`. These all reference the same wood/ink/accent base colours so the palette stays cohesive.
+
+Tokens are defined in `src/design/tokens.ts` (one `tokens as const` export) and exposed to Radix Themes via `radixTheme` in `src/design/theme.ts` (`accentColor: 'amber'` matching `accent.select`), plus to CSS as `--ck-*` custom properties in `app/css/style.css`. All three sources stay in sync.
 
 ### Typography
 
@@ -126,19 +128,25 @@ Slice count = stack height. Players can select up to N − 1 slices (the whole s
 
 ## Audio
 
-All audio is in `public/assets/audio/` and mapped by role, not file path:
+All audio is in `public/assets/audio/` and mapped by role, not file path. The role names are the public contract callers use; the file paths are internal to `src/audio/roles.ts`.
 
-| Role | Source | Triggers |
-|------|--------|----------|
-| Ambient bed | `ambient/bg_loop.wav` | Fades in on game-start, ducks during win/lose stings |
-| Move | `effects/move.ogg` | Any successful piece move (1-stack or full stack) |
-| Chonk | `effects/chonk.ogg` | A move that lands on top of a stack of equal-or-greater height |
-| Split | `effects/split.ogg` | Player commits a split (drag started after hold-ready) |
-| Game-over sting | `effects/game_over_sting.ogg` | Plays before either voice line below |
-| Win | `voices/you_win.ogg` | Local player has all top-of-stacks on opponent's home row |
-| Lose | `voices/you_lose.ogg` | Opponent has all top-of-stacks on local player's home row |
+| Role | File | Triggers | Ducks ambient |
+|------|------|----------|---------------|
+| `ambient` | `ambient/bg_loop.wav` | `audio.startAmbient()` on game-start; loops indefinitely | n/a (the duck target) |
+| `move` | `effects/move.ogg` | Any successful piece move (1-stack or full stack) | no |
+| `chonk` | `effects/chonk.ogg` | A move landing on a stack of equal-or-greater height | no |
+| `split` | `effects/split.ogg` | Player commits a split (drag started after hold-ready) | no |
+| `sting` | `effects/game_over_sting.ogg` | Game-over transition; precedes either voice line | yes |
+| `win` | `voices/you_win.ogg` | Local player wins | yes |
+| `lose` | `voices/you_lose.ogg` | Local player loses | yes |
 
-Audio is wired through a single `AudioBus` (`src/audio/audioBus.ts`) so volume/mute is one source of truth. Volumes per role are committed defaults — no runtime mixing UI in v1.
+Audio is wired through a single `AudioBus` (`src/audio/audioBus.ts`) so volume/mute is one source of truth. The bus is an **async lazy singleton** — callers always `const audio = await getAudioBus(); audio.play('chonk');`. Concurrent first-callers converge on the same in-flight promise (no double-init).
+
+Volume + mute persist to `kv` namespace `'settings'` (keys `'volume'` 0..1, `'muted'` boolean), so a player's choice survives reload. Defaults: `volume = 0.7`, `muted = false`.
+
+Ducking: when any role in `STING_ROLES` (`sting`, `win`, `lose`) plays, the bus increments an `activeDucks` counter and fades ambient to 25% of the bus volume over 200ms. When the sting ends (or `stop()` is called), the counter decrements; when it reaches 0, ambient restores over 400ms. Overlapping stings stack correctly — the first sting starts the duck, the last sting to end restores.
+
+Edge: `duckAmbient` early-returns if ambient isn't already playing. So if a sting fires before `startAmbient()` has been called (e.g., a unit-test that exercises only the win sting), the duck is a no-op. The counter still increments + decrements normally; the visible volume just doesn't change. Sequence sims that need ducking active must call `startAmbient()` before the first sting.
 
 ---
 
@@ -149,7 +157,19 @@ Audio is wired through a single `AudioBus` (`src/audio/audioBus.ts`) so volume/m
 - **UI motion** — radial overlay open (160ms ease-out), slice flash (240ms ease-in-out, 2 cycles), modal in/out (180ms).
 - **Piece motion** — lift-arc-drop on move (420ms total: 120ms lift, 200ms arc, 100ms settle bounce). Split-extract is 300ms for the slice-pucks to detach + follow pointer.
 
-Reduce-motion users (`prefers-reduced-motion`) get instant snaps for UI and a flat 200ms linear translate for pieces — no arcs, no bounces.
+The 2D variants live in `src/design/motion.ts` as a shared library. Visual-shell components (PRQ-4) import them by name rather than redeclaring transitions:
+
+| Variant | Where it's used | Token |
+|---------|-----------------|-------|
+| `radialOpen` | `app/components/SplitRadial.tsx` open animation | `tokens.motion.uiOpenMs` |
+| `radialClose` | `app/components/SplitRadial.tsx` close (faster than open) | `tokens.motion.uiCloseMs` |
+| `sliceSelect` | Slice idle → hovered → selected (80ms ease-out) | hardcoded (one-off) |
+| `holdFlash` | Selected slice pulses while the hold-arm timer runs | `tokens.motion.uiFlashMs` |
+| `modalIn` / `modalOut` | Forfeit confirm, settings, game-over screen | `tokens.motion.modalMs` / `uiCloseMs` |
+| `screenFade` | Cross-fade between top-level Radix screens | `tokens.motion.screenFadeMs` |
+| `reducedMotionFallback` | Drop-in for any of the above when reduced-motion is on | 0.001s |
+
+Reduce-motion users (`prefers-reduced-motion` OR `kv.get('settings', 'reducedMotion')`) get the fallback for all variants and a flat 200ms linear translate for 3D pieces — no arcs, no bounces.
 
 ---
 
