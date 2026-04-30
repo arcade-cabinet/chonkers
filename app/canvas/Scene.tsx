@@ -7,13 +7,16 @@ import { Canvas } from "@react-three/fiber";
 import { Suspense } from "react";
 import { ASSETS } from "@/utils/manifest";
 import { Board } from "./Board";
-import { InitialPieces } from "./InitialPieces";
 import { Lighting } from "./Lighting";
+import { Pieces } from "./Pieces";
 
 /**
  * Top-level R3F scene. Renders the tilted board, both home-row
- * gradients, and the 5-4-3 starting layout. Input + game state
- * wiring lands in subsequent commits.
+ * gradients, and whatever pieces the live match owns. The Pieces
+ * component subscribes to the koota Match trait — moves the broker
+ * commits propagate here automatically. With no active match
+ * (title screen), Pieces falls back to the canonical 5-4-3 starting
+ * layout so the board never reads as empty.
  */
 export function Scene() {
 	return (
@@ -37,7 +40,7 @@ export function Scene() {
 				<OrthographicCamera position={[0, 30, 0]} zoom={40} />
 				<group rotation={[0, 0, 0]}>
 					<Board />
-					<InitialPieces />
+					<Pieces />
 				</group>
 			</Suspense>
 		</Canvas>

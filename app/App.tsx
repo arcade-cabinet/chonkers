@@ -21,7 +21,7 @@ export function App() {
 
 	switch (screen) {
 		case "title":
-			return <TitleView />;
+			return <TitleScreen />;
 		case "play":
 			return <PlayView />;
 		case "win":
@@ -40,10 +40,6 @@ export function App() {
 // R3F integration, real input pipeline). Keeping the screen
 // router shape complete now means each follow-up commit lands
 // a single screen at a time without touching the router.
-
-function TitleView() {
-	return <TitleScreen />;
-}
 
 function PlayView() {
 	return <Scene />;
