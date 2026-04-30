@@ -27,9 +27,11 @@
  *   3. Settle to playable
  */
 
-import { Box } from "@radix-ui/themes";
+import { Box, Flex, SegmentedControl, Text } from "@radix-ui/themes";
+import { AnimatePresence, motion } from "framer-motion";
 import { useTrait } from "koota/react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { isProfileKey, type ProfileKey } from "@/ai";
 import {
 	Ceremony,
 	type Color,
@@ -47,8 +49,39 @@ const PHASE_PLACING_SECOND_MS = 1500;
 const PHASE_COIN_FLIP_MS = 1900;
 const PHASE_SETTLING_MS = 280;
 
-const DEFAULT_PROFILE = "balanced-easy" as const;
-const DEFAULT_HUMAN_COLOR: Color = "red";
+type Disposition = "aggressive" | "balanced" | "defensive";
+type Difficulty = "easy" | "medium" | "hard";
+type ColorChoice = "red" | "white" | "watch";
+
+const DISPOSITIONS = [
+	"aggressive",
+	"balanced",
+	"defensive",
+] as const satisfies readonly Disposition[];
+const DIFFICULTIES = [
+	"easy",
+	"medium",
+	"hard",
+] as const satisfies readonly Difficulty[];
+const COLOR_CHOICES = [
+	"red",
+	"white",
+	"watch",
+] as const satisfies readonly ColorChoice[];
+
+const cap = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);
+
+function buildProfileKey(d: Disposition, df: Difficulty): ProfileKey {
+	const key = `${d}-${df}` as const;
+	if (!isProfileKey(key)) {
+		throw new Error(`buildProfileKey: invariant violated — ${key}`);
+	}
+	return key;
+}
+
+const DEFAULT_DISPOSITION: Disposition = "balanced";
+const DEFAULT_DIFFICULTY: Difficulty = "easy";
+const DEFAULT_COLOR_CHOICE: ColorChoice = "red";
 
 export function LobbyView() {
 	const worldEntity = useWorldEntity();
@@ -56,6 +89,18 @@ export function LobbyView() {
 	const actions = useSimActions();
 	const audio = useAudio();
 	const [resumableId, setResumableId] = useState<string | null>(null);
+	const [disposition, setDisposition] =
+		useState<Disposition>(DEFAULT_DISPOSITION);
+	const [difficulty, setDifficulty] = useState<Difficulty>(DEFAULT_DIFFICULTY);
+	const [colorChoice, setColorChoice] =
+		useState<ColorChoice>(DEFAULT_COLOR_CHOICE);
+
+	const profile = useMemo(
+		() => buildProfileKey(disposition, difficulty),
+		[disposition, difficulty],
+	);
+	const humanColor: Color | null =
+		colorChoice === "watch" ? null : (colorChoice as Color);
 
 	useEffect(() => {
 		let cancelled = false;
@@ -109,11 +154,14 @@ export function LobbyView() {
 
 		// Create the persisted match while demo pieces are clearing.
 		// Pass the same seed so the coin-flip animation (later)
-		// reflects the engine's first-player decision.
+		// reflects the engine's first-player decision. Both sides
+		// use the same profile in the lobby — the picker exposes a
+		// single AI difficulty/disposition; setting RED vs WHITE
+		// asymmetric profiles is a future user-defined-AI feature.
 		await actions.newMatch({
-			redProfile: DEFAULT_PROFILE,
-			whiteProfile: DEFAULT_PROFILE,
-			humanColor: DEFAULT_HUMAN_COLOR,
+			redProfile: profile,
+			whiteProfile: profile,
+			humanColor,
 			coinFlipSeed: seed,
 		});
 
@@ -166,7 +214,7 @@ export function LobbyView() {
 			startedAtMs: 0,
 		});
 		actions.setScreen("play");
-	}, [actions, isCeremonyActive]);
+	}, [actions, isCeremonyActive, profile, humanColor]);
 
 	const resumeMatch = useCallback(async () => {
 		if (isCeremonyActive || !resumableId) return;
@@ -174,18 +222,15 @@ export function LobbyView() {
 			// Replay persisted moves through the engine + restore
 			// the on-turn AI's perf state. The action sets sim.handle,
 			// syncs the Match trait, and flips Screen to "play".
-			// humanColor mirrors the lobby's new-match default so
-			// the resumed match has the same player perspective the
-			// human had when they originally started it. (B1 will
-			// persist the choice in preferences for true round-trip.)
+			// humanColor mirrors the lobby's current-picker selection.
 			await actions.resumeMatch({
 				matchId: resumableId,
-				humanColor: DEFAULT_HUMAN_COLOR,
+				humanColor,
 			});
 		} catch (err) {
 			console.error("[chonkers] resumeMatch failed", err);
 		}
-	}, [actions, isCeremonyActive, resumableId]);
+	}, [actions, isCeremonyActive, resumableId, humanColor]);
 
 	// During phases 2-5, swap LobbyScene for a "ceremony scene" that
 	// renders the actual board content (Pieces revealed by progress,
@@ -208,7 +253,92 @@ export function LobbyView() {
 					canResume={resumableId !== null}
 				/>
 			</CanvasHandlersProvider>
+			<AnimatePresence>
+				{!isCeremonyActive ? (
+					<motion.div
+						initial={{ opacity: 0, y: 12 }}
+						animate={{ opacity: 1, y: 0 }}
+						exit={{ opacity: 0, y: -8 }}
+						transition={{ duration: 0.22, ease: "easeOut" }}
+						style={{
+							position: "absolute",
+							top: 16,
+							left: "50%",
+							transform: "translateX(-50%)",
+							pointerEvents: "auto",
+						}}
+					>
+						<Box
+							p="3"
+							style={{
+								background: "rgba(15, 10, 5, 0.78)",
+								borderRadius: 12,
+								boxShadow: "0 6px 24px rgba(0,0,0,0.4)",
+							}}
+						>
+							<Flex direction="column" gap="2" align="center">
+								<PickerRow label="Color">
+									<SegmentedControl.Root
+										value={colorChoice}
+										onValueChange={(v) => setColorChoice(v as ColorChoice)}
+										size="1"
+									>
+										{COLOR_CHOICES.map((c) => (
+											<SegmentedControl.Item key={c} value={c}>
+												{c === "watch" ? "Watch" : `Play ${cap(c)}`}
+											</SegmentedControl.Item>
+										))}
+									</SegmentedControl.Root>
+								</PickerRow>
+								<PickerRow label="Disposition">
+									<SegmentedControl.Root
+										value={disposition}
+										onValueChange={(v) => setDisposition(v as Disposition)}
+										size="1"
+									>
+										{DISPOSITIONS.map((d) => (
+											<SegmentedControl.Item key={d} value={d}>
+												{cap(d)}
+											</SegmentedControl.Item>
+										))}
+									</SegmentedControl.Root>
+								</PickerRow>
+								<PickerRow label="Difficulty">
+									<SegmentedControl.Root
+										value={difficulty}
+										onValueChange={(v) => setDifficulty(v as Difficulty)}
+										size="1"
+									>
+										{DIFFICULTIES.map((d) => (
+											<SegmentedControl.Item key={d} value={d}>
+												{cap(d)}
+											</SegmentedControl.Item>
+										))}
+									</SegmentedControl.Root>
+								</PickerRow>
+							</Flex>
+						</Box>
+					</motion.div>
+				) : null}
+			</AnimatePresence>
 		</Box>
+	);
+}
+
+function PickerRow({
+	label,
+	children,
+}: {
+	readonly label: string;
+	readonly children: React.ReactNode;
+}) {
+	return (
+		<Flex align="center" gap="2">
+			<Text size="1" color="gray" style={{ minWidth: 78 }}>
+				{label}
+			</Text>
+			{children}
+		</Flex>
 	);
 }
 
