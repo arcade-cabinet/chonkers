@@ -42,6 +42,7 @@ import { buildBoard } from "./board";
 import { buildCamera, resizeCamera } from "./camera";
 import { type InputHandles, installInput } from "./input";
 import { installLighting } from "./lighting";
+import { buildSplitRadial } from "./overlay/splitRadial";
 import { buildPieces, loadPieceMaterials } from "./pieces";
 
 const canvas = document.getElementById("scene-canvas");
@@ -184,6 +185,54 @@ async function commitHumanAction(action: Action): Promise<void> {
 	await actions.stepTurn();
 }
 
+// Splitting radial — opens on the top puck of the selected stack
+// when stack height ≥ 2.
+const splitRadial = buildSplitRadial({
+	host: overlay,
+	camera,
+	canvas,
+});
+
+function refreshSplitRadial(): void {
+	const sel = sim.worldEntity.get(Selection) ?? { cell: null };
+	if (sel.cell === null) {
+		if (splitRadial.isOpen) splitRadial.close();
+		return;
+	}
+	const match = sim.worldEntity.get(Match);
+	if (!match) {
+		if (splitRadial.isOpen) splitRadial.close();
+		return;
+	}
+	const stackHeight = countStackHeight(
+		match.pieces,
+		sel.cell.col,
+		sel.cell.row,
+	);
+	if (stackHeight < 2) {
+		if (splitRadial.isOpen) splitRadial.close();
+		return;
+	}
+	const top = pieces.topPuckAt(sel.cell.col, sel.cell.row);
+	if (!top) {
+		if (splitRadial.isOpen) splitRadial.close();
+		return;
+	}
+	splitRadial.open(top, stackHeight);
+}
+
+function countStackHeight(
+	placements: ReadonlyArray<PiecePlacement>,
+	col: number,
+	row: number,
+): number {
+	let h = 0;
+	for (const p of placements) {
+		if (p.col === col && p.row === row) h = Math.max(h, p.height + 1);
+	}
+	return h;
+}
+
 let rafId = 0;
 function tick(): void {
 	rafId = requestAnimationFrame(tick);
@@ -197,6 +246,7 @@ function tick(): void {
 			priorPiecesSig = sig;
 			pieces.sync(match.pieces);
 			inputCtx.refreshSelectionVisuals();
+			refreshSplitRadial();
 		}
 		if (match.turn !== priorTurn) {
 			priorTurn = match.turn;
@@ -220,18 +270,36 @@ function tick(): void {
 	if (selSig !== priorSelectionSig) {
 		priorSelectionSig = selSig;
 		inputCtx.refreshSelectionVisuals();
+		refreshSplitRadial();
 	}
+
+	splitRadial.update();
 
 	renderer.render(scene, camera);
 }
 
 tick();
 
+// Debug hook for browser-verify of the splitting radial. PRQ-T9 will
+// formalise this as a `?testHook=1`-gated `window.__chonkers` surface.
+if (typeof window !== "undefined" && import.meta.env.DEV) {
+	(window as unknown as { __debug: object }).__debug = {
+		openRadialAt: (col: number, row: number, height: number): boolean => {
+			const top = pieces.topPuckAt(col, row);
+			if (!top) return false;
+			splitRadial.open(top, height);
+			return true;
+		},
+		closeRadial: (): void => splitRadial.close(),
+	};
+}
+
 if (import.meta.hot) {
 	import.meta.hot.dispose(() => {
 		cancelAnimationFrame(rafId);
 		inputCtx.dispose();
 		pieces.dispose();
+		splitRadial.dispose();
 		renderer.dispose();
 	});
 }

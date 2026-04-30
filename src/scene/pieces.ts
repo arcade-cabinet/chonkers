@@ -71,6 +71,12 @@ export interface PiecesHandles {
 	 * matches; geometry/material allocation only happens for new cells.
 	 */
 	sync(placements: ReadonlyArray<PiecePlacement>): void;
+	/**
+	 * Return the THREE.Object3D representing the TOP puck of the
+	 * stack at (col, row), or null if no stack is present. Used by
+	 * the splitting radial to anchor its SVG via camera.project().
+	 */
+	topPuckAt(col: number, row: number): THREE.Object3D | null;
 	/** Dispose all GPU resources. Call from HMR cleanup. */
 	dispose(): void;
 }
@@ -166,6 +172,15 @@ export function buildPieces(materials: PieceMaterials): PiecesHandles {
 		}
 	}
 
+	function topPuckAt(col: number, row: number): THREE.Object3D | null {
+		const stack = stacks.get(STACK_KEY(col, row));
+		if (!stack) return null;
+		// The buildStack loop sorts by height-index ascending, so the
+		// last child is the highest puck — i.e. the top of the stack.
+		const last = stack.children[stack.children.length - 1];
+		return last ?? null;
+	}
+
 	function dispose(): void {
 		puckGeom.dispose();
 		materials.red.dispose();
@@ -176,5 +191,5 @@ export function buildPieces(materials: PieceMaterials): PiecesHandles {
 		stacks.clear();
 	}
 
-	return { group, sync, dispose };
+	return { group, sync, topPuckAt, dispose };
 }
