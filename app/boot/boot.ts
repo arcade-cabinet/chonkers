@@ -37,6 +37,31 @@ export interface BootResult {
 	readonly dispose: () => Promise<void>;
 }
 
+/**
+ * No-op fallback for the audio bus. Used when the real Howler-backed
+ * bus fails to initialise (mobile autoplay, locked AudioContext,
+ * CSP block). Silent gameplay is degraded but the game still boots.
+ *
+ * Method shapes match `AudioBus` exactly so callers don't need to
+ * branch.
+ */
+function createNoopAudioBus(): AudioBus {
+	return {
+		play: () => {},
+		stop: () => {},
+		startAmbient: () => {},
+		stopAmbient: () => {},
+		isPlaying: () => false,
+		has: () => false,
+		getVolume: () => 0,
+		getMuted: () => true,
+		setVolume: async () => {},
+		setMuted: async () => {},
+		getActiveDucks: () => 0,
+		getAmbientRequested: () => false,
+	};
+}
+
 export async function boot(): Promise<BootResult> {
 	// 1. Database bootstrap. The bundled `chonkersSQLite.db` from
 	//    public/assets/databases/ is imported on first run; subsequent
@@ -45,8 +70,17 @@ export async function boot(): Promise<BootResult> {
 
 	// 2. Audio bus — preload all Howls + read kv settings. Bounded
 	//    timeouts inside getAudioBus() so a slow Howler load can't
-	//    block the entire boot sequence.
-	const audio = await getAudioBus();
+	//    block the entire boot sequence. If the bus init rejects
+	//    (mobile autoplay quirk, locked AudioContext, CSP block),
+	//    fall back to a no-op bus so the rest of the game still
+	//    boots — silent gameplay is degraded but playable.
+	let audio: AudioBus;
+	try {
+		audio = await getAudioBus();
+	} catch (err) {
+		console.warn("[chonkers/boot] audio init failed, using no-op bus", err);
+		audio = createNoopAudioBus();
+	}
 
 	// 3. Sim world — koota world + actions. The onMatchEnd callback
 	//    wires analytics' `refreshOnMatchEnd` here at the boot

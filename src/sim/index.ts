@@ -27,9 +27,14 @@ export {
 	AiThinking,
 	HoldProgress,
 	Match,
+	type MatchSnapshot,
+	type PiecePlacement,
+	piecesFromBoard,
 	Screen,
 	type ScreenKind,
 	Selection,
+	type SelectionSnapshot,
+	type SplitChainSnapshot,
 	SplitChainView,
 } from "./traits";
 export {

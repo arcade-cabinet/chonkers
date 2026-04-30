@@ -14,8 +14,10 @@ function BootGate() {
 
 	useEffect(() => {
 		let cancelled = false;
+		let bootResult: BootResult | null = null;
 		boot()
 			.then((r) => {
+				bootResult = r;
 				if (cancelled) {
 					void r.dispose();
 					return;
@@ -28,6 +30,12 @@ function BootGate() {
 			});
 		return () => {
 			cancelled = true;
+			// Dispose on unmount so the Capacitor App lifecycle
+			// listener doesn't accumulate across HMR reloads in dev
+			// or component remounts in production. If boot hasn't
+			// resolved yet, the cancelled flag will trigger the
+			// dispose inside the .then handler.
+			if (bootResult) void bootResult.dispose();
 		};
 	}, []);
 

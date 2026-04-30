@@ -28,6 +28,8 @@ export function App() {
 			return <WinView />;
 		case "lose":
 			return <LoseView />;
+		case "spectator-result":
+			return <SpectatorResultView />;
 		case "paused":
 			return <PauseView />;
 		case "settings":
@@ -51,6 +53,14 @@ function WinView() {
 
 function LoseView() {
 	return <PlaceholderScreen label="You lose" />;
+}
+
+function SpectatorResultView() {
+	// AI-vs-AI termination — the viewer wasn't either side, so the
+	// label is neutral. PRQ-4 follow-up will show the winning
+	// profile + final stack distribution + a "watch another"
+	// button. For now the placeholder communicates "the demo ended".
+	return <PlaceholderScreen label="Match complete" />;
 }
 
 function PauseView() {

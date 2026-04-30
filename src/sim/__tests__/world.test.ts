@@ -89,15 +89,15 @@ describe("createSimWorld", () => {
 		});
 		const turnBefore = sim.worldEntity.get(Match)?.turn;
 		await actions.stepTurn();
-		const turnAfter = sim.worldEntity.get(Match)?.turn;
-		// One ply advanced (or terminal). Either way, the trait
-		// should reflect the in-memory handle.
-		expect(turnAfter).toBeDefined();
-		// game snapshot reference must equal the broker's authoritative
-		// state.
-		expect(sim.worldEntity.get(Match)?.game).toBe(sim.handle?.game);
-		// turnBefore captured for posterity — may equal turnAfter on
-		// stalled outcomes, but must not be undefined.
+		const after = sim.worldEntity.get(Match);
+		expect(after).toBeDefined();
+		// `pieces` field is the primitive snapshot — count must
+		// match the broker's authoritative engine state's piece
+		// count. (We don't compare reference identity because the
+		// trait stores a frozen primitive copy, not the live ref.)
+		expect(after?.pieces.length).toBe(sim.handle?.game.board.size);
+		// turnBefore captured for posterity — may equal after.turn
+		// on stalled outcomes, but must not be undefined.
 		expect(turnBefore).toBeDefined();
 	});
 

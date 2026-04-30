@@ -26,6 +26,7 @@ import {
 	AiThinking,
 	HoldProgress,
 	Match,
+	piecesFromBoard,
 	Screen,
 	type ScreenKind,
 	Selection,
@@ -105,27 +106,39 @@ function upsert<T>(
 /**
  * Mirror the broker's match state onto the koota traits so React
  * subscriptions wake up. Called after every action that advances the
- * match (newMatch, playerMove, aiTurn, forfeit). Preserves the
- * `humanColor` from the prior Match snapshot — the caller (newMatch)
- * sets it explicitly; subsequent syncs must not clobber it.
+ * match (newMatch, playerMove, aiTurn, forfeit).
+ *
+ * `humanColor` and `plyCount` are passed in EXPLICITLY by the
+ * caller. Implicit preservation from the prior trait snapshot
+ * silently loses these on session-resume paths where the entity
+ * had no Match trait before this sync — the caller (newMatch /
+ * resumeMatch) is the only authoritative source.
+ *
+ * The `pieces` field is a frozen primitive snapshot derived from
+ * the engine's board map. The trait does NOT store the live
+ * `GameState` reference — the engine/UI boundary stays sealed.
  */
-function syncMatchTraits(sim: SimWorld): void {
+interface SyncMatchTraitsContext {
+	readonly humanColor: Color | null;
+	readonly plyCount: number;
+}
+
+function syncMatchTraits(sim: SimWorld, ctx: SyncMatchTraitsContext): void {
 	const { worldEntity, handle } = sim;
 	if (!handle) {
 		if (worldEntity.has(Match)) worldEntity.remove(Match);
 		if (worldEntity.has(SplitChainView)) worldEntity.remove(SplitChainView);
 		return;
 	}
-	const prior = worldEntity.get(Match);
 	upsert(worldEntity, Match as never, {
 		matchId: handle.matchId,
 		redProfile: handle.redProfile,
 		whiteProfile: handle.whiteProfile,
-		humanColor: prior?.humanColor ?? null,
+		humanColor: ctx.humanColor,
 		turn: handle.game.turn,
 		winner: handle.game.winner,
-		plyCount: prior?.plyCount ?? 0,
-		game: handle.game,
+		plyCount: ctx.plyCount,
+		pieces: piecesFromBoard(handle.game.board),
 	});
 	if (handle.game.chain) {
 		upsert(worldEntity, SplitChainView as never, {
@@ -164,16 +177,7 @@ export function buildSimActions(sim: SimWorld) {
 					: {}),
 			});
 			sim.handle = handle;
-			upsert(sim.worldEntity, Match as never, {
-				matchId: handle.matchId,
-				redProfile: handle.redProfile,
-				whiteProfile: handle.whiteProfile,
-				humanColor: input.humanColor,
-				turn: handle.game.turn,
-				winner: null,
-				plyCount: 0,
-				game: handle.game,
-			});
+			syncMatchTraits(sim, { humanColor: input.humanColor, plyCount: 0 });
 			sim.worldEntity.set(Screen, { value: "play" });
 		},
 
@@ -209,22 +213,26 @@ export function buildSimActions(sim: SimWorld) {
 		async stepTurn(): Promise<void> {
 			const handle = sim.handle;
 			if (!handle) return;
+			const prior = sim.worldEntity.get(Match);
+			const humanColor = prior?.humanColor ?? null;
+			const priorPly = prior?.plyCount ?? 0;
 			sim.worldEntity.set(AiThinking, { value: true });
 			try {
 				const result = await playTurn(sim.db, handle, {
 					mode: "live",
 					...(sim.onMatchEnd ? { onTerminal: sim.onMatchEnd } : {}),
 				});
-				syncMatchTraits(sim);
+				const newPly = result.persistedMove ? priorPly + 1 : priorPly;
+				syncMatchTraits(sim, { humanColor, plyCount: newPly });
 				if (result.terminal && handle.game.winner) {
-					// Translate engine winner → screen.
-					const matchTrait = sim.worldEntity.get(Match);
-					const humanColor = matchTrait?.humanColor ?? null;
+					// Translate engine winner → screen. Human matches
+					// route to win/lose. AI-vs-AI routes to a neutral
+					// `spectator-result` screen since neither side is
+					// "the player" — labelling it 'win' or 'lose'
+					// would mislead a viewer about whose perspective
+					// the message is from.
 					if (humanColor === null) {
-						// AI-vs-AI — winner screen is informational.
-						sim.worldEntity.set(Screen, {
-							value: handle.game.winner === "red" ? "win" : "lose",
-						});
+						sim.worldEntity.set(Screen, { value: "spectator-result" });
 					} else {
 						sim.worldEntity.set(Screen, {
 							value: handle.game.winner === humanColor ? "win" : "lose",
@@ -239,9 +247,11 @@ export function buildSimActions(sim: SimWorld) {
 		// Internal helper: sync traits after an external mutation
 		// (e.g., a human action applied directly through the engine
 		// outside of stepTurn). Exposed for the input pipeline's
-		// commit path to call after an action lands.
-		syncTraits(): void {
-			syncMatchTraits(sim);
+		// commit path to call after an action lands. Caller passes
+		// humanColor + plyCount explicitly — the trait does not
+		// preserve them implicitly across removes/adds.
+		syncTraits(ctx: { humanColor: Color | null; plyCount: number }): void {
+			syncMatchTraits(sim, ctx);
 		},
 
 		// First-player coin-flip exposed so the title screen can show

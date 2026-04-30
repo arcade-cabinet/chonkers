@@ -14,34 +14,60 @@
 
 import { trait } from "koota";
 import type { ProfileKey } from "@/ai";
-import type { Cell, Color, GameState } from "@/engine";
+import type { Cell, Color, Piece } from "@/engine";
 
-/** Top-level screen the app is showing. */
+/**
+ * Top-level screen the app is showing.
+ *
+ * `spectator-result` is the AI-vs-AI termination screen. It exists
+ * separately from `win` / `lose` (which presume a human player) so
+ * an AI-vs-AI demo doesn't display "You win" / "You lose" labels
+ * from the perspective of nobody.
+ */
 export type ScreenKind =
 	| "title"
 	| "play"
 	| "win"
 	| "lose"
+	| "spectator-result"
 	| "paused"
 	| "settings";
 
 export const Screen = trait({ value: "title" as ScreenKind });
 
 /**
+ * A single piece's UI-relevant data. Stored in `MatchSnapshot.pieces`
+ * as a flat array so React + R3F can iterate without reaching into
+ * the engine's `Map<bigint, Piece>` keying scheme. Frozen on every
+ * sync so accidental UI mutation surfaces as a TypeError rather
+ * than silently corrupting engine state.
+ */
+export interface PiecePlacement {
+	readonly col: number;
+	readonly row: number;
+	readonly height: number;
+	readonly color: Color;
+}
+
+/**
  * Active match metadata. Cardinality 1 — present iff a match is in
- * progress. Stored as a single AoS struct so the engine GameState
- * snapshot lands as a typed reference rather than getting flattened
- * to primitive fields.
+ * progress.
+ *
+ * The `pieces` array is a frozen primitive snapshot derived from the
+ * engine's `GameState.board`. The trait does NOT store a reference
+ * to the live engine state — UI components consume only this
+ * primitive surface, sealing the engine/UI boundary as the
+ * visual-shell PRD mandates.
  */
 export interface MatchSnapshot {
-	matchId: string;
-	redProfile: ProfileKey;
-	whiteProfile: ProfileKey;
-	humanColor: Color | null;
-	turn: Color;
-	winner: Color | null;
-	plyCount: number;
-	game: GameState | null;
+	readonly matchId: string;
+	readonly redProfile: ProfileKey;
+	readonly whiteProfile: ProfileKey;
+	readonly humanColor: Color | null;
+	readonly turn: Color;
+	readonly winner: Color | null;
+	readonly plyCount: number;
+	readonly pieces: ReadonlyArray<PiecePlacement>;
 }
 
 export const Match = trait(
@@ -53,9 +79,32 @@ export const Match = trait(
 		turn: "red",
 		winner: null,
 		plyCount: 0,
-		game: null,
+		pieces: [],
 	}),
 );
+
+/**
+ * Derive a frozen `PiecePlacement[]` from the engine's piece map.
+ * Called from `world.ts` when syncing the Match trait — keeps the
+ * derivation in one place so the trait's contract is "frozen
+ * primitive snapshot" everywhere.
+ */
+export function piecesFromBoard(
+	board: ReadonlyMap<bigint, Piece>,
+): ReadonlyArray<PiecePlacement> {
+	const out: PiecePlacement[] = [];
+	for (const piece of board.values()) {
+		out.push(
+			Object.freeze({
+				col: piece.col,
+				row: piece.row,
+				height: piece.height,
+				color: piece.color,
+			}),
+		);
+	}
+	return Object.freeze(out);
+}
 
 /** Currently selected source cell (if any). */
 export interface SelectionSnapshot {
