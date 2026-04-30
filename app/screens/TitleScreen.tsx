@@ -1,17 +1,41 @@
 import { Box, Button, Flex, Heading, Text } from "@radix-ui/themes";
 import { motion } from "framer-motion";
+import { useState } from "react";
 import { tokens } from "@/design/tokens";
-
-interface Props {
-	onStart: () => void;
-}
+import { useSimActions } from "../boot";
 
 /**
  * Title screen: Abril Fatface display name over the live board,
  * Lato body text, framer-motion fade-in. The 3D scene continues
  * rendering behind the scrim.
+ *
+ * Pulls `newMatch` from the sim actions context. PRQ-4 follow-up
+ * commits will add difficulty/disposition/colour selectors here;
+ * for now "New game" launches an AI-vs-AI balanced-easy match so
+ * the rest of the shell can be exercised end-to-end.
  */
-export function TitleScreen({ onStart }: Props) {
+export function TitleScreen() {
+	const actions = useSimActions();
+	// Re-entrancy guard: double-clicking "New game" before the first
+	// match is created could queue overlapping createMatch calls and
+	// produce two persisted matches with the user only seeing one.
+	const [starting, setStarting] = useState(false);
+
+	const onStart = async () => {
+		if (starting) return;
+		setStarting(true);
+		try {
+			await actions.newMatch({
+				redProfile: "balanced-easy",
+				whiteProfile: "balanced-easy",
+				humanColor: null,
+			});
+		} catch (err) {
+			console.error("[chonkers] newMatch failed", err);
+		} finally {
+			setStarting(false);
+		}
+	};
 	return (
 		<motion.div
 			initial={{ opacity: 0 }}
@@ -73,7 +97,13 @@ export function TitleScreen({ onStart }: Props) {
 					animate={{ opacity: 1 }}
 					transition={{ delay: 0.32, duration: 0.32 }}
 				>
-					<Button size="4" onClick={onStart} variant="solid" color="amber">
+					<Button
+						size="4"
+						onClick={() => void onStart()}
+						variant="solid"
+						color="amber"
+						disabled={starting}
+					>
 						New game
 					</Button>
 				</motion.div>

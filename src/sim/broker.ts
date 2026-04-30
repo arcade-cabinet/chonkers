@@ -243,6 +243,52 @@ export async function playTurn(
 }
 
 /**
+ * Apply a HUMAN-supplied action — same persistence + analytics
+ * plumbing as `playTurn`, but the action comes from the input
+ * pipeline rather than the AI. The engine's `applyAction` validates
+ * legality + ownership; if the action is illegal the call rejects
+ * with `IllegalActionError` and `handle.game` is unchanged.
+ *
+ * The visual shell calls this from the input pipeline's commit
+ * path. After it returns, the caller should call `playTurn` to let
+ * the AI take its turn (or, for a hot-seat game, just wait for the
+ * other human's input).
+ */
+export async function applyHumanAction(
+	db: StoreDb,
+	handle: MatchHandle,
+	action: Action,
+	options: PlayOptions = {},
+): Promise<PlayTurnResult> {
+	const mover = handle.game.turn;
+	const prevChain = handle.game.chain;
+	const next = engineApply(handle.game, action);
+
+	await persistMoveAtomic(db, handle, mover, action, handle.game, next);
+	handle.game = next;
+	await syncChain(db, handle.matchId, prevChain, next.chain);
+
+	if (next.winner) {
+		await matchesRepo.finalizeMatch(db, handle.matchId, next.winner);
+		if (options.onTerminal) await options.onTerminal(handle.matchId);
+		return {
+			action,
+			decision: { kind: "act", action, score: 0 },
+			mover,
+			terminal: true,
+			persistedMove: true,
+		};
+	}
+	return {
+		action,
+		decision: { kind: "act", action, score: 0 },
+		mover,
+		terminal: false,
+		persistedMove: true,
+	};
+}
+
+/**
  * Persist the chain transition that just happened in the engine.
  * Diffing on the (source, owner, remainingDetachments) tuple keeps
  * the DB write rate down — most plies don't touch the chain at all.

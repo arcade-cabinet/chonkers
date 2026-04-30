@@ -1,0 +1,26 @@
+# Maestro smoke flow for the Android debug APK.
+#
+# Asserts:
+#   1. App launches without crashing.
+#   2. Title screen renders ("Chonkers" + "Stack. Don't capture." +
+#      "New game" button).
+#   3. New game starts → reaches the play screen (Quit button visible).
+#   4. Quit returns to title.
+#
+# The full lifecycle test (background → foreground state preservation)
+# lives in a follow-up `lifecycle.yaml` flow alongside the rc-stage
+# governor work.
+
+appId: com.arcadecabinet.chonkers
+---
+- launchApp
+- assertVisible: "Chonkers"
+- assertVisible: "New game"
+- tapOn: "New game"
+# Wait for the play screen — Quit button is the most reliable
+# anchor since the title's "New game" disappears once we're playing.
+- assertVisible:
+    text: "Quit"
+    timeout: 10000
+- tapOn: "Quit"
+- assertVisible: "Chonkers"

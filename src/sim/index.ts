@@ -12,7 +12,23 @@
  * directly.
  */
 
+// Re-export pure render helpers + types from @/engine so app/* never
+// has to reach into engine directly. These are stateless math
+// functions / types — no broker bypass risk.
 export {
+	type Action,
+	adjacentCells,
+	BOARD_COLS,
+	BOARD_ROWS,
+	type Cell,
+	type Color,
+	cellsEqual,
+	posToVector3,
+	type Run,
+	vector3ToPos,
+} from "@/engine";
+export {
+	applyHumanAction,
 	type CreateMatchOptions,
 	createMatch,
 	type MatchHandle,
@@ -23,3 +39,27 @@ export {
 	saveMatchProgress,
 } from "./broker";
 export { decideFirstPlayer, freshCoinFlipSeed } from "./coinFlip";
+export {
+	AiThinking,
+	FALLBACK_PIECES,
+	HoldProgress,
+	Match,
+	type MatchSnapshot,
+	type PiecePlacement,
+	piecesFromBoard,
+	Screen,
+	type ScreenKind,
+	Selection,
+	type SelectionSnapshot,
+	type SplitChainSnapshot,
+	SplitChainView,
+} from "./traits";
+export {
+	buildSimActions,
+	type CreateSimWorldOptions,
+	createSimWorld,
+	type NewMatchInput,
+	type SimActions,
+	type SimActionsBuilder,
+	type SimWorld,
+} from "./world";
