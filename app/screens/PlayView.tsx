@@ -29,6 +29,7 @@ import {
 	cellsEqual,
 	Match,
 	Selection,
+	SplitArm,
 } from "@/sim";
 import { useSimActions } from "../boot";
 import { CanvasHandlersProvider } from "../canvas/CellClickContext";
@@ -54,6 +55,7 @@ export function PlayView() {
 	const match = useTrait(worldEntity, Match);
 	const selection = useTrait(worldEntity, Selection);
 	const aiThinking = useTrait(worldEntity, AiThinking);
+	const splitArm = useTrait(worldEntity, SplitArm);
 	const actions = useSimActions();
 	const haptics = useHaptics();
 	const [error, setError] = useState<string | null>(null);
@@ -129,11 +131,19 @@ export function PlayView() {
 				const stackHeight = match.pieces.filter(
 					(p) => p.col === cur.col && p.row === cur.row,
 				).length;
+				// SplitArm.count > 0 + < stackHeight means the user
+				// pre-selected a sub-stack via the SplitArmHeightBar
+				// widget (PRQ-A1). Otherwise full-stack move.
+				const armed = splitArm?.count ?? 0;
+				const moveCount =
+					armed > 0 && armed < stackHeight ? armed : stackHeight;
+				// indices 0..moveCount-1 = TOP `moveCount` pieces of
+				// the stack (height-0 is the top piece per RULES §5.1).
 				const action: Action = {
 					from: cur,
 					runs: [
 						{
-							indices: Array.from({ length: stackHeight }, (_, i) => i),
+							indices: Array.from({ length: moveCount }, (_, i) => i),
 							to: cell,
 						},
 					],
@@ -156,7 +166,7 @@ export function PlayView() {
 			}
 			// 3. Click empty cell with no selection → no-op.
 		},
-		[actions, haptics, humanColor, isHumanTurn, match, selection],
+		[actions, haptics, humanColor, isHumanTurn, match, selection, splitArm],
 	);
 
 	return (

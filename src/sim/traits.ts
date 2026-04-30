@@ -155,6 +155,24 @@ export const HoldProgress = trait({ value: 0 });
 export const AiThinking = trait({ value: false });
 
 /**
+ * Sub-stack arming for split moves. When `count > 0` and the
+ * selected stack's height is ≥ 2, the next destination commit
+ * splits off the top `count` pieces (RULES.md §5) instead of
+ * moving the full stack. `count = 0` (default) commits a full-
+ * stack move.
+ *
+ * The UI surface is `app/canvas/SplitArmHeightBar.tsx` — a vertical
+ * dot column rendered beside the selection ring; each dot
+ * corresponds to a sub-stack count (1..stackHeight-1), and tapping
+ * one sets `SplitArm.count`. A second tap on the same dot resets
+ * to 0 (back to full-stack mode).
+ *
+ * Reset on every newMatch / quitMatch / setSelection-to-different-
+ * cell so a stale arm from one selection doesn't leak.
+ */
+export const SplitArm = trait({ count: 0 });
+
+/**
  * New-match ceremony state. Drives the visible piece-placement
  * reveal + coin-flip sequence between lobby and play.
  *

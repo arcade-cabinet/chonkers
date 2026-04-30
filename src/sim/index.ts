@@ -54,6 +54,7 @@ export {
 	type ScreenKind,
 	Selection,
 	type SelectionSnapshot,
+	SplitArm,
 	type SplitChainSnapshot,
 	SplitChainView,
 } from "./traits";

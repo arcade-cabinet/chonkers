@@ -36,6 +36,7 @@ import {
 	Screen,
 	type ScreenKind,
 	Selection,
+	SplitArm,
 	SplitChainView,
 } from "./traits";
 
@@ -87,6 +88,7 @@ export function createSimWorld(options: CreateSimWorldOptions): SimWorld {
 		Selection({ cell: null }),
 		HoldProgress({ value: 0 }),
 		AiThinking({ value: false }),
+		SplitArm({ count: 0 }),
 		Ceremony({
 			phase: "idle",
 			firstPlayer: "red",
@@ -208,6 +210,7 @@ export function buildSimActions(sim: SimWorld) {
 			sim.worldEntity.set(Selection, { cell: null });
 			sim.worldEntity.set(HoldProgress, { value: 0 });
 			sim.worldEntity.set(AiThinking, { value: false });
+			sim.worldEntity.set(SplitArm, { count: 0 });
 			sim.worldEntity.set(Ceremony, {
 				phase: "idle",
 				firstPlayer: "red",
@@ -224,6 +227,7 @@ export function buildSimActions(sim: SimWorld) {
 			sim.worldEntity.set(Selection, { cell: null });
 			sim.worldEntity.set(HoldProgress, { value: 0 });
 			sim.worldEntity.set(AiThinking, { value: false });
+			sim.worldEntity.set(SplitArm, { count: 0 });
 			sim.worldEntity.set(Ceremony, {
 				phase: "idle",
 				firstPlayer: "red",
@@ -256,7 +260,25 @@ export function buildSimActions(sim: SimWorld) {
 		},
 
 		setSelection(cell: { col: number; row: number } | null): void {
+			// Selection change resets SplitArm so a stale arm count
+			// from the prior selection doesn't leak — RULES.md §5
+			// only lets the same source split, and the count must
+			// be re-armed against the new selection's stack height.
+			const prior = sim.worldEntity.get(Selection)?.cell ?? null;
+			const cellsDiffer =
+				(!prior && cell !== null) ||
+				(prior !== null &&
+					cell !== null &&
+					(prior.col !== cell.col || prior.row !== cell.row)) ||
+				(!cell && prior !== null);
 			sim.worldEntity.set(Selection, { cell });
+			if (cellsDiffer) sim.worldEntity.set(SplitArm, { count: 0 });
+		},
+
+		setSplitArm(count: number): void {
+			sim.worldEntity.set(SplitArm, {
+				count: Math.max(0, Math.floor(count)),
+			});
 		},
 
 		setHoldProgress(value: number): void {

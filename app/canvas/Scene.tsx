@@ -11,6 +11,7 @@ import { CellHitboxGrid } from "./CellHitboxGrid";
 import { Lighting } from "./Lighting";
 import { Pieces } from "./Pieces";
 import { SelectionOverlay } from "./SelectionOverlay";
+import { SplitArmHeightBar } from "./SplitArmHeightBar";
 import { TippingBoard } from "./TippingBoard";
 
 const BEZEL_FRAME_THICKNESS = 0.45;
@@ -73,6 +74,7 @@ export function Scene() {
 					<Board />
 					<Pieces />
 					<SelectionOverlay />
+					<SplitArmHeightBar />
 					<CellHitboxGrid />
 				</TippingBoard>
 			</Suspense>
