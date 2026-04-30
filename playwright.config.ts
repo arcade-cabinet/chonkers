@@ -17,14 +17,17 @@ import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
 	testDir: "./e2e",
-	timeout: 60_000,
+	// Cold-start CI workers need ~60s to load the bezel + board PBR
+	// textures + HDRI + bundle. Per-test timeout covers that plus
+	// the smoke spec's 60s wait-for-turn-flip budget.
+	timeout: 120_000,
 	expect: { timeout: 5_000 },
 	forbidOnly: !!process.env.CI,
 	retries: process.env.CI ? 2 : 0,
 	workers: 1,
 	reporter: process.env.CI ? "github" : "list",
 	use: {
-		baseURL: "http://localhost:5173",
+		baseURL: "http://localhost:5173/chonkers/",
 		trace: "on-first-retry",
 		screenshot: "only-on-failure",
 	},

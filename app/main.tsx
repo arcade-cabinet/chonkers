@@ -5,8 +5,10 @@ import { createRoot } from "react-dom/client";
 import { radixTheme } from "@/design/theme";
 import { App } from "./App";
 import { type BootResult, boot, ErrorBoundary, SimProvider } from "./boot";
+import { installFonts } from "./css/fonts";
 import "./css/style.css";
-import "./css/fonts.css";
+
+installFonts();
 
 function BootGate() {
 	const [result, setResult] = useState<BootResult | null>(null);
