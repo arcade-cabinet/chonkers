@@ -113,6 +113,14 @@ export function StackRadialController() {
 	);
 
 	if (!selection?.cell || !match) return null;
+	// Cheap scalar guards FIRST — `match.pieces` is replaced on every
+	// move so the component re-renders on every AI ply. Bail before
+	// the O(N) filter when conditions can't be met. Audit polish for
+	// the per-ply render-rate amplifier.
+	const humanColor = match.humanColor;
+	const isHumanTurn =
+		humanColor !== null && match.turn === humanColor && !match.winner;
+	if (!isHumanTurn) return null;
 	const cell = selection.cell;
 	const piecesAtCell = match.pieces.filter(
 		(p) => p.col === cell.col && p.row === cell.row,
@@ -123,10 +131,6 @@ export function StackRadialController() {
 	const topPiece = piecesAtCell.reduce((max, p) =>
 		p.height > max.height ? p : max,
 	);
-	const humanColor = match.humanColor;
-	const isHumanTurn =
-		humanColor !== null && match.turn === humanColor && !match.winner;
-	if (!isHumanTurn) return null;
 	if (topPiece.color !== humanColor) return null;
 
 	// World-space anchor: top of the stack (top piece's center +
