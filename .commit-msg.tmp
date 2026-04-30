@@ -1,0 +1,43 @@
+refactor(audio,design): absorb reviewer-trio findings on PR #8
+
+Security (NaN/Infinity guard):
+- audioBus init now checks `Number.isFinite(persistedVolume)` and
+  applies `clamp01` before assigning. Without this a tampered
+  localStorage `NaN` flows into `Howl.volume(NaN)` (silently dropped
+  by the Web Audio spec — symptom is silent audio rather than a
+  crash) and `Infinity` produces `RangeError` in some browsers. New
+  test in volume-from-kv.browser.test.ts covers NaN, Infinity, and
+  out-of-range positive values.
+
+Code review (Howler global registry leak):
+- `__resetBusForTest` now calls a new `bus.__teardown()` method that
+  `unload()`s every Howl instead of just `stop()`-ing them. Without
+  this, Howler retains the orphaned Howls in its global
+  `Howler._howls` registry across tests; pending 'end' events from
+  the orphans could fire fades on a global audio graph the test no
+  longer owns. Counter + flag also reset.
+
+Simplifier (file-level structure):
+- ducking.ts deleted; `duckAmbient` + `restoreAmbient` inlined as
+  module-scope functions in audioBus.ts. The two helpers are only
+  called from within the bus and don't have a separate testable
+  surface (ducking tests exercise them via `play()`/`stop()` on the
+  bus, not directly), so the abstraction overhead exceeded content.
+- _setup.ts: removed redundant `Howler.ctx.resume()` block in
+  beforeEach. The bounded resume already runs inside `init()` via
+  `getAudioBus()` — the setup version was racing against a context
+  that may not exist yet.
+- design/tokens.ts: added `motion.uiCloseMs` (140) and
+  `motion.screenFadeMs` (200) tokens. design/motion.ts no longer
+  hardcodes durations — every variant now sources from
+  `tokens.motion.*`.
+
+Docs:
+- DESIGN.md: documented the duck-no-op-when-ambient-not-playing
+  edge so PRQ-2 sim authors aren't surprised by stings firing
+  before `startAmbient()`.
+
+Tests: 184 node + 33 browser passing locally (was 32; added one
+NaN/Infinity guard test).
+
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>

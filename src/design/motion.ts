@@ -35,7 +35,7 @@ export const radialClose: Variants = {
 	hidden: {
 		opacity: 0,
 		scale: 0.8,
-		transition: { duration: ms(140), ease: "easeIn" },
+		transition: { duration: ms(tokens.motion.uiCloseMs), ease: "easeIn" },
 	},
 };
 
@@ -75,14 +75,17 @@ export const modalOut: Variants = {
 	hidden: {
 		opacity: 0,
 		y: 16,
-		transition: { duration: ms(140), ease: "easeIn" },
+		transition: { duration: ms(tokens.motion.uiCloseMs), ease: "easeIn" },
 	},
 };
 
 /** Cross-fade between top-level screens. */
 export const screenFade: Variants = {
 	hidden: { opacity: 0 },
-	visible: { opacity: 1, transition: { duration: ms(200) } },
+	visible: {
+		opacity: 1,
+		transition: { duration: ms(tokens.motion.screenFadeMs) },
+	},
 };
 
 /**

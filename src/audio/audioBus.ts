@@ -19,11 +19,30 @@
 
 import { Howl, Howler } from "howler";
 import { kv } from "@/persistence/preferences";
-import { duckAmbient, restoreAmbient } from "./ducking";
 import { AUDIO_ROLES, type AudioRole, STING_ROLES } from "./roles";
 
 const DEFAULT_VOLUME = 0.7;
 const DEFAULT_MUTED = false;
+
+// Ducking constants. Inlined here because the duck/restore helpers
+// are only called from within the bus itself — no separate testable
+// surface justifies a `ducking.ts` module.
+const DUCK_FACTOR = 0.25;
+const DUCK_FADE_MS = 200;
+const RESTORE_FADE_MS = 400;
+
+function duckAmbient(ambient: Howl | undefined, busVolume: number): void {
+	if (!ambient?.playing()) return;
+	// Fade origin is the CURRENT volume (not bus.volume) — preserves
+	// any in-flight previous fade and prevents an abrupt jump if duck
+	// is called while a prior duck/restore hasn't fully completed.
+	ambient.fade(ambient.volume(), busVolume * DUCK_FACTOR, DUCK_FADE_MS);
+}
+
+function restoreAmbient(ambient: Howl | undefined, busVolume: number): void {
+	if (!ambient) return;
+	ambient.fade(ambient.volume(), busVolume, RESTORE_FADE_MS);
+}
 
 const SETTINGS_NAMESPACE = "settings";
 const VOLUME_KEY = "volume";
@@ -70,8 +89,17 @@ class HowlerAudioBus implements AudioBus {
 			VOLUME_KEY,
 		);
 		const persistedMuted = await kv.get<boolean>(SETTINGS_NAMESPACE, MUTED_KEY);
+		// `typeof NaN === "number"` is true and `typeof Infinity === "number"`
+		// is true — without an explicit `isFinite` check, a tampered
+		// localStorage entry of `NaN` or `Infinity` would flow into
+		// `Howl.volume(...)` and either be silently dropped (NaN) or
+		// throw a RangeError (Infinity). `clamp01` defends the upper /
+		// lower bounds even on legitimate-but-out-of-spec persisted
+		// values from older clients.
 		this.volume =
-			typeof persistedVolume === "number" ? persistedVolume : DEFAULT_VOLUME;
+			typeof persistedVolume === "number" && Number.isFinite(persistedVolume)
+				? clamp01(persistedVolume)
+				: DEFAULT_VOLUME;
 		this.muted =
 			typeof persistedMuted === "boolean" ? persistedMuted : DEFAULT_MUTED;
 
@@ -236,6 +264,19 @@ class HowlerAudioBus implements AudioBus {
 			this.activeDucks = 0;
 		}
 	}
+
+	/**
+	 * Unload every registered Howl + clear the role map. Callers MUST
+	 * be done with the bus before invoking this — playing on an
+	 * unloaded Howl is a no-op. Used by `__resetBusForTest` to
+	 * release the Howler global registry between tests.
+	 */
+	__teardown(): void {
+		for (const sound of this.howls.values()) sound.unload();
+		this.howls.clear();
+		this.activeDucks = 0;
+		this.ambientRequested = false;
+	}
 }
 
 let busPromise: Promise<AudioBus> | null = null;
@@ -258,16 +299,18 @@ export function getAudioBus(): Promise<AudioBus> {
  * Test-only escape hatch: clear the singleton so the next
  * `getAudioBus()` re-initialises against the current kv state.
  * Production code MUST NOT call this.
+ *
+ * Calls `__teardown` on the underlying instance, which `unload()`s
+ * every Howl. Without that, Howler retains the orphaned Howls in its
+ * global `Howler._howls` registry across tests and any pending
+ * `'end'` events fire fades on a global audio graph the test no
+ * longer owns.
  */
 export async function __resetBusForTest(): Promise<void> {
 	if (!busPromise) return;
 	try {
-		const bus = await busPromise;
-		// Best-effort tear-down: stop everything so leaked Howls
-		// from prior tests don't interfere with the next setup.
-		for (const role of Object.keys(AUDIO_ROLES) as AudioRole[]) {
-			bus.stop(role);
-		}
+		const bus = (await busPromise) as AudioBus & { __teardown(): void };
+		bus.__teardown();
 	} catch {
 		// init may have rejected — fine, just clear and move on.
 	}

@@ -32,8 +32,13 @@ export const tokens = {
 	motion: {
 		// 2D UI motion budget (framer-motion)
 		uiOpenMs: 160,
+		// Closing animations (radial close, modal out) are slightly
+		// faster than open per UI convention.
+		uiCloseMs: 140,
 		uiFlashMs: 240,
 		modalMs: 180,
+		// Cross-fade between top-level Radix screens.
+		screenFadeMs: 200,
 		// 3D piece motion budget (R3F tweens)
 		pieceLiftMs: 120,
 		pieceArcMs: 200,

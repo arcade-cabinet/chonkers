@@ -47,4 +47,23 @@ describe("audioBus — kv-backed volume + mute", () => {
 		const b = await getAudioBus();
 		expect(b.getMuted()).toBe(true);
 	});
+
+	it("rejects NaN / Infinity / out-of-range volumes from kv (defends Howl.volume)", async () => {
+		// All three pass the `typeof === "number"` guard but are
+		// invalid Howl volumes. The init path must defend against
+		// tampered or older-client localStorage values.
+		await kv.put("settings", "volume", Number.NaN);
+		const a = await getAudioBus();
+		expect(a.getVolume()).toBe(0.7);
+		await __resetBusForTest();
+
+		await kv.put("settings", "volume", Number.POSITIVE_INFINITY);
+		const b = await getAudioBus();
+		expect(b.getVolume()).toBe(0.7);
+		await __resetBusForTest();
+
+		await kv.put("settings", "volume", 2.5);
+		const c = await getAudioBus();
+		expect(c.getVolume()).toBe(1); // clamped to upper bound
+	});
 });

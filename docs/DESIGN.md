@@ -146,6 +146,8 @@ Volume + mute persist to `kv` namespace `'settings'` (keys `'volume'` 0..1, `'mu
 
 Ducking: when any role in `STING_ROLES` (`sting`, `win`, `lose`) plays, the bus increments an `activeDucks` counter and fades ambient to 25% of the bus volume over 200ms. When the sting ends (or `stop()` is called), the counter decrements; when it reaches 0, ambient restores over 400ms. Overlapping stings stack correctly — the first sting starts the duck, the last sting to end restores.
 
+Edge: `duckAmbient` early-returns if ambient isn't already playing. So if a sting fires before `startAmbient()` has been called (e.g., a unit-test that exercises only the win sting), the duck is a no-op. The counter still increments + decrements normally; the visible volume just doesn't change. Sequence sims that need ducking active must call `startAmbient()` before the first sting.
+
 ---
 
 ## Motion
