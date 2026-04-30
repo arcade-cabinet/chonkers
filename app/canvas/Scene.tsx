@@ -10,20 +10,19 @@ import { CellHitboxGrid } from "./CellHitboxGrid";
 import { Lighting } from "./Lighting";
 import { Pieces } from "./Pieces";
 import { SelectionOverlay } from "./SelectionOverlay";
+import { TippingBoard } from "./TippingBoard";
 
 // Camera frames the bezel from slightly above + slightly back. The
 // scene composition reads as "tabletop-from-above" — the BEZEL is
-// flat to the camera plane, the BOARD tilts upward inside the bezel
-// to give perceived depth + see stack heights without rotating the
-// world.
+// flat to the camera plane, the BOARD tilts on its center axle
+// inside the bezel toward whichever side currently "owns" the
+// turn (the player's side drops when it's their turn).
 //
 // Camera height + fov tuned so the bezel + tilted board fills the
 // viewport with all four bezel slabs visible (front/back bezels
 // frame the top/bottom of the viewport, side bezels frame the
 // left/right).
 const CAMERA_POSITION: [number, number, number] = [0, 13.2, 0.8];
-const BOARD_TILT_X = -Math.PI / 7.2; // ~25° forward — gentle perspective inside bezel
-const BOARD_LIFT_Y = 0.04; // sit just above bezel inset
 
 const { cols, rows, cellSize } = tokens.board;
 const BOARD_INNER_WIDTH = cols * cellSize;
@@ -59,13 +58,15 @@ export function Scene() {
 				<Lighting />
 				{/* Bezel is flat to the camera plane (no rotation) */}
 				<Bezel innerWidth={BOARD_INNER_WIDTH} innerDepth={BOARD_INNER_DEPTH} />
-				{/* Board content tilts upward inside the bezel */}
-				<group rotation={[BOARD_TILT_X, 0, 0]} position={[0, BOARD_LIFT_Y, 0]}>
+				{/* Board content tilts on its center axle. Resting state
+				 * tips toward the human; AI's turn tips back toward AI;
+				 * win tips toward the loser as a "table dropped" beat. */}
+				<TippingBoard>
 					<Board />
 					<Pieces />
 					<SelectionOverlay />
 					<CellHitboxGrid />
-				</group>
+				</TippingBoard>
 			</Suspense>
 		</Canvas>
 	);
