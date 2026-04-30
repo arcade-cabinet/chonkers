@@ -24,6 +24,7 @@ export const tokens = {
 	},
 	surface: {
 		scrim: "rgba(15, 10, 5, 0.72)",
+		canvasClear: "#1a120a",
 	},
 	font: {
 		body: '"Lato", system-ui, -apple-system, "Segoe UI", sans-serif',

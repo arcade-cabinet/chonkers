@@ -33,10 +33,10 @@ import { defineCustomElements as defineJeepSqlite } from "jeep-sqlite/loader";
 let registered = false;
 let registrationPromise: Promise<void> | null = null;
 
+const BASE = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
+
 function resolveWasmPath(): string {
-	const base = import.meta.env.BASE_URL ?? "/";
-	const trimmed = base.endsWith("/") ? base.slice(0, -1) : base;
-	return `${trimmed}/assets`;
+	return `${BASE}/assets`;
 }
 
 /**
@@ -57,28 +57,30 @@ function resolveWasmPath(): string {
  * (file://) builds are untouched.
  */
 function installAssetsPathShim(): void {
-	const base = import.meta.env.BASE_URL ?? "/";
-	if (base === "/" || base === "./") return;
-	const prefix = base.endsWith("/") ? base.slice(0, -1) : base;
-	const open = XMLHttpRequest.prototype.open;
+	if (BASE === "") return;
+	type XHROpenFn = (this: XMLHttpRequest, ...args: unknown[]) => void;
+	type Patched = XHROpenFn & { readonly __chonkersPatched?: true };
+	const original = XMLHttpRequest.prototype.open as unknown as Patched;
+	if (original.__chonkersPatched) return;
 	const REWRITE_RE = /^\/assets\//;
-	// biome-ignore lint/suspicious/noExplicitAny: XHR's overloads have
-	// many positional shapes; we forward `arguments` verbatim.
-	XMLHttpRequest.prototype.open = function patchedOpen(
-		this: XMLHttpRequest,
-		method: string,
-		url: string | URL,
-		// biome-ignore lint/suspicious/noExplicitAny: see above
-		...rest: any[]
-	) {
-		if (typeof url === "string" && REWRITE_RE.test(url)) {
-			const rewritten = `${prefix}${url}`;
-			// biome-ignore lint/suspicious/noExplicitAny: see above
-			return (open as any).call(this, method, rewritten, ...rest);
+	const patched: XHROpenFn = function patchedOpen(this, ...args) {
+		const raw = args[1];
+		const path =
+			typeof raw === "string" ? raw : raw instanceof URL ? raw.pathname : null;
+		if (path !== null && REWRITE_RE.test(path)) {
+			args[1] =
+				typeof raw === "string"
+					? `${BASE}${raw}`
+					: new URL(`${BASE}${path}${(raw as URL).search}`, raw as URL);
 		}
-		// biome-ignore lint/suspicious/noExplicitAny: see above
-		return (open as any).call(this, method, url, ...rest);
-	} as typeof XMLHttpRequest.prototype.open;
+		return original.apply(this, args);
+	};
+	Object.defineProperty(patched, "__chonkersPatched", {
+		value: true,
+		enumerable: false,
+	});
+	XMLHttpRequest.prototype.open =
+		patched as unknown as typeof XMLHttpRequest.prototype.open;
 }
 
 /**

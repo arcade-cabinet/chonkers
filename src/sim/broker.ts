@@ -29,7 +29,31 @@
 // `node:crypto` only works in Node and breaks the bundled web build
 // (Vite leaves the `node:` import unresolved → "randomUUID is not a
 // function" at runtime). The global form works on both runtimes.
-const randomUUID = (): string => globalThis.crypto.randomUUID();
+//
+// Fallback path for insecure-context WebViews (e.g. Capacitor on
+// Android API <26 / Chrome <92, LAN HTTP previews used by the
+// e2e governor): build a v4 UUID from `crypto.getRandomValues` if
+// the convenience method is missing. Throws a typed error if even
+// `getRandomValues` is unavailable so the failure is diagnosable
+// rather than `TypeError: undefined is not a function`.
+const randomUUID = (): string => {
+	const c = globalThis.crypto;
+	if (c?.randomUUID) return c.randomUUID();
+	if (!c?.getRandomValues) {
+		throw new Error(
+			"chonkers: crypto.getRandomValues unavailable — match-id generation requires a secure context",
+		);
+	}
+	const bytes = new Uint8Array(16);
+	c.getRandomValues(bytes);
+	bytes[6] = ((bytes[6] ?? 0) & 0x0f) | 0x40; // version 4
+	bytes[8] = ((bytes[8] ?? 0) & 0x3f) | 0x80; // variant 10
+	const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join(
+		"",
+	);
+	return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+};
+
 import {
 	type AiState,
 	CURRENT_DUMP_FORMAT_VERSION,
