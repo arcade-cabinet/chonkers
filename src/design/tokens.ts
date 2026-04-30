@@ -69,11 +69,15 @@ export const tokens = {
 	// Camera + scene-tilt tunables. The "sitting at the table" angle is
 	// determined by cameraY (height) and cameraZ (distance back); the
 	// tip-toward-active-player magnitude is `baseTiltMagnitude`.
+	// Camera angle from horizontal = atan(cameraY / cameraZ) ≈ 40°.
+	// At this angle the player reads the board as "leaning over the
+	// table" without looking straight down (which kills stack height
+	// readability).
 	scene: {
 		cameraX: 0,
-		cameraY: 8,
-		cameraZ: 14,
-		cameraFov: 42,
+		cameraY: 11,
+		cameraZ: 13,
+		cameraFov: 38,
 		cameraNear: 0.1,
 		cameraFar: 100,
 		baseTiltMagnitude: Math.PI / 15, // ~12° baseline tilt

@@ -116,24 +116,40 @@ export function buildBoard(): BoardHandles {
 	playfield.receiveShadow = true;
 	group.add(playfield);
 
-	// Home rows — row 0 and row (rows-1). One row deep each.
+	// Home rows — row 0 and row (rows-1). One row deep each. They sit
+	// slightly proud of the playfield (delta y of 0.003) so the wood
+	// seam between playfield and home row catches a thin shadow line
+	// — that's what makes the home rows read as a distinct band.
+	//
+	// `color` here multiplies the diffuse map: 0.55 grey darkens the
+	// PBR walnut so the home wood reads visibly DEEPER than the
+	// playfield even on the back row of the board where the camera
+	// angle foreshortens it. Without this, real walnut + raking key
+	// light reads almost identical to the playfield from the back.
 	const homeMat = new THREE.MeshStandardMaterial({
 		...loadPbr(loader, ASSETS.pbr.boardHome, TEXTURE_REPEAT_HOME),
 		roughness: 0.78,
 		metalness: 0.05,
 		displacementScale: 0.012,
+		color: new THREE.Color(0x808080),
 	});
 	const homeGeom = new THREE.PlaneGeometry(cols * cellSize, cellSize, 1, 1);
 	homeGeom.rotateX(-Math.PI / 2);
 
+	// row 0 — RED's home (the side red pieces are pushing TOWARD as
+	// the goal of the game; red occupies rows 1/2/3 at start, white
+	// wins by reaching row 0).
 	const redHome = new THREE.Mesh(homeGeom, homeMat);
-	redHome.position.set(0, 0.001, -((rows - 1) / 2) * cellSize);
+	redHome.position.set(0, 0.005, -((rows - 1) / 2) * cellSize);
 	redHome.receiveShadow = true;
+	redHome.name = "home-red";
 	group.add(redHome);
 
+	// row (rows-1) — WHITE's home.
 	const whiteHome = new THREE.Mesh(homeGeom, homeMat);
-	whiteHome.position.set(0, 0.001, ((rows - 1) / 2) * cellSize);
+	whiteHome.position.set(0, 0.005, ((rows - 1) / 2) * cellSize);
 	whiteHome.receiveShadow = true;
+	whiteHome.name = "home-white";
 	group.add(whiteHome);
 
 	// Inset gridlines — thin dark strips slightly proud of the playfield

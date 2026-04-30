@@ -11,9 +11,11 @@
 
 import * as THREE from "three";
 import { tokens } from "@/design";
+import { FALLBACK_PIECES } from "@/sim/traits";
 import { buildBoard } from "./board";
 import { buildCamera, resizeCamera } from "./camera";
 import { installLighting } from "./lighting";
+import { buildPieces, loadPieceMaterials } from "./pieces";
 
 const canvas = document.getElementById("scene-canvas");
 const overlay = document.getElementById("overlay");
@@ -55,6 +57,15 @@ await installLighting(scene, renderer);
 const board = buildBoard();
 scene.add(board.group);
 
+const pieceMaterials = loadPieceMaterials();
+const pieces = buildPieces(pieceMaterials);
+scene.add(pieces.group);
+
+// PRQ-T2: render the canonical 5-4-3 starting layout from the engine
+// directly. PRQ-T3 wires the koota Match.pieces subscription so the
+// rendered state tracks the broker as plies resolve.
+pieces.sync(FALLBACK_PIECES);
+
 window.addEventListener("resize", () => {
 	fitCanvas(canvas);
 	renderer.setSize(canvas.clientWidth, canvas.clientHeight, false);
@@ -74,6 +85,7 @@ tick();
 if (import.meta.hot) {
 	import.meta.hot.dispose(() => {
 		cancelAnimationFrame(rafId);
+		pieces.dispose();
 		renderer.dispose();
 	});
 }
