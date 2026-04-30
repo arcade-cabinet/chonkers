@@ -18,13 +18,30 @@ installFonts();
 // mutated world B's Screen, breaking the lobby → play transition.
 //
 // Caching the boot promise globally guarantees a single boot per
-// page lifetime regardless of StrictMode mount cycles. The
-// dispose path is moved to a `beforeunload` handler so the
+// page lifetime regardless of StrictMode mount cycles. The dispose
+// path is on a single-shot `pagehide` listener (below) so the
 // Capacitor lifecycle listener still cleans up at app teardown.
 let bootPromise: Promise<BootResult> | null = null;
 function getBoot(): Promise<BootResult> {
 	if (!bootPromise) bootPromise = boot();
 	return bootPromise;
+}
+
+// Page lifecycle dispose. Honours BootResult.dispose() at the page
+// level (Capacitor / browser teardown) rather than at the React-tree
+// level — StrictMode double-unmounts the BootGate effect during the
+// initial mount cycle, and disposing there would tear down the boot
+// the very next mount needs. `pagehide` fires once per page lifetime
+// (BFCache included) so it's the safe seam.
+if (typeof window !== "undefined") {
+	window.addEventListener(
+		"pagehide",
+		() => {
+			if (!bootPromise) return;
+			void bootPromise.then((r) => r.dispose()).catch(() => undefined);
+		},
+		{ once: true },
+	);
 }
 
 function BootGate() {

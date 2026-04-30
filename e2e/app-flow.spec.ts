@@ -26,7 +26,11 @@ test.describe("smoke — boot + AI-vs-AI demo", () => {
 	test("lobby renders + new match starts + game progresses", async ({
 		page,
 	}) => {
-		await page.goto("/?testHook=1");
+		// Relative URL — preserves the configured baseURL ("/chonkers/")
+		// so this test still passes against the Pages subpath, not just
+		// against a root deployment. The leading slash variant resets to
+		// origin root.
+		await page.goto("?testHook=1");
 
 		// Test hook materialises once boot completes.
 		await page.waitForFunction(

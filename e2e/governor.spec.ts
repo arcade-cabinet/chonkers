@@ -40,7 +40,10 @@ test.describe("governor — 100 ai-vs-ai matches end-to-end @nightly", () => {
 			consoleErrors.push(`uncaught: ${err.message}`);
 		});
 
-		await page.goto("/?testHook=1");
+		// Relative URL — preserves the configured baseURL ("/chonkers/")
+		// so the governor exercises the same Pages subpath the live
+		// deployment serves. Leading-slash variant would reset to root.
+		await page.goto("?testHook=1");
 		await page.waitForFunction(
 			() => typeof window.__chonkers?.actions?.newMatch === "function",
 			null,
