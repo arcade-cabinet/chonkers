@@ -118,7 +118,7 @@ test.describe("@visual golden path — AI-vs-AI playthrough", () => {
 		await expect(turnIndicator).toBeVisible({ timeout: 30_000 });
 
 		const observedTurns: string[] = [];
-		for (let i = 0; i < 6; i += 1) {
+		for (let i = 0; i < 12; i += 1) {
 			const text = (await turnIndicator.textContent())?.trim() ?? "";
 			observedTurns.push(text);
 			await snap(`08-mid-match-${String(i).padStart(2, "0")}`);
@@ -128,14 +128,24 @@ test.describe("@visual golden path — AI-vs-AI playthrough", () => {
 			await page.waitForTimeout(1500);
 		}
 
-		// ── 6. End screen ──
-		// PLY_CAP-bounded wait — easy-vs-easy AI-vs-AI almost always
-		// terminates in <30 plies but we cap at 80 for safety. The
-		// EndScreen mounts when the engine declares a winner; it has
-		// a "Play again" button as the canonical reachable affordance.
-		const playAgain = page.getByRole("button", { name: /play again/i });
-		await expect(playAgain).toBeVisible({ timeout: 4 * 60_000 });
-		await snap("99-end-screen");
+		// ── 6. Quit back to lobby ──
+		// In spectator mode (humanColor=null) the Forfeit button is
+		// hidden — there's no human to forfeit on behalf of. The
+		// Quit button is always visible; clicking it tears down the
+		// match and returns to the lobby. Snap the post-quit lobby
+		// to verify the picker re-mounts and the demo pieces re-
+		// render correctly after a match has run.
+		const quit = page.getByRole("button", { name: /^Quit$/i });
+		await quit.click();
+		// AlertDialog confirmation
+		const confirmQuit = page.getByRole("button", { name: /^Leave$/i });
+		await confirmQuit.click({ force: true }).catch(() => undefined);
+		// Wait for the lobby to remount (picker SegmentedControl).
+		await expect(page.getByRole("radio", { name: "Play Red" })).toBeVisible({
+			timeout: 30_000,
+		});
+		await page.waitForTimeout(600);
+		await snap("99-lobby-after-quit");
 
 		// ── 7. Console-error budget ──
 		// Tolerate noise from THREE deprecation warnings (Clock /

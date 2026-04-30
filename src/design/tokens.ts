@@ -63,17 +63,19 @@ export const tokens = {
 		// onCreated hook calls camera.lookAt(0, 0, 0) so position
 		// alone determines the view.
 		//
-		// Tabletop-3/4 framing: camera sits 8.5 units above + 9 units
+		// Tabletop-3/4 framing: camera sits 8 units above + 14 units
 		// behind the bezel center, which gives a viewing angle of
-		// ~atan(8.5/9) ≈ 43° from horizontal — high enough that
+		// ~atan(8/14) ≈ 30° from horizontal — high enough that
 		// stacked-piece heights register, low enough that the bezel
-		// reads as a tabletop the user is leaning over rather than a
-		// vertical wall they're looking down at. Previous values
-		// (Y=13.2, Z=0.8) sat almost directly overhead; even modest
-		// board tilt then read as a wall, not a table.
+		// reads as a tabletop the user is leaning over. Camera Z=14
+		// pulls the camera back enough to fit the full bezel
+		// (outerDepth ≈ 11.9) in the FOV-42° vertical view; closer
+		// values clip the front + back slabs out of frame.
+		// Previous values (Y=13.2, Z=0.8) sat almost directly overhead;
+		// even modest board tilt then read as a wall, not a table.
 		cameraX: 0,
-		cameraY: 8.5,
-		cameraZ: 9,
+		cameraY: 8,
+		cameraZ: 14,
 		cameraFov: 42,
 		cameraNear: 0.1,
 		cameraFar: 60,
