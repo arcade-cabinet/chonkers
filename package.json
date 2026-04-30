@@ -8,8 +8,8 @@
 	"keywords": [
 		"capacitor",
 		"mobile",
-		"r3f",
 		"three",
+		"gsap",
 		"game",
 		"chonkers"
 	],
@@ -28,29 +28,14 @@
 		"test:browser": "vitest run --project browser --passWithNoTests",
 		"test:alpha": "vitest run --project alpha --passWithNoTests",
 		"test:watch": "vitest",
-		"pretest": "pnpm prepare:public",
-		"pretest:watch": "pnpm prepare:public",
-		"pretest:node": "pnpm prepare:public",
-		"pretest:alpha": "pnpm prepare:public",
 		"test:e2e": "playwright test",
 		"test:e2e:ci": "test -d e2e && playwright test --grep-invert @nightly || echo 'no e2e specs yet — skipping'",
 		"test:e2e:nightly": "test -d e2e && playwright test --grep @nightly || echo 'no e2e specs yet — skipping'",
-		"copywasm": "node scripts/copy-wasm.mjs",
-		"build:gamedb": "node scripts/build-game-db.mjs",
-		"prepare:public": "pnpm copywasm && pnpm build:gamedb",
-		"predev": "pnpm prepare:public",
-		"prebuild": "pnpm prepare:public",
-		"prebuild:native": "pnpm prepare:public",
-		"prepreview": "pnpm prepare:public",
-		"pretest:browser": "pnpm prepare:public",
-		"pretest:e2e": "pnpm prepare:public",
-		"pretest:e2e:ci": "pnpm prepare:public",
 		"cap:sync": "pnpm build:native && cap sync",
 		"native:android:debug": "pnpm build:native && cap sync android && cd android && ./gradlew assembleDebug",
 		"native:ios:build": "pnpm build:native && cap sync ios && xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug -sdk iphonesimulator -destination 'platform=iOS Simulator,name=iPhone 16'"
 	},
 	"dependencies": {
-		"@capacitor-community/sqlite": "^8.1.0",
 		"@capacitor/android": "^8.3.1",
 		"@capacitor/app": "^8.1.0",
 		"@capacitor/core": "^8.3.1",
@@ -61,12 +46,9 @@
 		"@capacitor/splash-screen": "^8.0.1",
 		"@capacitor/status-bar": "^8.0.2",
 		"@types/howler": "^2.2.12",
-		"drizzle-orm": "^0.45.2",
 		"gsap": "^3.15.0",
 		"howler": "^2.2.4",
-		"jeep-sqlite": "^2.8.0",
 		"koota": "^0.6.6",
-		"sql.js": "1.11.0",
 		"three": "^0.184.0",
 		"yuka": "^0.7.8"
 	},
@@ -74,16 +56,12 @@
 		"@biomejs/biome": "^2.4.13",
 		"@capacitor/cli": "^8.3.1",
 		"@playwright/test": "^1.59.1",
-		"@types/better-sqlite3": "^7.6.13",
 		"@types/node": "^25.6.0",
-		"@types/sql.js": "^1.4.11",
 		"@types/three": "^0.184.0",
 		"@types/yuka": "^0.7.4",
 		"@vitest/browser": "^4.1.5",
 		"@vitest/browser-playwright": "^4.1.5",
-		"better-sqlite3": "^12.9.0",
 		"cross-env": "^10.1.0",
-		"drizzle-kit": "^0.31.10",
 		"fast-check": "^4.7.0",
 		"playwright": "^1.59.1",
 		"typescript": "^6.0.3",
@@ -91,10 +69,5 @@
 		"vitest": "^4.1.5"
 	},
 	"author": "arcade-cabinet",
-	"license": "MIT",
-	"pnpm": {
-		"onlyBuiltDependencies": [
-			"better-sqlite3"
-		]
-	}
+	"license": "MIT"
 }

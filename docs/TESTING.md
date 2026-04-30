@@ -21,44 +21,37 @@ The tiers are *where* tests run. The stages are *how many runs* drive the covera
 ```
 Tier 4 — Maestro (native Android + iOS smoke; rc gate)
 Tier 3 — Playwright e2e (Chromium, mobile viewports, real touch + GPU)
-Tier 2 — Vitest browser (real Chromium GPU, WebGL, three.js scene, capacitor-sqlite OPFS)
-Tier 1 — Vitest node (pure TypeScript, no DOM, no WebGL, better-sqlite3 ad-hoc DBs)
+Tier 2 — Vitest browser (real Chromium GPU, WebGL, three.js scene, Capacitor Preferences via localStorage)
+Tier 1 — Vitest node (pure TypeScript, no DOM, no WebGL — engine, AI, sim broker)
 ```
 
 Run the lower tiers before the higher tiers. Tier 1 must be green before tier 2 is meaningful.
 
 ### Tier 1 — Node tests
 
-**Purpose:** pure TypeScript logic. Engine rules, AI search, store CRUD, analytics aggregates, Zobrist hashing, coord math, manifest validation, schema correctness, migration replay, repo CRUD, transaction semantics.
+**Purpose:** pure TypeScript logic. Engine rules, AI search, sim broker dispatch, Zobrist hashing, coord math, manifest validation.
 
 **Where files live:** `src/**/__tests__/*.test.ts` — no `.tsx`, no `.browser.` in filename.
-
-**Database tier:** Tier 1 owns the bulk of `src/persistence/sqlite/` coverage via `makeTestDb()` (in-memory `better-sqlite3` by default; on-disk under `CHONKERS_TEST_DB_DIR` for diagnostic inspection — see `docs/DB.md`). The same drizzle schema and the same migration files run here as in production runtime.
 
 **What to cover:**
 - `src/engine/` — every legal-move case from `RULES.md` §4 + §5; every illegal-move rejection; win check from constructed boards; split-chain state machine; Zobrist hash collision behaviour.
 - `src/ai/` — `chooseAction` determinism (same state + profile → same action); `dumpAiState`/`loadAiState` round-trip identity; profile feature evaluation against constructed boards; forfeit-threshold trigger conditions.
-- `src/sim/` — broker dispatch logic, save/resume routing, mid-chain pause+resume.
-- `src/store/` — every repo's CRUD against `makeTestDb`; transaction rollback on error.
-- `src/persistence/sqlite/` — migration forward-replay determinism, version-detection logic, schema correctness against drizzle definitions.
-- `src/analytics/` — aggregate refresh produces stable values for fixed match histories.
+- `src/sim/` — broker dispatch logic; `playTurn` / `applyHumanAction` / `playToCompletion` semantics; `onPlyCommit` / `onMatchEnd` hook firing; replay determinism.
 - `src/utils/` — coords, math, type guards.
 
-**No mocks.** Each layer's tests use the real layer below it. The Tier-1 `makeTestDb` is *real* SQLite via `better-sqlite3`, not a fake. The sim broker test exercises real engine + real AI + real store + real db. Mocks are forbidden by doctrine; the no-mocks rule is a load-bearing part of how the alpha/beta/rc cycles deliver signal.
+**No mocks.** Each layer's tests use the real layer below it. The sim broker test exercises real engine + real AI. Mocks are forbidden by doctrine; the no-mocks rule is a load-bearing part of how the alpha/beta/rc cycles deliver signal.
 
-**Coverage target:** ≥ 90% line coverage for `src/engine/`, `src/ai/search.ts`, `src/persistence/sqlite/`. ≥ 70% elsewhere. Coverage is measured but not gated — the broker run-count thresholds are the actual quality gate.
+**Coverage target:** ≥ 90% line coverage for `src/engine/`, `src/ai/search.ts`, `src/sim/broker.ts`. ≥ 70% elsewhere. Coverage is measured but not gated — the broker run-count thresholds are the actual quality gate.
 
 **How to run:**
 
 ```bash
 pnpm test:node
-# diagnostic mode — write each test's DB to disk for inspection
-CHONKERS_TEST_DB_DIR=/tmp/chonkers-debug pnpm test:node
 ```
 
 ### Tier 2 — Browser tests (real GPU)
 
-**Purpose:** anything that requires a real browser. Three.js scene construction, material configuration, WebGL state, visual snapshot regression, capacitor-sqlite OPFS persistence, capacitor-preferences platform routing on web.
+**Purpose:** anything that requires a real browser. Three.js scene construction, material configuration, WebGL state, visual snapshot regression, Capacitor Preferences platform routing on web.
 
 **Where files live:** `src/**/__tests__/*.browser.test.ts`. No `.tsx` — there is no React in the project.
 
@@ -68,9 +61,7 @@ CHONKERS_TEST_DB_DIR=/tmp/chonkers-debug pnpm test:node
 - `tweenRadialOpen()` completes in ~160ms ± 40ms (gsap timeline duration).
 - HDRI loads and contributes to scene lighting.
 - `kv` round-trips JSON values through real Capacitor Preferences (under `localStorage` on the web tier).
-- `src/persistence/sqlite/` bootstrap path: first run imports `public/game.db` into OPFS; second run is a no-op; drift detection triggers migration replay.
-
-**Database tier:** Tier 2 covers ONLY the bootstrap-and-replay flow. CRUD-shape, schema correctness, transaction semantics — all that lives in Tier 1. Tier 2 is just "does the runtime adapter actually work against real capacitor-sqlite + OPFS."
+- `saveActiveMatch` / `loadActiveMatch` round-trip is faithful — including base64-encoded AI dump blobs that `restoreAiPair` decodes back into structurally-equivalent yuka brains.
 
 **How to run:**
 
@@ -93,7 +84,7 @@ CI uses `xvfb-run` for a virtual framebuffer.
 
 **Where files live:** `e2e/*.spec.ts`.
 
-**The governor spec.** `e2e/governor.spec.ts` runs N AI-vs-AI matches end-to-end through the real three.js + gsap + audio + capacitor-sqlite stack. N is parameterised by environment:
+**The governor spec.** `e2e/governor.spec.ts` runs N AI-vs-AI matches end-to-end through the real three.js + gsap + audio + Capacitor Preferences stack. N is parameterised by environment:
 
 | Env | N | When |
 |---|---:|---|
@@ -126,7 +117,7 @@ Specs use **DOM locators**, not `page.evaluate()` against the WebGL surface — 
 - Start a new match → AI plays its first move within `time_budget_ms` for the chosen profile.
 - Tap a piece, see selection ring.
 - Pause + resume.
-- App backgrounding + foregrounding does not crash and does not lose match state (capacitor-sqlite OPFS persistence + AI dump_blob round-trip).
+- App backgrounding + foregrounding does not crash and does not lose match state (active-match KV snapshot saves on every ply; resume rebuilds handle from `coinFlipSeed + actions[]` and restores AI brains via `restoreAiPair`).
 - Forfeit from native HUD.
 - Native haptic on split-arm.
 

@@ -1,21 +1,30 @@
 /**
  * src/persistence — chonkers' durable storage layer.
  *
- * Two child packages, named for the platform mechanism that backs each:
+ * One child package: `preferences/` — typed JSON kv over
+ * @capacitor/preferences (localStorage on web, UserDefaults on iOS,
+ * SharedPreferences on Android).
  *
- *   • preferences/  — typed JSON kv over @capacitor/preferences
- *   • sqlite/       — drizzle ORM + @capacitor-community/sqlite
- *                     (build-time game.db + runtime version-replay)
+ * Two slot kinds:
+ *   • Settings       — `kv['settings']` namespace (volume, mute,
+ *                       reduced-motion, default-difficulty, etc.).
+ *   • Active match   — `kv['match']['active']`, the in-progress match
+ *                       snapshot. See `./preferences/match.ts`.
  *
- * Consumers import from the child packages directly:
+ * Historical match records have no in-app value (no replay UI, no
+ * achievements, no progression). They're a balance-testing concern
+ * generated/consumed inside governor specs via filesystem artifacts,
+ * not via Preferences.
  *
- *   import { kv } from '@/persistence/preferences';
- *   import { db } from '@/persistence/sqlite';
- *
- * The top-level barrel re-exports both for convenience.
- *
- * See docs/PERSISTENCE.md (kv) and docs/DB.md (sqlite) for contracts.
+ * See docs/PERSISTENCE.md for the full contract.
  */
 
-export { kv } from "./preferences";
-export * from "./sqlite";
+export {
+	type ActiveMatchSnapshot,
+	clearActiveMatch,
+	kv,
+	loadActiveMatch,
+	restoreAiPair,
+	saveActiveMatch,
+	snapshotFromHandle,
+} from "./preferences";

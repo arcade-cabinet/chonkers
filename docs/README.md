@@ -31,7 +31,7 @@ The POC is the canonical pattern reference — vanilla three.js + DOM-sibling SV
 | Animation (3D + 2D SVG) | `gsap` |
 | Diegetic UI overlays | vanilla SVG, positioned per-frame via `camera.project()` |
 | State (in-memory) | `koota` (ECS) |
-| Persistence | `drizzle-orm` + `@capacitor-community/sqlite` + `@capacitor/preferences` |
+| Persistence | `@capacitor/preferences` (typed JSON KV — no SQLite) |
 | Audio | `howler` |
 | Native shell | `@capacitor/*` |
 | Build | `vite` |
@@ -47,9 +47,8 @@ There is no React, no JSX, no R3F, no Radix, no framer-motion in the application
 | `src/scene/` | Three.js scene + gsap tweens + diegetic SVG overlays |
 | `src/engine/` | Pure rules engine (no IO, no DOM, no PRNG) |
 | `src/ai/` | Yuka graph + alpha-beta minimax (deterministic) |
-| `src/sim/` | Koota state + actions broker |
-| `src/store/` | Typed CRUD repos over drizzle |
-| `src/persistence/` | Capacitor Preferences + capacitor-sqlite |
+| `src/sim/` | Koota state + headless actions broker (in-memory; persistence wired by the scene layer via `onPlyCommit` hooks) |
+| `src/persistence/` | Capacitor Preferences (typed JSON KV) — settings + active-match snapshot |
 | `src/audio/` | Howler audio bus, role-keyed clips |
 | `src/design/` | Design tokens (no Radix theme bridge) |
 | `src/utils/` | Coords, type guards, asset manifest |

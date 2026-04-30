@@ -1,32 +1,22 @@
 import { describe, expect, it } from "vitest";
-import { makeTestDb } from "@/persistence/sqlite/__tests__/test-db";
-import { aiStatesRepo, matchesRepo, movesRepo } from "@/store";
-import {
-	createMatch,
-	playToCompletion,
-	playTurn,
-	saveMatchProgress,
-} from "../broker";
+import { hashGameStateHex } from "@/engine";
+import { createMatch, playToCompletion, playTurn } from "../broker";
 
 describe("broker — single match", () => {
-	it("creates a match row with the coin-flip seed and opening hash", async () => {
-		const { db } = makeTestDb();
-		const handle = await createMatch(db, {
+	it("creates a handle with the given coin-flip seed and red opens for an even first byte", () => {
+		const handle = createMatch({
 			redProfile: "balanced-easy",
 			whiteProfile: "balanced-easy",
-			coinFlipSeed: "00aabbccddee0011", // even first byte → red opens
+			coinFlipSeed: "00aabbccddee0011",
 		});
-
-		const row = await matchesRepo.getMatch(db, handle.matchId);
-		expect(row).not.toBeNull();
-		expect(row?.coinFlipSeed).toBe("00aabbccddee0011");
-		expect(row?.openingPositionHash).toMatch(/^[0-9a-f]{16}$/);
+		expect(handle.coinFlipSeed).toBe("00aabbccddee0011");
 		expect(handle.game.turn).toBe("red");
+		expect(handle.actions.length).toBe(0);
+		expect(hashGameStateHex(handle.game)).toMatch(/^[0-9a-f]{16}$/);
 	});
 
-	it("white opens when the coin-flip seed has an odd first byte", async () => {
-		const { db } = makeTestDb();
-		const handle = await createMatch(db, {
+	it("white opens when the coin-flip seed has an odd first byte", () => {
+		const handle = createMatch({
 			redProfile: "balanced-easy",
 			whiteProfile: "balanced-easy",
 			coinFlipSeed: "01000000",
@@ -34,117 +24,91 @@ describe("broker — single match", () => {
 		expect(handle.game.turn).toBe("white");
 	});
 
-	it("playTurn applies a move + persists it + bumps the ply counter", async () => {
-		const { db } = makeTestDb();
-		const handle = await createMatch(db, {
+	it("playTurn applies a move + appends to the action log", async () => {
+		const handle = createMatch({
 			redProfile: "balanced-easy",
 			whiteProfile: "balanced-easy",
 			coinFlipSeed: "00",
 		});
-		const result = await playTurn(db, handle, { mode: "replay" });
+		const result = await playTurn(handle, { mode: "replay" });
 		expect(result.terminal).toBe(false);
 		expect(result.action).not.toBeNull();
 		expect(result.mover).toBe("red");
-
-		const moves = await movesRepo.listMovesByMatch(db, handle.matchId);
-		expect(moves.length).toBe(1);
-		expect(moves[0]?.color).toBe("red");
-
-		const row = await matchesRepo.getMatch(db, handle.matchId);
-		expect(row?.plyCount).toBe(1);
-	});
-
-	it("saveMatchProgress writes the on-turn AI's dump_blob", async () => {
-		const { db } = makeTestDb();
-		const handle = await createMatch(db, {
-			redProfile: "balanced-easy",
-			whiteProfile: "balanced-easy",
-			coinFlipSeed: "00",
-		});
-		await saveMatchProgress(db, handle);
-
-		const dump = await aiStatesRepo.getDump(
-			db,
-			handle.matchId,
-			"balanced-easy",
-		);
-		expect(dump).not.toBeNull();
-		expect(dump?.dumpBlob.length).toBeGreaterThan(8);
-		// First 4 bytes are the 'CHAI' magic.
-		expect(Array.from(dump?.dumpBlob.subarray(0, 4) ?? [])).toEqual([
-			0x43, 0x48, 0x41, 0x49,
-		]);
+		expect(handle.actions.length).toBe(1);
 	});
 
 	it("playToCompletion finishes a small construction with a winner OR an outlier flag", async () => {
-		const { db } = makeTestDb();
-		const handle = await createMatch(db, {
+		const handle = createMatch({
 			redProfile: "balanced-easy",
 			whiteProfile: "balanced-easy",
 			coinFlipSeed: "00",
 		});
-		// Cap aggressively so the test bounds wall clock; we're
-		// validating the plumbing, not balance.
-		const result = await playToCompletion(db, handle, {
+		const result = await playToCompletion(handle, {
 			mode: "replay",
 			maxPlies: 30,
 		});
 		expect(result.plies).toBeGreaterThanOrEqual(1);
 		expect(result.plies).toBeLessThanOrEqual(30);
-		// Stall counter is non-negative and tracked separately
-		// from plies (the alpha-stage 100-run gate uses it as a
-		// diagnostic for non-persisting loops, so the contract
-		// that it's exposed and shaped correctly matters).
-		expect(result.stalls).toBeGreaterThanOrEqual(0);
-		// Either the match resolved, or we hit the cap as an outlier.
+		expect(result.stallCount).toBeGreaterThanOrEqual(0);
 		expect(typeof result.outlier).toBe("boolean");
+		expect(handle.actions.length).toBe(result.plies);
+	}, 60000);
 
-		// Match row is consistent with the in-memory handle.
-		const row = await matchesRepo.getMatch(db, handle.matchId);
-		expect(row?.plyCount).toBe(result.plies);
+	it("onPlyCommit fires after each persisted move", async () => {
+		const handle = createMatch({
+			redProfile: "balanced-easy",
+			whiteProfile: "balanced-easy",
+			coinFlipSeed: "00",
+		});
+		let commits = 0;
+		await playToCompletion(handle, {
+			mode: "replay",
+			maxPlies: 5,
+			onPlyCommit: () => {
+				commits += 1;
+			},
+		});
+		expect(commits).toBe(handle.actions.length);
 	}, 60000);
 });
 
 describe("broker — replay determinism", () => {
 	it("two matches with the same seed + same profiles play identically (replay mode)", async () => {
-		const { db: dbA } = makeTestDb();
-		const { db: dbB } = makeTestDb();
-
-		const handleA = await createMatch(dbA, {
+		const handleA = createMatch({
 			redProfile: "balanced-easy",
 			whiteProfile: "balanced-easy",
 			coinFlipSeed: "deadbeefdeadbeef",
 			matchId: "fixed-id-a",
 		});
-		const handleB = await createMatch(dbB, {
+		const handleB = createMatch({
 			redProfile: "balanced-easy",
 			whiteProfile: "balanced-easy",
 			coinFlipSeed: "deadbeefdeadbeef",
 			matchId: "fixed-id-b",
 		});
 
-		// Play both for the same fixed number of plies so wall
-		// clock is bounded.
 		const PLIES = 8;
 		for (let i = 0; i < PLIES; i += 1) {
 			if (handleA.game.winner) break;
-			await playTurn(dbA, handleA, { mode: "replay" });
+			await playTurn(handleA, { mode: "replay" });
 		}
 		for (let i = 0; i < PLIES; i += 1) {
 			if (handleB.game.winner) break;
-			await playTurn(dbB, handleB, { mode: "replay" });
+			await playTurn(handleB, { mode: "replay" });
 		}
 
-		const movesA = await movesRepo.listMovesByMatch(dbA, "fixed-id-a");
-		const movesB = await movesRepo.listMovesByMatch(dbB, "fixed-id-b");
-		expect(movesA.length).toBe(movesB.length);
-		for (let i = 0; i < movesA.length; i += 1) {
-			expect(movesA[i]?.fromCol).toBe(movesB[i]?.fromCol);
-			expect(movesA[i]?.fromRow).toBe(movesB[i]?.fromRow);
-			expect(movesA[i]?.toCol).toBe(movesB[i]?.toCol);
-			expect(movesA[i]?.toRow).toBe(movesB[i]?.toRow);
-			expect(movesA[i]?.color).toBe(movesB[i]?.color);
-			expect(movesA[i]?.positionHashAfter).toBe(movesB[i]?.positionHashAfter);
+		expect(handleA.actions.length).toBe(handleB.actions.length);
+		for (let i = 0; i < handleA.actions.length; i += 1) {
+			const a = handleA.actions[i];
+			const b = handleB.actions[i];
+			expect(a?.from.col).toBe(b?.from.col);
+			expect(a?.from.row).toBe(b?.from.row);
+			expect(a?.runs.length).toBe(b?.runs.length);
+			for (let r = 0; r < (a?.runs.length ?? 0); r += 1) {
+				expect(a?.runs[r]?.to.col).toBe(b?.runs[r]?.to.col);
+				expect(a?.runs[r]?.to.row).toBe(b?.runs[r]?.to.row);
+			}
 		}
+		expect(hashGameStateHex(handleA.game)).toBe(hashGameStateHex(handleB.game));
 	}, 120000);
 });

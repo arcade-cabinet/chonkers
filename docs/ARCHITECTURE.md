@@ -24,9 +24,13 @@ Sim broker (src/sim/) ──── coordinates engine + ai + store + persistence
     │
     └─► Audio bus (src/audio/)    dispatched by scene event handlers on Match.lastMove + ceremony phase + winner transitions
 
-Persistence:
-    ├─► Capacitor Preferences  (src/persistence/)  typed JSON kv  — settings, last-camera-angle, profile pair, audio volume
-    └─► SQLite via Capacitor   (src/persistence/sqlite/) drizzle ORM — match history, AI dumps, analytics aggregates
+Persistence (KV-only):
+    └─► Capacitor Preferences  (src/persistence/)  typed JSON kv
+            • settings (volume, mute, reduced-motion, etc.)
+            • active-match snapshot (one slot, full resume payload incl. AI dump)
+
+There is no SQLite, no relational database, no migration pipeline. See
+`docs/PERSISTENCE.md` for the full contract.
 ```
 
 State flows through the sim broker. The scene subscribes to koota traits; it never mutates state directly. The broker is the only module that imports from both the logic side (engine/ai/store) and the IO side (persistence/db/audio).
@@ -41,7 +45,7 @@ There is **no `app/` directory**. There is no React, no JSX, no R3F, no Radix, n
 | Animation (3D + 2D SVG) | `gsap` | Free since the Webflow acquisition; framework-agnostic; animates any JS object property — meshes, cameras, SVG attrs. |
 | Diegetic UI overlays | vanilla SVG | Positioned each frame via `camera.project()` of the relevant mesh's world position. No reconciler, no JSX-children walking. |
 | State (in-memory) | `koota` (ECS) | Match state as traits on a singleton match entity. |
-| Persistence | drizzle ORM + `@capacitor-community/sqlite` + `@capacitor/preferences` | Match history, AI dumps, settings. |
+| Persistence | `@capacitor/preferences` (typed JSON KV) | Settings + a single active-match snapshot slot (full resume payload incl. AI dump). No SQLite. See `docs/PERSISTENCE.md`. |
 | Audio | `howler` | Through the existing `AudioBus`. |
 | Native shell | `@capacitor/*` | iOS + Android wrap. |
 | Build | `vite` | Same as before. |
@@ -51,30 +55,25 @@ Provable rules:
 
 | Rule | How it's enforced |
 |---|---|
-| All code is in `src/` (plus `index.html` + `scripts/` + `drizzle/` + `e2e/`) | grep — no `app/` directory exists |
+| All code is in `src/` (plus `index.html` + `scripts/` + `e2e/`) | grep — no `app/` directory exists |
 | No React imports anywhere in the project | biome rule + lint |
 | No R3F / Radix / framer-motion imports anywhere | biome rule + lint |
-| `src/engine/*` never imports `src/ai/*`, `src/sim/*`, `src/store/*`, or `src/scene/*` | lint + audited at PR review |
+| `src/engine/*` never imports `src/ai/*`, `src/sim/*`, or `src/scene/*` | lint + audited at PR review |
 | `src/ai/*` imports only from `src/engine/*` (one-way) | same |
-| `src/persistence/preferences/*` is a leaf — imports nothing from other `src/` packages | same |
-| `src/persistence/sqlite/*` imports only the drizzle / capacitor / better-sqlite3 deps it needs; nothing from `src/{engine,ai,sim,store,scene}/` | same |
-| `src/store/*` imports from `src/persistence/sqlite/*` for drizzle handles; type-only from `src/{engine,ai}/*` | same |
-| `src/sim/*` is the broker — imports from `src/{engine,ai,store,persistence,audio}/*` | same |
-| `src/scene/*` imports from `src/{sim,audio,design,utils}/*` only — type-only from `src/{engine,ai}/*` | same |
-| No `Math.random()` in `src/{engine,ai,sim,store}/*` | gates.json ban pattern |
+| `src/persistence/preferences/*` is a leaf — imports `@capacitor/preferences` and the `@/ai`/`@/engine`/`@/sim` types it needs to type the active-match snapshot | same |
+| `src/sim/*` is the broker — imports from `src/{engine,ai,audio}/*`. Persistence hooks are wired by the caller. | same |
+| `src/scene/*` imports from `src/{sim,audio,design,persistence,utils}/*` only — type-only from `src/{engine,ai}/*` | same |
+| No `Math.random()` in `src/{engine,ai,sim}/*` | gates.json ban pattern |
 | No mocks in tests | doctrine; each layer's tests use the real layer below |
 
 ## Module boundaries
 
 | Directory | Responsibility | Notes |
 |---|---|---|
-| `src/persistence/` | Typed JSON KV over `@capacitor/preferences`. Generic transport, no chonkers concepts. | See `docs/PERSISTENCE.md`. |
-| `src/persistence/sqlite/` | drizzle ORM + `@capacitor-community/sqlite` runtime + build-time `public/game.db` pipeline. Schema is the source of truth for the match-history database. | See `docs/DB.md`. |
+| `src/persistence/` | Typed JSON KV over `@capacitor/preferences` plus the active-match snapshot save/load. | See `docs/PERSISTENCE.md`. |
 | `src/engine/` | Pure rules engine: 3D occupancy state, move generation, win check, split-chain state machine, Zobrist position hash. Pure TS. | Tested in node with no DOM. |
 | `src/ai/` | Yuka Graph (state-space) + alpha-beta minimax + 9 disposition×difficulty profiles. `dumpAiState` / `loadAiState` public API. Forfeit as a weighted action. | Deterministic. No PRNG. See `docs/AI.md`. |
-| `src/store/` | Typed data-access over `src/persistence/sqlite/` tables. Encodes types; reads + writes through drizzle repos. | Pure TS. |
-| `src/analytics/` | Aggregate queries (win-rate by profile, avg game length, opening frequency, etc.). Pre-baked materialised rows refreshed on match-end by the sim broker. | Pure TS. |
-| `src/sim/` | Koota state layer + actions broker. Routes save/resume between engine, ai, store, db. Owns `saveMatchProgress` / `resumeMatch` / `dispatchAiTurn`. | Pure TS. |
+| `src/sim/` | Koota state layer + headless actions broker. Pure in-memory state machine; persistence is wired by the scene layer via `onPlyCommit` / `onMatchEnd` hooks. | Pure TS. |
 | `src/audio/` | Howler-backed audio bus. Seven role-keyed clips. Volume reads from kv. | Pure TS; HTMLAudioElement under the hood. |
 | `src/design/` | Design tokens (colours, motion durations, typography). Pure TS. No React, no Radix theme — tokens are consumed directly by the scene + by the SVG overlays. | Pure TS. |
 | `src/utils/` | Pure utilities: coords, type guards, asserts, asset manifest. | Pure TS. |
@@ -165,7 +164,6 @@ export const ASSETS = {
     body:   '/assets/fonts/body/Lato-Regular.ttf',
     header: '/assets/fonts/headers/AbrilFatface-Regular.ttf',
   },
-  // game.db is loaded by src/persistence/sqlite/ on first run, not via this manifest.
 } as const;
 ```
 
@@ -175,20 +173,32 @@ The asset manifest is the **only** layer that references string paths. Modules i
 
 ## Save / resume
 
-The sim broker owns `saveMatchProgress` and `resumeMatch`. Save serialises:
+Persistence is hooks-driven, not broker-owned. The scene layer wires `createSimWorld({ onPlyCommit, onMatchEnd })`:
 
-- Engine state (board occupancy + turn + chain, derivable to the canonical position hash)
-- AI state via `dumpAiState()` (opaque BLOB, format-versioned — see `docs/AI.md`)
-- Move history rows (already streamed to db on each move)
+- `onPlyCommit` is called after every successful ply (newMatch, AI turn, human commit). The scene calls `saveActiveMatch(snapshotFromHandle(handle, humanColor, startedAt))` which writes the `ActiveMatchSnapshot` to `kv['match']['active']`.
+- `onMatchEnd` is called once at terminal transition. The scene calls `clearActiveMatch()` to drop the slot.
 
-Resume rehydrates the engine from the latest match row + the AI from `loadAiState(blob)`. The koota world is rebuilt from those; the scene re-subscribes; play continues at the next legal action. See `docs/DB.md` for table schemas.
+The `ActiveMatchSnapshot` carries:
+
+- `matchId`, `redProfile`, `whiteProfile`, `humanColor`, `coinFlipSeed` — match metadata.
+- `actions: Action[]` — every action committed so far.
+- `redAiDumpB64` + `whiteAiDumpB64` — base64 of `dumpAiState()` per side (yuka brain).
+- `aiDumpFormatVersion`, `startedAt`, `lastSavedAt`.
+
+Resume rebuilds the handle by:
+
+1. `decideFirstPlayer(coinFlipSeed)` → `createInitialState(firstPlayer)` initial board.
+2. Fold `applyAction` over `actions[]` to reconstruct `handle.game`.
+3. `restoreAiPair(snapshot)` → both yuka brains via `loadAiState`.
+
+See `docs/PERSISTENCE.md` for the full contract.
 
 ## Build + native shell
 
 - Vite (root: project root, dev server, asset handling). Single entry point: `index.html` → `src/scene/index.ts`.
 - TypeScript 6.0+ in strict mode (`strict: true`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, `verbatimModuleSyntax`).
 - Capacitor 8 wraps the built `dist/` as iOS + Android. `pnpm build:native` produces a Capacitor-ready bundle; `pnpm cap:sync` copies into `android/` and `ios/`.
-- `scripts/build-game-db.mjs` runs as `prebuild` and produces `public/game.db` from drizzle migrations + seed data.
+- No build-time database pipeline — persistence is plain JSON-in-KV at runtime.
 - iOS: SwiftPM (Capacitor 8). No CocoaPods.
 - Android: Gradle, Java 21 (Temurin), AAB + APK targets.
 

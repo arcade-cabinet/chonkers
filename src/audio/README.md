@@ -75,7 +75,7 @@ interface AudioBus {
 
 ## Import boundary
 
-Per `CLAUDE.md`, this package imports only `@/persistence/preferences` (for kv) and `howler`. It does NOT import from `@/engine`, `@/ai`, `@/sim`, `@/store`, or anywhere in `app/`.
+Per `CLAUDE.md`, this package imports only `@/persistence/preferences` (for kv) and `howler`. It does NOT import from `@/engine`, `@/ai`, `@/sim`, or `@/scene`.
 
 ## Tests
 

@@ -57,7 +57,7 @@ path). The two modes are documented below.
 
 2. **Same dump, same load → behaviourally equivalent state.** `loadAiState(dumpAiState(s))` produces an `AiState` `s'` such that for every game state `g` and mode `m`: `chooseAction(g, profile_of(s), m, s) === chooseAction(g, profile_of(s'), m, s')`. The states are not required to be bit-equal — the transposition table is a perf cache and may be repacked on dump/load — but they must produce the same actions for all inputs. The dump format is an opaque BLOB with a monotonic format-version integer (4 bytes, little-endian) following a 4-byte magic `'CHAI'`.
 
-3. **Same match seed, same profile pair, same opening → same game (replay mode).** Given recorded `coin_flip_seed`, `red_profile`, `white_profile`, and `opening_position_hash` from a `matches` row, **re-running the match in `replay` mode** reproduces the exact ply sequence. This makes outlier-replay possible at rc-stage 10,000-run scale.
+3. **Same match seed, same profile pair, same opening → same game (replay mode).** Given a `MatchHandle`'s recorded `coinFlipSeed`, `redProfile`, and `whiteProfile`, **re-running the match in `replay` mode** reproduces the exact ply sequence. This makes outlier-replay possible at rc-stage 10,000-run scale via the governor spec's per-match filesystem artifacts.
 
 ### `live` vs `replay` mode
 
@@ -162,9 +162,9 @@ The action set returned by `chooseAction` includes `forfeit` alongside `move` an
 | balanced-* | -120.0 (forfeits in clearly-lost positions, e.g. opponent has 10/12 tops on the home row) |
 | defensive-* | -80.0 (forfeits earlier than balanced once the position is hopeless) |
 
-When the threshold is crossed, the AI evaluates "forfeit now" against "play one more move." If forfeiting is no worse than the best available move, the AI forfeits. The `matches.winner` column records `forfeit-red` or `forfeit-white` depending on which side gave up; the sim broker triggers the standard game-over sting + the *opponent's* victory voice line.
+When the threshold is crossed, the AI evaluates "forfeit now" against "play one more move." If forfeiting is no worse than the best available move, the AI forfeits. The broker records the winner as the OPPOSITE color of the forfeiter on `handle.game.winner`, and the scene layer triggers the standard game-over sting + the *opponent's* victory voice line.
 
-Humans get a forfeit button in the HUD that runs the same code path on the human side: same sting, same audio cue, same `matches.winner` value.
+Humans get a forfeit slice in the pause radial that runs the same code path: same sting, same audio cue, same winner record.
 
 ## State representation
 
@@ -194,27 +194,21 @@ export function loadAiState(blob: Uint8Array): AiState;
 
 The dump is a forward-versioned BLOB: a 4-byte magic `'CHAI'`, a 4-byte little-endian `format_version` (currently `1`), then a serialised payload. The serialiser uses CBOR (compact binary object representation) — smaller than JSON, deterministic byte order for stable hashes, native support for `Uint8Array` and integers.
 
-`loadAiState` reads the format_version first. Version `1` is the only one that exists. Future versions add a `migrateAiState(blob: Uint8Array, fromVersion: number, toVersion: number): Uint8Array` step before parsing, applied during `loadAiState` if `format_version < CURRENT_VERSION`. This mirrors the SQL migration ladder for the database — forward-only, monotonic, never edit a shipped version.
+`loadAiState` reads the format_version first. Version `1` is the only one that exists and is unlikely to change — yuka is a frozen rope and the dump payload is minimal (`profileKey` + `chainPlannedRemainder`). If the format ever changes, `loadAiState` throws on resume, the active-match snapshot is treated as corrupt by the persistence layer, and the player starts fresh. No `migrateAiState` ladder exists — the cost-benefit doesn't justify it for a casual game.
 
-The dump-blob lives in `ai_states.dump_blob` (see `docs/DB.md`); the format version goes in `ai_states.dump_format_version`. Resume reads exactly one row per AI per match.
+The dump-blob is base64-encoded inside the `ActiveMatchSnapshot.{red,white}AiDumpB64` field — see `docs/PERSISTENCE.md`. Resume restores both yuka brains in one read of the active-match KV slot.
 
 ## Coin flip for first move
 
-Red moves first per RULES §3, but **which player is red** is decided per-match. The sim broker generates a `coin_flip_seed` (a UUID-derived 64-bit integer) at match-creation time and stores it in `matches.coin_flip_seed`. The broker uses that seed to deterministically pick which of the two players plays red.
+Red moves first per RULES §3, but **which player is red** is decided per-match. The sim broker generates a `coinFlipSeed` (a UUID-derived 64-bit integer) at match-creation time and stores it on `MatchHandle.coinFlipSeed`. The broker uses that seed to deterministically pick which of the two players plays red.
 
-This is the **only** entropy in chonkers. After this single sample, the rest of the match is a deterministic function of (engine rules, AI profiles, recorded moves). Replaying the match — for outlier debugging during the rc 10,000-run pass, or for a post-match replay UI — re-derives the same colour assignment from the same seed and produces the same game.
+This is the **only** entropy in chonkers. After this single sample, the rest of the match is a deterministic function of (engine rules, AI profiles, recorded actions). Replaying the match — for outlier debugging during governor runs — re-derives the same colour assignment from the same seed and produces the same game. The active-match snapshot persists `coinFlipSeed` so resume reproduces play deterministically.
 
 The seed is generated by the platform's `crypto.getRandomValues()` at match-creation time only. **`crypto.getRandomValues` is not banned in the broker** — only in the engine, AI, sim core, and store. The broker is the legitimate entropy source for one-shot match initialisation.
 
 ## What lives in code, not the database
 
-The 9 profile keys + their weight tables + their search depths + their forfeit thresholds are **TypeScript constants** in `src/ai/profiles.ts`. They are not database rows. Reasons:
-
-- The values change via balance-tune commits during alpha/beta/rc; tracked as conventional-commit `feat(ai): tune balanced-medium forfeit threshold` edits with reviewable diffs.
-- `matches.red_profile` and `matches.white_profile` are foreign references *to* code constants — validated at insert time by `src/store/repos/matchesRepo.ts`, which only accepts profile keys that exist in `src/ai/profiles.ts` (or the literal `'human'`).
-- A schema migration is the wrong mechanism for "change a number from 2.0 to 2.1." A code commit is the right one.
-
-If user-defined profiles ever ship (let users tune their own AIs), that's a schema migration at *that* point — adding a `user_profiles` table — and `matches.{red,white}_profile` becomes a union of "built-in profile key" and "FK to user_profiles.id". That's a future-far concern.
+The 9 profile keys + their weight tables + their search depths + their forfeit thresholds are **TypeScript constants** in `src/ai/profiles.ts`. The values change via balance-tune commits during alpha/beta/rc; tracked as conventional-commit `feat(ai): tune balanced-medium forfeit threshold` edits with reviewable diffs. `MatchHandle.{redProfile,whiteProfile}` is a `ProfileKey` literal validated by `isProfileKey` at handle-creation time.
 
 ## Tuning history
 
@@ -231,4 +225,4 @@ Each entry records:
 - The run cycle that fed the tune (alpha 100-run, beta 1000-run, rc 10000-run, or an interim ad-hoc tune)
 - Which weights / depths / thresholds changed and by how much
 - The balance signal that motivated the change (e.g. "aggressive-hard won 73% vs defensive-hard at alpha — too high; reduced `chonk_opportunities` weight from +1.5 to +1.1")
-- The `matches`-sample signature (number of matches counted, span of `started_at` values) for reproducibility
+- The match-sample signature (number of matches counted, governor run-id) for reproducibility

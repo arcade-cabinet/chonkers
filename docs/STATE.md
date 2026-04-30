@@ -29,8 +29,8 @@ Stages reflect *kind of validation completed*, not *version number*. release-ple
 - Vite + TypeScript 6.0+ dev environment with strict mode (`noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, `verbatimModuleSyntax`).
 - Biome lint/format aligned with sibling arcade-cabinet projects.
 - release-please + dependabot + CI/CD workflows wired (`.github/workflows/{ci,cd,release,automerge}.yml`).
-- Authoritative documentation under `docs/`: this file, `RULES.md`, `DESIGN.md`, `LORE.md`, `ARCHITECTURE.md`, `PERSISTENCE.md`, `DB.md`, `AI.md`, `TESTING.md`.
-- PRD pipeline under `docs/plans/`: seven PRDs (persistence-and-db, logic-surfaces-and-broker, audio-and-design-tokens, visual-shell, e2e-governor, native-shell, plus one merged-and-deleted: schema folded into persistence-and-db).
+- Authoritative documentation under `docs/`: this file, `RULES.md`, `DESIGN.md`, `LORE.md`, `ARCHITECTURE.md`, `PERSISTENCE.md`, `AI.md`, `TESTING.md`.
+- PRD pipeline under `docs/plans/`: active PRDs are `logic-surfaces-and-broker`, `audio-and-design-tokens`, `e2e-governor`, `native-shell`. The `visual-shell` PRD is superseded by the threejs-shell rebuild (see directive). The `persistence-and-db` PRD has been retired — persistence is now KV-only and the design fits in `docs/PERSISTENCE.md`.
 - Coordination state under `.agent-state/`: directive (the queue), digest, cursor.
 - Design tokens (`src/design/tokens.ts`) derived from PBR mid-tones. Lato + Abril Fatface install at runtime via a small `installFonts()` helper that writes `@font-face` rules from the ASSETS manifest into a single `<style>` element on boot.
 - Capacitor Preferences `kv` typed wrapper at `src/persistence/preferences/kv.ts` with browser-tier vitest coverage.

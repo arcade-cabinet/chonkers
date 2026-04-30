@@ -9,3 +9,11 @@
  */
 
 export { kv } from "./kv";
+export {
+	type ActiveMatchSnapshot,
+	clearActiveMatch,
+	loadActiveMatch,
+	restoreAiPair,
+	saveActiveMatch,
+	snapshotFromHandle,
+} from "./match";

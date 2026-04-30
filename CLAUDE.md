@@ -32,7 +32,7 @@ The included profile content is plain Markdown documenting the same conventions 
 This repo runs in **autonomous long-running execution mode**. The execution surface is:
 
 - **The queue:** [`.agent-state/directive.md`](./.agent-state/directive.md) — the live PRD pipeline, who's working on what right now, what's done, what's blocked. Read this first on every session start.
-- **The PRDs:** [`docs/plans/*.prq.md`](./docs/plans/) — one PRD per major slice, each with locked acceptance criteria + task list. Active PRDs in dependency order: persistence-and-db, logic-surfaces-and-broker, audio-and-design-tokens, **threejs-shell** (replaces the retired visual-shell), e2e-governor, native-shell. (Schema was originally a separate PRD; it has been merged into persistence-and-db so the drizzle schema, build-time `public/game.db` pipeline, and runtime version-replay all land in one PR — see `docs/DB.md`.)
+- **The PRDs:** [`docs/plans/*.prq.md`](./docs/plans/) — one PRD per major slice, each with locked acceptance criteria + task list. Active PRDs in dependency order: logic-surfaces-and-broker (engine + AI + sim broker — shipped), audio-and-design-tokens (audio bus + tokens — shipped), e2e-governor, native-shell. The visual-shell PRD was retired and replaced by the threejs-shell rebuild (see `.agent-state/directive.md`). The persistence-and-db PRD was retired with the SQLite rip (PRQ-T-persist) — persistence is now KV-only and documented in `docs/PERSISTENCE.md`.
 - **The runbook:** [`docs/plans/EXECUTION.md`](./docs/plans/EXECUTION.md) — PR-per-PRD workflow, branch naming, commit cadence, reviewer dispatch, merge gate.
 - **The autonomy reference:** [`docs/plans/AUTONOMY.md`](./docs/plans/AUTONOMY.md) — `gh` + GraphQL recipes for thread resolution, change-request handling, self-approval, squash-merge, STOP_FAIL recovery.
 
@@ -60,28 +60,26 @@ src/                               # ALL APPLICATION SOURCE — pure TypeScript,
 │       ├── lobbyAffordances.ts    # Play / Resume sit on the demo pucks at boot
 │       ├── pauseRadial.ts         # Resume / Settings / Quit on centre cell
 │       └── endGameRadial.ts       # Play Again / Quit on the winning stack
-├── persistence/                   # Durable storage layer
-│   ├── preferences/               # typed JSON kv over @capacitor/preferences
-│   └── sqlite/                    # drizzle ORM + @capacitor-community/sqlite,
-│                                  # build-time game.db, runtime version-replay
+├── persistence/                   # Typed JSON KV over @capacitor/preferences.
+│   └── preferences/               # kv (settings) + match.ts (active-match snapshot
+│                                  # incl. base64 yuka brain). NO SQLite.
 ├── engine/                        # Pure rules engine. 3D occupancy state. No PRNG.
 ├── ai/                            # Yuka Graph + alpha-beta minimax. 9 disposition×difficulty
 │                                  # profiles. Deterministic. dumpAiState/loadAiState.
-├── store/                         # Typed CRUD repos over drizzle (matchesRepo, movesRepo,
-│                                  # aiStatesRepo, analyticsRepo).
-├── analytics/                     # Pre-baked aggregate refresh logic. Materialised rows.
-├── sim/                           # Koota state layer + actions broker. Routes save/resume.
-│                                  # Owns coin_flip_seed (only entropy in the system).
+├── sim/                           # Koota state layer + headless actions broker. Pure
+│                                  # in-memory; persistence wired by the scene layer via
+│                                  # onPlyCommit/onMatchEnd hooks. Owns coinFlipSeed
+│                                  # (only entropy in the system).
 ├── audio/                         # Howler bus, seven committed clips, role-keyed.
 ├── design/                        # tokens.ts only — palette, typography, motion durations.
-│                                  # Consumed directly by src/scene/. No Radix theme bridge.
+│                                  # Consumed directly by src/scene/.
 └── utils/                         # Coords, type guards, asset manifest.
 
-scripts/                           # Build-time scripts incl. build-game-db.mjs
-drizzle/                           # drizzle-kit-generated migration SQL (committed to git)
+scripts/                           # (currently empty — the build-time DB pipeline was
+│                                  # retired with PRQ-T-persist)
 e2e/                               # Playwright specs incl. governor.spec.ts
 docs/                              # Canonical docs: RULES, DESIGN, LORE, ARCHITECTURE,
-│                                  # PERSISTENCE, DB, AI, TESTING, STATE.
+│                                  # PERSISTENCE, AI, TESTING, STATE.
 docs/plans/                        # PRDs + execution runbooks (this file's neighbors)
 .agent-state/                      # Live working memory (directive, digest, cursor)
 ```
@@ -91,15 +89,14 @@ docs/plans/                        # PRDs + execution runbooks (this file's neig
 - **No `app/` directory exists.** All code is in `src/`. Provable by grep.
 - **No React imports anywhere in the project.** Biome rule + lint.
 - **No R3F / Radix / framer-motion imports anywhere.** Biome rule + lint.
-- **`src/engine/*`** never imports `src/ai/*`, `src/sim/*`, `src/store/*`, or `src/scene/*`.
+- **No SQLite, drizzle, or relational database.** Persistence is KV-only via `@capacitor/preferences`.
+- **`src/engine/*`** never imports `src/ai/*`, `src/sim/*`, or `src/scene/*`.
 - **`src/ai/*`** imports only from `src/engine/*` (one-way).
-- **`src/persistence/preferences/*`** is a leaf — imports nothing from other `src/` packages.
-- **`src/persistence/sqlite/*`** imports only the drizzle / capacitor / better-sqlite3 deps it needs; nothing from `src/{engine,ai,sim,store,scene}/`.
-- **`src/store/*`** imports from `src/persistence/sqlite/*` for drizzle handles; type-only from `src/{engine,ai}/*`.
-- **`src/sim/*`** is the broker — imports from `src/{engine,ai,store,persistence,audio}/*`. Only place that calls `crypto.getRandomValues()` (for the per-match `coin_flip_seed`).
-- **`src/scene/*`** is the render layer — imports from `src/{sim,audio,design,utils}/*` only; type-only from `src/{engine,ai}/*`. Uses `three` + `gsap` + DOM SVG APIs.
-- **No `Math.random()`** in `src/{engine,ai,sim,store}/`. Banned by `.claude/gates.json`. The sim broker's coin-flip is the only entropy source.
-- **No mocks** in tests (per `docs/TESTING.md`). Each layer's tests use the real layer below it. Tier 1 uses `makeTestDb()` (real `better-sqlite3`); Tier 2 uses real capacitor-sqlite; Tier 3 runs the full stack. The 100-run broker test is the alpha-stage integration assertion.
+- **`src/persistence/preferences/*`** is a leaf — imports `@capacitor/preferences` and the type-only AI/engine/sim shapes it needs to type the active-match snapshot.
+- **`src/sim/*`** is the broker — imports from `src/{engine,ai}/*`. Only place that calls `crypto.getRandomValues()` (for the per-match `coinFlipSeed`).
+- **`src/scene/*`** is the render layer — imports from `src/{sim,audio,design,persistence,utils}/*` only; type-only from `src/{engine,ai}/*`. Uses `three` + `gsap` + DOM SVG APIs. Wires `onPlyCommit` / `onMatchEnd` to `saveActiveMatch` / `clearActiveMatch`.
+- **No `Math.random()`** in `src/{engine,ai,sim}/`. Banned by `.claude/gates.json`. The sim broker's coin-flip is the only entropy source.
+- **No mocks** in tests (per `docs/TESTING.md`). Each layer's tests use the real layer below it. The 100-run broker test is the alpha-stage integration assertion (pure in-memory, no persistence side effect).
 
 Per-repo specifics that override profile defaults: see profile files for the standard rules; this CLAUDE.md only adds chonkers-unique items.
 

@@ -1,14 +1,12 @@
 # PRD: Chonkers Logic Surfaces + Broker Demonstration
 
 **Created:** 2026-04-29
-**Status:** ACTIVE
+**Updated:** 2026-04-30 — persistence-and-db prerequisite retired (PRQ-T-persist); the broker is now headless (no `db` arg) and persistence is wired via `onPlyCommit` / `onMatchEnd` hooks against the active-match KV slot. References to `src/store/`, `src/persistence/sqlite/`, and `src/analytics/` in the lower sections of this document are obsolete; see `docs/ARCHITECTURE.md` and `docs/PERSISTENCE.md` for the current shape.
+**Status:** SHIPPED (engine + AI + sim broker landed and tested; the persistence-prerequisite half is moot)
 **Owner:** jbogaty
-**Acceptance:** ≥100 full chonkers matches driven through `src/sim/actions.ts` (the broker), each completing legally end-to-end with real engine, real AI, and real persistence — no mocks anywhere in the call graph.
+**Acceptance:** ≥100 full chonkers matches driven through the broker, each completing legally end-to-end with real engine and real AI — no mocks anywhere in the call graph. (Persistence is now optional via hooks; the 100-run gate runs without any persistence side effect, exercising the pure in-memory state machine.)
 
-**Prerequisite (must be complete and merged before this PRD begins):**
-- [persistence-and-db.prq.md](./persistence-and-db.prq.md) — `src/persistence/preferences/` (kv) + `src/persistence/sqlite/` (drizzle ORM + capacitor-sqlite, build-time `public/game.db`, runtime version-replay) + `src/store/` (typed CRUD repos). This PRD consumes those as installed dependencies. The earlier separate "schema" PRD has been merged into this prerequisite.
-
-This PRD does not build the persistence + db + store layer; it only consumes it.
+**Prerequisite (no longer applicable):** `persistence-and-db.prq.md` was retired on 2026-04-30 alongside the SQLite rip. Persistence collapsed to KV-only and the design fits in `docs/PERSISTENCE.md`.
 
 ---
 
