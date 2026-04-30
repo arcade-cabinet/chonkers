@@ -50,13 +50,17 @@ export function PlayView() {
 
 	// Drive the AI's turn whenever it's their turn and they aren't
 	// already thinking. The aiThinking guard prevents stepTurn from
-	// firing twice if React re-renders mid-step.
+	// firing twice if React re-renders mid-step. Errors from the
+	// async stepTurn surface in the HUD's error band rather than
+	// going to an unhandled promise rejection.
 	useEffect(() => {
-		if (!isAiTurn) return;
-		if (aiThinking?.value) return;
+		if (!isAiTurn || aiThinking?.value) return;
 		const id = window.setTimeout(() => {
-			void actions.stepTurn();
-		}, 60); // tiny delay so the UI paints between turns
+			actions.stepTurn().catch((err) => {
+				console.error("[chonkers] stepTurn failed", err);
+				setError(err instanceof Error ? err.message : String(err));
+			});
+		}, 60);
 		return () => window.clearTimeout(id);
 	}, [isAiTurn, aiThinking?.value, actions]);
 
@@ -77,11 +81,19 @@ export function PlayView() {
 			if (!isHumanTurn) return;
 			if (!match) return;
 			const cur = selection?.cell ?? null;
-			// 1. Click own piece → select.
-			const clickedOwnStack = match.pieces.some(
-				(p) =>
-					p.col === cell.col && p.row === cell.row && p.color === humanColor,
+			// 1. Click own stack → select. RULES.md: the TOP piece's
+			// colour determines control (not "any piece in the stack").
+			// A red stack with a white piece chonked on top is a white
+			// stack. Find the highest piece at the cell and check its
+			// colour.
+			const piecesAtCell = match.pieces.filter(
+				(p) => p.col === cell.col && p.row === cell.row,
 			);
+			const topPiece =
+				piecesAtCell.length > 0
+					? piecesAtCell.reduce((max, p) => (p.height > max.height ? p : max))
+					: null;
+			const clickedOwnStack = topPiece?.color === humanColor;
 			if (clickedOwnStack && (!cur || !cellsEqual(cur, cell))) {
 				haptics.selection();
 				actions.setSelection(cell);
@@ -200,8 +212,16 @@ export function PlayView() {
 				type="hidden"
 				data-testid="cell-click-bridge"
 				onChange={(e) => {
-					const [c, r] = e.currentTarget.value.split(",").map(Number);
-					if (c == null || r == null) return;
+					const parts = e.currentTarget.value.split(",");
+					if (parts.length < 2) return;
+					const c = Number(parts[0]);
+					const r = Number(parts[1]);
+					// `Number()` returns NaN for non-numeric strings; the
+					// original `== null` check let NaN through and then
+					// onCellClick used it for piece comparisons that
+					// silently failed. `isFinite` rejects both undefined
+					// (from over-short input) and NaN.
+					if (!Number.isFinite(c) || !Number.isFinite(r)) return;
 					void onCellClick({ col: c, row: r });
 				}}
 			/>

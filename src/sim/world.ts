@@ -217,6 +217,14 @@ export function buildSimActions(sim: SimWorld) {
 		async stepTurn(): Promise<void> {
 			const handle = sim.handle;
 			if (!handle) return;
+			// Re-entrancy guard. AiThinking flips true synchronously
+			// below, but a caller can fire stepTurn twice in the same
+			// React batch (e.g., StrictMode double-invocation, or two
+			// useEffects landing in the same microtask). Without this
+			// guard, both calls observe `AiThinking === false`,
+			// proceed in parallel, and produce two persisted moves
+			// for one logical ply.
+			if (sim.worldEntity.get(AiThinking)?.value) return;
 			const prior = sim.worldEntity.get(Match);
 			const humanColor = prior?.humanColor ?? null;
 			const priorPly = prior?.plyCount ?? 0;
