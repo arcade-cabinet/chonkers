@@ -58,9 +58,7 @@ export function BezelGestures({
 	// Active state — disable when there's no human or game's over.
 	const active = humanColor !== null && !winner;
 
-	const halfInnerW = innerWidth / 2;
 	const halfInnerD = innerDepth / 2;
-	const sideLength = innerDepth + frameThickness * 2;
 	const yMid = HIT_LIFT;
 
 	// "Player side" of the bezel is the side adjacent to the
@@ -92,33 +90,12 @@ export function BezelGestures({
 	if (!active) return null;
 
 	return (
-		<group>
-			{/* Player's side knock zone — invisible plane over the
-			 * player's bezel slab. Triple-tap to forfeit. */}
-			{/* biome-ignore lint/a11y/noStaticElementInteractions: <mesh> is R3F three.js, not DOM. The Forfeit DOM button remains as accessible fallback. */}
-			<mesh position={[0, yMid, playerSlabZ]} onClick={handlePlayerKnock}>
-				<boxGeometry
-					args={[innerWidth + frameThickness * 2, HIT_HEIGHT, frameThickness]}
-				/>
-				<meshBasicMaterial transparent opacity={0} depthWrite={false} />
-			</mesh>
-			{/* AI's side, side rails — placeholder hitboxes. Currently
-			 * no-op; reserved so future gestures (e.g. tap-to-nudge
-			 * tilt-toward-AI) can hook in without restructuring. */}
-			<mesh
-				position={[-(halfInnerW + frameThickness / 2), yMid, 0]}
-				onClick={(e) => e.stopPropagation()}
-			>
-				<boxGeometry args={[frameThickness, HIT_HEIGHT, sideLength]} />
-				<meshBasicMaterial transparent opacity={0} depthWrite={false} />
-			</mesh>
-			<mesh
-				position={[halfInnerW + frameThickness / 2, yMid, 0]}
-				onClick={(e) => e.stopPropagation()}
-			>
-				<boxGeometry args={[frameThickness, HIT_HEIGHT, sideLength]} />
-				<meshBasicMaterial transparent opacity={0} depthWrite={false} />
-			</mesh>
-		</group>
+		// biome-ignore lint/a11y/noStaticElementInteractions: <mesh> is R3F three.js, not DOM. The Forfeit DOM button remains as accessible fallback.
+		<mesh position={[0, yMid, playerSlabZ]} onClick={handlePlayerKnock}>
+			<boxGeometry
+				args={[innerWidth + frameThickness * 2, HIT_HEIGHT, frameThickness]}
+			/>
+			<meshBasicMaterial transparent opacity={0} depthWrite={false} />
+		</mesh>
 	);
 }

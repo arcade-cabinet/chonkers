@@ -41,6 +41,9 @@ export {
 export { decideFirstPlayer, freshCoinFlipSeed } from "./coinFlip";
 export {
 	AiThinking,
+	Ceremony,
+	type CeremonyPhase,
+	type CeremonySnapshot,
 	FALLBACK_PIECES,
 	HoldProgress,
 	Match,

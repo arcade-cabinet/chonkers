@@ -57,7 +57,7 @@ export function EndScreen({ variant }: Props) {
 	const onPlayAgain = useCallback(() => {
 		if (busy) return;
 		if (!match) {
-			void actions.setScreen("title");
+			void actions.setScreen("lobby");
 			return;
 		}
 		// Capture the prior config locally before quitMatch wipes

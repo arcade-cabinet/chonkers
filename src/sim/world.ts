@@ -28,6 +28,8 @@ const matchesRepoForfeit = matchesRepo.forfeit;
 import { decideFirstPlayer } from "./coinFlip";
 import {
 	AiThinking,
+	Ceremony,
+	type CeremonySnapshot,
 	HoldProgress,
 	Match,
 	piecesFromBoard,
@@ -81,10 +83,16 @@ export function createSimWorld(options: CreateSimWorldOptions): SimWorld {
 	// latter routes traits onto an internal `IsExcluded` worldEntity
 	// that doesn't appear in queries.
 	const worldEntity = world.spawn(
-		Screen({ value: "title" }),
+		Screen({ value: "lobby" }),
 		Selection({ cell: null }),
 		HoldProgress({ value: 0 }),
 		AiThinking({ value: false }),
+		Ceremony({
+			phase: "idle",
+			firstPlayer: "red",
+			pieceProgress: 0,
+			startedAtMs: 0,
+		}),
 	);
 	return {
 		world,
@@ -200,6 +208,12 @@ export function buildSimActions(sim: SimWorld) {
 			sim.worldEntity.set(Selection, { cell: null });
 			sim.worldEntity.set(HoldProgress, { value: 0 });
 			sim.worldEntity.set(AiThinking, { value: false });
+			sim.worldEntity.set(Ceremony, {
+				phase: "idle",
+				firstPlayer: "red",
+				pieceProgress: 0,
+				startedAtMs: 0,
+			});
 			syncMatchTraits(sim, { humanColor: input.humanColor, plyCount: 0 });
 			sim.worldEntity.set(Screen, { value: "play" });
 		},
@@ -210,14 +224,35 @@ export function buildSimActions(sim: SimWorld) {
 			sim.worldEntity.set(Selection, { cell: null });
 			sim.worldEntity.set(HoldProgress, { value: 0 });
 			sim.worldEntity.set(AiThinking, { value: false });
+			sim.worldEntity.set(Ceremony, {
+				phase: "idle",
+				firstPlayer: "red",
+				pieceProgress: 0,
+				startedAtMs: 0,
+			});
 			if (sim.worldEntity.has(Match)) sim.worldEntity.remove(Match);
 			if (sim.worldEntity.has(SplitChainView))
 				sim.worldEntity.remove(SplitChainView);
-			sim.worldEntity.set(Screen, { value: "title" });
+			sim.worldEntity.set(Screen, { value: "lobby" });
 		},
 
 		setScreen(screen: ScreenKind): void {
 			sim.worldEntity.set(Screen, { value: screen });
+		},
+
+		setCeremony(snapshot: CeremonySnapshot): void {
+			sim.worldEntity.set(Ceremony, snapshot);
+		},
+
+		/**
+		 * Returns the id of the most recent unfinished match, or null.
+		 * The lobby's Resume button uses this to know whether the
+		 * fast-forward affordance should be enabled.
+		 */
+		async findResumableMatch(): Promise<string | null> {
+			const all = await matchesRepo.listMatches(sim.db);
+			const unfinished = all.find((m) => m.finishedAt === null);
+			return unfinished?.id ?? null;
 		},
 
 		setSelection(cell: { col: number; row: number } | null): void {
@@ -280,6 +315,12 @@ export function buildSimActions(sim: SimWorld) {
 				}
 			} finally {
 				sim.worldEntity.set(AiThinking, { value: false });
+				sim.worldEntity.set(Ceremony, {
+					phase: "idle",
+					firstPlayer: "red",
+					pieceProgress: 0,
+					startedAtMs: 0,
+				});
 			}
 		},
 

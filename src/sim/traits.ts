@@ -30,15 +30,14 @@ import {
  * from the perspective of nobody.
  */
 export type ScreenKind =
-	| "title"
+	| "lobby"
 	| "play"
 	| "win"
 	| "lose"
 	| "spectator-result"
-	| "paused"
-	| "settings";
+	| "paused";
 
-export const Screen = trait({ value: "title" as ScreenKind });
+export const Screen = trait({ value: "lobby" as ScreenKind });
 
 /**
  * A single piece's UI-relevant data. Stored in `MatchSnapshot.pieces`
@@ -154,3 +153,48 @@ export const HoldProgress = trait({ value: 0 });
 
 /** Whether the AI is currently thinking (so the UI can disable input). */
 export const AiThinking = trait({ value: false });
+
+/**
+ * New-match ceremony state. Drives the visible piece-placement
+ * reveal + coin-flip sequence between lobby and play.
+ *
+ * Phases:
+ *   - "idle"          — no ceremony in flight; lobby or mid-game.
+ *   - "demo-clearing" — demo pieces lifting off board.
+ *   - "placing-first" — first player's pieces flying to opening positions.
+ *   - "placing-second" — opponent's pieces flying to opening positions.
+ *   - "coin-flip"     — two-sided chip spinning to decide first move.
+ *   - "settling"      — board tilting to playable angle as coin lands.
+ *
+ * `firstPlayer` is decided up-front (via decideFirstPlayer + the
+ * coin-flip seed) so the ceremony can show pieces in turn order.
+ * The actual broker createMatch already happened — this trait
+ * just sequences the visual reveal.
+ *
+ * `pieceProgress` is the count of pieces that have landed in each
+ * phase; the visual layer shows pieces 0..pieceProgress and
+ * suppresses the rest until later phases.
+ */
+export type CeremonyPhase =
+	| "idle"
+	| "demo-clearing"
+	| "placing-first"
+	| "placing-second"
+	| "coin-flip"
+	| "settling";
+
+export interface CeremonySnapshot {
+	readonly phase: CeremonyPhase;
+	readonly firstPlayer: Color;
+	readonly pieceProgress: number;
+	readonly startedAtMs: number;
+}
+
+export const Ceremony = trait(
+	(): CeremonySnapshot => ({
+		phase: "idle",
+		firstPlayer: "red",
+		pieceProgress: 0,
+		startedAtMs: 0,
+	}),
+);

@@ -2,9 +2,9 @@
  * Tier 1 (node) tests for the koota sim world.
  *
  * Asserts the trait surface that `app/*` will subscribe to:
- *   - Initial Screen is "title".
+ *   - Initial Screen is "lobby".
  *   - newMatch transitions Screen → "play" + populates Match.
- *   - quitMatch tears down + returns to "title".
+ *   - quitMatch tears down + returns to "lobby".
  *   - stepTurn advances + mirrors handle.game into the Match trait.
  *   - SplitChainView is added/removed in lockstep with handle.game.chain.
  *   - onMatchEnd fires exactly once at terminal transition.
@@ -35,7 +35,7 @@ describe("createSimWorld", () => {
 	it("initial state has Screen=title and no Match", async () => {
 		const { db } = makeTestDb();
 		const sim = createSimWorld({ db });
-		expect(sim.worldEntity.get(Screen)?.value).toBe("title");
+		expect(sim.worldEntity.get(Screen)?.value).toBe("lobby");
 		expect(sim.worldEntity.has(Match)).toBe(false);
 	});
 
@@ -71,7 +71,7 @@ describe("createSimWorld", () => {
 		actions.setHoldProgress(0.5);
 		expect(sim.worldEntity.get(Selection)?.cell).toEqual({ col: 4, row: 4 });
 		await actions.quitMatch();
-		expect(sim.worldEntity.get(Screen)?.value).toBe("title");
+		expect(sim.worldEntity.get(Screen)?.value).toBe("lobby");
 		expect(sim.worldEntity.has(Match)).toBe(false);
 		expect(sim.worldEntity.get(Selection)?.cell).toBeNull();
 		expect(sim.worldEntity.get(HoldProgress)?.value).toBe(0);
