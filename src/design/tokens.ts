@@ -62,17 +62,30 @@ export const tokens = {
 		// Camera world position relative to the bezel center; the
 		// onCreated hook calls camera.lookAt(0, 0, 0) so position
 		// alone determines the view.
+		//
+		// Tabletop-3/4 framing: camera sits 8.5 units above + 9 units
+		// behind the bezel center, which gives a viewing angle of
+		// ~atan(8.5/9) ≈ 43° from horizontal — high enough that
+		// stacked-piece heights register, low enough that the bezel
+		// reads as a tabletop the user is leaning over rather than a
+		// vertical wall they're looking down at. Previous values
+		// (Y=13.2, Z=0.8) sat almost directly overhead; even modest
+		// board tilt then read as a wall, not a table.
 		cameraX: 0,
-		cameraY: 13.2,
-		cameraZ: 0.8,
-		cameraFov: 50,
+		cameraY: 8.5,
+		cameraZ: 9,
+		cameraFov: 42,
 		cameraNear: 0.1,
 		cameraFar: 60,
 		// TippingBoard X-axis rotation magnitude when the board
 		// tips toward the human (resting bias). Active-side bias
 		// is layered on top for AI's-turn / win-loser-side states.
-		baseTiltMagnitude: Math.PI / 7.2, // ~25°
-		turnTiltDelta: Math.PI / 28, // ~6.4°
+		// Reduced from π/7.2 (~25°) → π/15 (~12°) so the resting
+		// bias reads as "table tipped toward you" rather than "table
+		// stood on its edge". With the new 3/4 camera, even a modest
+		// 12° tilt visibly drops the player's near edge.
+		baseTiltMagnitude: Math.PI / 15, // ~12°
+		turnTiltDelta: Math.PI / 60, // ~3°
 	},
 	// Bezel geometry + frame thickness. Bezel.tsx + BezelGestures
 	// + BezelButtons read from this surface.

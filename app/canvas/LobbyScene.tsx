@@ -5,8 +5,9 @@
  * Renders:
  *   - Bezel (always)
  *   - DemoPieces — visible in lobby (idle phase) + during demo-
- *     clearing phase. Hidden once cleared.
- *   - BezelButtons — Play + Resume icons. Visible only at idle.
+ *     clearing phase. Each demo piece carries a RadialOverlay on
+ *     its top cap (red = ▶ Play, white = ⏩ Resume) per PRQ-A1's
+ *     piece-top primitive unification — no separate BezelButtons.
  *   - PiecePlacementReveal — actual gameplay pieces revealed
  *     progressively during placing-first / placing-second / coin-
  *     flip / settling phases.
@@ -25,7 +26,6 @@ import { Ceremony, Match } from "@/sim";
 import { ASSETS } from "@/utils/manifest";
 import { useWorldEntity } from "../hooks/useWorldEntity";
 import { Bezel } from "./Bezel";
-import { BezelButtons } from "./BezelButtons";
 import { Board } from "./Board";
 import { CoinFlipChip } from "./CoinFlipChip";
 import { DemoPieces } from "./DemoPieces";
@@ -92,7 +92,6 @@ function LobbyContent({ onPlay, onResume, canResume }: Props) {
 	const match = useTrait(worldEntity, Match);
 	const phase = ceremony?.phase ?? "idle";
 
-	const showLobbyAffordances = phase === "idle";
 	const showBoardSurface =
 		phase === "placing-first" ||
 		phase === "placing-second" ||
@@ -102,16 +101,10 @@ function LobbyContent({ onPlay, onResume, canResume }: Props) {
 
 	return (
 		<>
-			<DemoPieces onTap={onPlay} />
-			{showLobbyAffordances ? (
-				<BezelButtons
-					innerDepth={BOARD_INNER_DEPTH}
-					frameThickness={tokens.bezel.frameThickness}
-					canResume={canResume}
-					onPlay={onPlay}
-					onResume={onResume}
-				/>
-			) : null}
+			{/* DemoPieces carries its own RadialOverlay tops with the
+			 * Play / Resume affordances per PRQ-A1's piece-top primitive
+			 * unification — no separate BezelButtons mesh. */}
+			<DemoPieces onPlay={onPlay} onResume={onResume} canResume={canResume} />
 			{showBoardSurface ? <Board /> : null}
 			{showBoardSurface ? <PiecePlacementReveal /> : null}
 			{showCoinFlip && match && ceremony ? (

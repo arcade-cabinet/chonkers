@@ -85,13 +85,12 @@ test.describe("@visual golden path — AI-vs-AI playthrough", () => {
 		await page.waitForTimeout(200);
 		await snap("02-watch-selected");
 
-		// ── 3. Click the bezel ▶ Play button ──
-		// The bezel button must expose role="button" + accessible
-		// name "Play" for this click to land. PRQ-A8 calls out that
-		// the current implementation has no aria handle — the click
-		// below fails (timeout) until the bezel button is made
-		// accessible. That failure IS the alpha-blocker signal.
-		await page.getByRole("button", { name: /^Play( new match)?$/i }).click();
+		// ── 3. Click the ▶ Play wedge on the red demo piece ──
+		// PRQ-A1's RadialOverlay primitive renders a per-wedge <button>
+		// for every piece-top affordance (lobby Play / Resume, top-color
+		// caps, live split slices). The lobby's red demo piece has a
+		// single full-disc wedge labelled "Play new match".
+		await page.getByRole("button", { name: "Play new match" }).click();
 
 		// ── 4. Ceremony phases ──
 		// Phase budgets per LobbyView.tsx:
