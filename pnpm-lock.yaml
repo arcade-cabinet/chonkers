@@ -44,12 +44,18 @@ importers:
       '@react-three/fiber':
         specifier: ^9.6.1
         version: 9.6.1(@types/react@19.2.14)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(three@0.184.0)
+      '@types/howler':
+        specifier: ^2.2.12
+        version: 2.2.12
       drizzle-orm:
         specifier: ^0.45.2
         version: 0.45.2(@types/better-sqlite3@7.6.13)(@types/sql.js@1.4.11)(better-sqlite3@12.9.0)(sql.js@1.11.0)
       framer-motion:
         specifier: ^12.23.0
         version: 12.38.0(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
+      howler:
+        specifier: ^2.2.4
+        version: 2.2.4
       jeep-sqlite:
         specifier: ^2.8.0
         version: 2.8.0
@@ -1719,6 +1725,9 @@ packages:
   '@types/fs-extra@8.1.5':
     resolution: {integrity: sha512-0dzKcwO+S8s2kuF5Z9oUWatQJj5Uq/iqphEtE3GQJVRRYm/tD1LglU2UnXi2A8jLq5umkGouOXOR9y0n613ZwQ==}
 
+  '@types/howler@2.2.12':
+    resolution: {integrity: sha512-hy769UICzOSdK0Kn1FBk4gN+lswcj1EKRkmiDtMkUGvFfYJzgaDXmVXkSShS2m89ERAatGIPnTUlp2HhfkVo5g==}
+
   '@types/node@25.6.0':
     resolution: {integrity: sha512-+qIYRKdNYJwY3vRCZMdJbPLJAtGjQBudzZzdzwQYkEPQd+PJGixUL5QfvCLDaULoLv+RhT3LDkwEfKaAkgSmNQ==}
 
@@ -2201,6 +2210,9 @@ packages:
 
   hls.js@1.6.16:
     resolution: {integrity: sha512-VSIRpLfRwlAAdGL4wiTucx2ScRipo0ed1FBatWkyt832jC4CReKstga6yIhYVwGu9LOBjuX9wzmRMeQdBJtzEA==}
+
+  howler@2.2.4:
+    resolution: {integrity: sha512-iARIBPgcQrwtEr+tALF+rapJ8qSc+Set2GJQl7xT1MQzWaVkFebdJhR3alVlSiUf5U7nAANKuj3aWpwerocD5w==}
 
   ieee754@1.2.1:
     resolution: {integrity: sha512-dcyqhDvX1C46lXZcVqCpK+FtMRQVdIMN6/Df5js2zouUsqG7I6sFxitIC+7KYK29KdXOLHdu9zL4sFnoVQnqaA==}
@@ -4408,6 +4420,8 @@ snapshots:
     dependencies:
       '@types/node': 25.6.0
 
+  '@types/howler@2.2.12': {}
+
   '@types/node@25.6.0':
     dependencies:
       undici-types: 7.19.2
@@ -4847,6 +4861,8 @@ snapshots:
   graceful-fs@4.2.11: {}
 
   hls.js@1.6.16: {}
+
+  howler@2.2.4: {}
 
   ieee754@1.2.1: {}
 

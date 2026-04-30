@@ -53,6 +53,28 @@ export const tokens = {
 		// Vertical gap between stacked pucks so the wood seam reads.
 		puckGap: 0.005,
 	},
+	// Slice-state tokens for `app/components/SplitRadial.tsx`. The
+	// radial cycles through idle → hovered → selected → hold-ready →
+	// committed; each state has its own stroke + fill.
+	splitRadial: {
+		idleStroke: "#1B1410", // ink.primary
+		idleFill: "transparent",
+		hoveredStroke: "#E8B83A", // accent.select
+		selectedFill: "#E8B83A99", // accent.select @ 0.6 alpha
+		selectedStroke: "#E8B83A",
+		holdReadyFill: "#3FB67A", // accent.split
+		holdReadyStroke: "#3FB67A",
+		// De-emphasise the radial after the commit-drag begins so the
+		// destination cell takes focus.
+		committedOpacity: 0.45,
+	},
+	// Colour banding for `app/components/TurnBadge.tsx`.
+	turnBadge: {
+		redBg: "#7A3B22", // wood.pieceRed mid-tone
+		redInk: "#F5EBD8", // ink.inverse
+		whiteBg: "#D6BC8A", // wood.pieceWhite mid-tone
+		whiteInk: "#1B1410", // ink.primary
+	},
 } as const;
 
 export type Tokens = typeof tokens;
