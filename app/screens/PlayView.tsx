@@ -56,16 +56,22 @@ export function PlayView() {
 	useEffect(() => {
 		if (!isAiTurn || aiThinking?.value) return;
 		const id = window.setTimeout(() => {
-			actions.stepTurn().catch((err) => {
-				console.error("[chonkers] stepTurn failed", err);
-				setError(err instanceof Error ? err.message : String(err));
-			});
+			actions.stepTurn().then(
+				() => setError(null),
+				(err) => {
+					console.error("[chonkers] stepTurn failed", err);
+					setError(err instanceof Error ? err.message : String(err));
+				},
+			);
 		}, 60);
 		return () => window.clearTimeout(id);
 	}, [isAiTurn, aiThinking?.value, actions]);
 
 	const onForfeit = useCallback(() => {
-		void actions.forfeit();
+		void actions.forfeit().catch((err) => {
+			console.error("[chonkers] forfeit failed", err);
+			setError(err instanceof Error ? err.message : String(err));
+		});
 	}, [actions]);
 
 	const onQuit = useCallback(() => {

@@ -193,6 +193,13 @@ export function buildSimActions(sim: SimWorld) {
 					: {}),
 			});
 			sim.handle = handle;
+			// Reset every transient UI trait so a non-title entry
+			// (Play-again from EndScreen) starts the fresh match
+			// without inheriting the prior match's Selection / hold-
+			// progress / AiThinking state.
+			sim.worldEntity.set(Selection, { cell: null });
+			sim.worldEntity.set(HoldProgress, { value: 0 });
+			sim.worldEntity.set(AiThinking, { value: false });
 			syncMatchTraits(sim, { humanColor: input.humanColor, plyCount: 0 });
 			sim.worldEntity.set(Screen, { value: "play" });
 		},
