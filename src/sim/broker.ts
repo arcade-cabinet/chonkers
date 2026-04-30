@@ -63,6 +63,7 @@ import {
 	type Decision,
 	dumpAiState,
 	getProfile,
+	loadAiState,
 	type ProfileKey,
 } from "@/ai";
 import {
@@ -482,6 +483,79 @@ function stackHeightAt(
 		if (piece.col === cell.col && piece.row === cell.row) h += 1;
 	}
 	return h;
+}
+
+/**
+ * Resume a previously-persisted unfinished match. Reconstructs the
+ * MatchHandle by replaying the persisted moves through the engine
+ * reducer and restoring per-color AI states from the ai_states
+ * table when present.
+ *
+ * Throws if the match doesn't exist, is already finished, or one
+ * of the persisted moves fails engine validation (which would
+ * indicate database corruption since every persisted move passed
+ * validation when it was originally committed).
+ */
+export async function resumeMatch(
+	db: StoreDb,
+	matchId: string,
+): Promise<MatchHandle> {
+	const matchRow = await matchesRepo.getMatch(db, matchId);
+	if (!matchRow) {
+		throw new Error(`resumeMatch: no match with id ${matchId}`);
+	}
+	if (matchRow.finishedAt !== null) {
+		throw new Error(
+			`resumeMatch: match ${matchId} is already finished (winner=${matchRow.winner ?? "?"})`,
+		);
+	}
+	const redProfile = matchRow.redProfile as ProfileKey;
+	const whiteProfile = matchRow.whiteProfile as ProfileKey;
+	const firstPlayer = decideFirstPlayer(matchRow.coinFlipSeed);
+	let game = createInitialState(firstPlayer);
+
+	const moves = await movesRepo.listMovesByMatch(db, matchId);
+	for (const m of moves) {
+		const slice = m.sliceIndicesJson
+			? (JSON.parse(m.sliceIndicesJson) as ReadonlyArray<number>)
+			: null;
+		const action: Action = {
+			from: { col: m.fromCol, row: m.fromRow },
+			runs: [
+				{
+					indices:
+						slice ?? Array.from({ length: m.stackHeightAfter }, (_, i) => i),
+					to: { col: m.toCol, row: m.toRow },
+				},
+			],
+		};
+		game = engineApply(game, action);
+	}
+
+	const handle: MatchHandle = {
+		matchId,
+		redProfile,
+		whiteProfile,
+		coinFlipSeed: matchRow.coinFlipSeed,
+		game,
+		ai: {
+			red: createAiState(redProfile),
+			white: createAiState(whiteProfile),
+		},
+	};
+
+	// Restore the on-turn AI's perf state if a dump exists. The
+	// off-turn AI starts fresh — its dump (if any) was for a prior
+	// turn it hasn't reached again yet.
+	const onTurnProfile = game.turn === "red" ? redProfile : whiteProfile;
+	const dump = await aiStatesRepo.getDump(db, matchId, onTurnProfile);
+	if (dump && dump.dumpFormatVersion === CURRENT_DUMP_FORMAT_VERSION) {
+		const restored = loadAiState(dump.dumpBlob);
+		if (game.turn === "red") handle.ai.red = restored;
+		else handle.ai.white = restored;
+	}
+
+	return handle;
 }
 
 /**

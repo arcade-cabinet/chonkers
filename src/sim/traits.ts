@@ -72,6 +72,20 @@ export interface MatchSnapshot {
 	readonly winner: Color | null;
 	readonly plyCount: number;
 	readonly pieces: ReadonlyArray<PiecePlacement>;
+	/**
+	 * Source / destination of the most recently committed move,
+	 * or null on initial state. The visual layer's piece-motion
+	 * pipeline (PRQ-A3) reads this to animate moved pieces along
+	 * an arc from `from` to `to` instead of teleporting them.
+	 *
+	 * Stored alongside the engine snapshot so animation is driven
+	 * by the same trait flush as the position update — no separate
+	 * channel to stay in sync with.
+	 */
+	readonly lastMove: {
+		readonly from: { readonly col: number; readonly row: number };
+		readonly to: { readonly col: number; readonly row: number };
+	} | null;
 }
 
 export const Match = trait(
@@ -84,6 +98,7 @@ export const Match = trait(
 		winner: null,
 		plyCount: 0,
 		pieces: [],
+		lastMove: null,
 	}),
 );
 

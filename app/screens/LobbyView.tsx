@@ -145,9 +145,21 @@ export function LobbyView() {
 
 	const resumeMatch = useCallback(async () => {
 		if (isCeremonyActive || !resumableId) return;
-		// Resume goes straight to play — the persisted match's
-		// pieces are already in their correct positions.
-		actions.setScreen("play");
+		try {
+			// Replay persisted moves through the engine + restore
+			// the on-turn AI's perf state. The action sets sim.handle,
+			// syncs the Match trait, and flips Screen to "play".
+			// humanColor mirrors the lobby's new-match default so
+			// the resumed match has the same player perspective the
+			// human had when they originally started it. (B1 will
+			// persist the choice in preferences for true round-trip.)
+			await actions.resumeMatch({
+				matchId: resumableId,
+				humanColor: DEFAULT_HUMAN_COLOR,
+			});
+		} catch (err) {
+			console.error("[chonkers] resumeMatch failed", err);
+		}
 	}, [actions, isCeremonyActive, resumableId]);
 
 	// During phases 2-5, swap LobbyScene for a "ceremony scene" that

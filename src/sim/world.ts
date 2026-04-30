@@ -21,6 +21,7 @@ import {
 	createMatch,
 	type MatchHandle,
 	playTurn,
+	resumeMatch as resumeMatchInBroker,
 } from "./broker";
 
 const matchesRepoForfeit = matchesRepo.forfeit;
@@ -146,6 +147,16 @@ function upsert<T>(
 interface SyncMatchTraitsContext {
 	readonly humanColor: Color | null;
 	readonly plyCount: number;
+	/**
+	 * Source / destination of the move that this sync reflects.
+	 * The sim broker passes this through after every commit so the
+	 * Match trait carries an animation hint to the visual layer.
+	 * Null on initial state and on resume (no move just happened).
+	 */
+	readonly lastMove?: {
+		readonly from: { readonly col: number; readonly row: number };
+		readonly to: { readonly col: number; readonly row: number };
+	} | null;
 }
 
 function syncMatchTraits(sim: SimWorld, ctx: SyncMatchTraitsContext): void {
@@ -164,6 +175,7 @@ function syncMatchTraits(sim: SimWorld, ctx: SyncMatchTraitsContext): void {
 		winner: handle.game.winner,
 		plyCount: ctx.plyCount,
 		pieces: piecesFromBoard(handle.game.board),
+		lastMove: ctx.lastMove ?? null,
 	});
 	if (handle.game.chain) {
 		upsert(worldEntity, SplitChainView as never, {
@@ -218,6 +230,52 @@ export function buildSimActions(sim: SimWorld) {
 				startedAtMs: 0,
 			});
 			syncMatchTraits(sim, { humanColor: input.humanColor, plyCount: 0 });
+			sim.worldEntity.set(Screen, { value: "play" });
+		},
+
+		/**
+		 * Reload a previously-persisted unfinished match into the
+		 * sim. Replays moves through the engine to reconstruct the
+		 * GameState, restores the on-turn AI's perf state from
+		 * ai_states (when available), bumps the epoch like newMatch
+		 * so any in-flight stepTurn from a stale handle bails, and
+		 * flips the Screen to "play".
+		 *
+		 * The persisted matches row carries `humanColor` only as
+		 * derived from the broker's contract (humanColor is not in
+		 * the row schema), so the caller (LobbyView's Resume tap)
+		 * passes humanColor explicitly. For the alpha lobby we
+		 * default `humanColor: "red"` to mirror the new-match
+		 * default; B1 (difficulty/color picker) will route the
+		 * persisted choice through preferences.
+		 */
+		async resumeMatch(input: {
+			matchId: string;
+			humanColor: Color | null;
+		}): Promise<void> {
+			sim.epoch += 1;
+			const handle = await resumeMatchInBroker(sim.db, input.matchId);
+			sim.handle = handle;
+			sim.worldEntity.set(Selection, { cell: null });
+			sim.worldEntity.set(HoldProgress, { value: 0 });
+			sim.worldEntity.set(AiThinking, { value: false });
+			sim.worldEntity.set(SplitArm, { count: 0 });
+			sim.worldEntity.set(Ceremony, {
+				phase: "idle",
+				firstPlayer: "red",
+				pieceProgress: 0,
+				startedAtMs: 0,
+			});
+			// plyCount comes from the matches row directly — read
+			// from the matchRow inside the broker would be cleaner,
+			// but the broker returned only the MatchHandle. Re-query
+			// the row here for the canonical plyCount.
+			const matchRow = await matchesRepo.getMatch(sim.db, input.matchId);
+			const plyCount = matchRow?.plyCount ?? 0;
+			syncMatchTraits(sim, {
+				humanColor: input.humanColor,
+				plyCount,
+			});
 			sim.worldEntity.set(Screen, { value: "play" });
 		},
 
@@ -319,7 +377,24 @@ export function buildSimActions(sim: SimWorld) {
 				});
 				if (sim.epoch !== epoch || sim.handle !== handle) return;
 				const newPly = result.persistedMove ? priorPly + 1 : priorPly;
-				syncMatchTraits(sim, { humanColor, plyCount: newPly });
+				// stepTurn's `result.action` carries the AI's chosen
+				// move on persistedMove turns. The visual layer uses
+				// from→to-of-the-first-run as the animation hint
+				// (split moves still animate the source departure;
+				// the SplitChainView trait drives subsequent
+				// detachment animations).
+				const stepLastMove =
+					result.persistedMove && result.action
+						? {
+								from: result.action.from,
+								to: result.action.runs[0]?.to ?? result.action.from,
+							}
+						: null;
+				syncMatchTraits(sim, {
+					humanColor,
+					plyCount: newPly,
+					lastMove: stepLastMove,
+				});
 				if (result.terminal && handle.game.winner) {
 					// Translate engine winner → screen. Human matches
 					// route to win/lose. AI-vs-AI routes to a neutral
@@ -380,7 +455,14 @@ export function buildSimActions(sim: SimWorld) {
 			});
 			if (sim.epoch !== epoch || sim.handle !== handle) return;
 			const newPly = result.persistedMove ? priorPly + 1 : priorPly;
-			syncMatchTraits(sim, { humanColor, plyCount: newPly });
+			const humanLastMove = result.persistedMove
+				? { from: action.from, to: action.runs[0]?.to ?? action.from }
+				: null;
+			syncMatchTraits(sim, {
+				humanColor,
+				plyCount: newPly,
+				lastMove: humanLastMove,
+			});
 			// Selection clears after every committed action — the
 			// human starts the next turn fresh.
 			sim.worldEntity.set(Selection, { cell: null });

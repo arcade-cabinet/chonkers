@@ -34,6 +34,12 @@ const TOP_CAP_OUTER_FACTOR = 0.98;
  * Click handling: each puck routes its onClick through the
  * CellClickContext → PlayView's onCellClick. Stops propagation so
  * the cell-hitbox grid below the pieces doesn't double-fire.
+ *
+ * Motion: pieces teleport between positions today. Animated
+ * lift / arc / settle / chonk-impact lands in the beta-polish
+ * pipeline (per the user's stage definition: alpha = game DONE,
+ * polish = beta). The Match.lastMove trait is in place to drive
+ * that animation when it ships.
  */
 export function Piece({ color, level, worldX, worldZ, cell, isTop }: Props) {
 	const set = color === "red" ? ASSETS.pbr.redPiece : ASSETS.pbr.whitePiece;
