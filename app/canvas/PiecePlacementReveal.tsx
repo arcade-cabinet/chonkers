@@ -73,8 +73,7 @@ export function PiecePlacementReveal() {
 		<group>
 			{ordered.items.map(({ p, phase }, i) => {
 				const startedAtMs = ceremony.startedAtMs;
-				const groupIndex =
-					phase === "placing-first" ? i : i - ordered.boundary;
+				const groupIndex = phase === "placing-first" ? i : i - ordered.boundary;
 				return (
 					<RevealedPiece
 						key={`${p.col}-${p.row}-${p.height}-${p.color}`}

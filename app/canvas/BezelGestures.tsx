@@ -55,11 +55,14 @@ export function BezelGestures({
 	// player's side bezel. Resets on color change or winner so a
 	// stale knock from a prior match doesn't fire mid-new-match.
 	const knockTaps = useRef<number[]>([]);
+	// Clear the ring buffer whenever the player's color changes or
+	// a winner is declared. The effect body doesn't READ humanColor/
+	// winner — it only fires WHEN they change — which biome's
+	// useExhaustiveDependencies rule flags as "extra" deps. They're
+	// load-bearing for the reset semantics: without them in the dep
+	// array the buffer never clears.
+	// biome-ignore lint/correctness/useExhaustiveDependencies: deps are intentional reset triggers, not value reads.
 	useEffect(() => {
-		// Clear the ring buffer whenever the player's color changes or
-		// a winner is declared. Without this, a rapid triple-tap right
-		// before "match over" could carry over and fire forfeit on the
-		// first tap of the next match.
 		knockTaps.current.length = 0;
 	}, [humanColor, winner]);
 

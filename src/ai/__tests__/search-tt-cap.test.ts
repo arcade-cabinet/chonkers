@@ -17,13 +17,8 @@
  */
 
 import { describe, expect, it } from "vitest";
-import {
-	chooseAction,
-	createAiState,
-	getProfile,
-	TT_MAX_ENTRIES,
-} from "..";
 import { emptyBoard, type GameState, setPiece } from "@/engine";
+import { chooseAction, createAiState, getProfile, TT_MAX_ENTRIES } from "..";
 
 describe("search — bounded transposition table", () => {
 	it("does not exceed TT_MAX_ENTRIES even when pre-filled to the cap", () => {

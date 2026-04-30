@@ -36,8 +36,8 @@ export {
 export {
 	type SearchMode,
 	type SearchResult,
-	TT_MAX_ENTRIES,
 	search,
+	TT_MAX_ENTRIES,
 } from "./search";
 export {
 	type AiState,

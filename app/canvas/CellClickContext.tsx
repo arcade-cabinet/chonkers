@@ -19,9 +19,7 @@ export interface CanvasHandlers {
 // context across the Canvas boundary, but the bridge is a defensive
 // belt-and-suspenders — costless on hot paths and keeps the click
 // pipeline robust against future R3F internals changes.
-export const CanvasHandlersContext = createContext<CanvasHandlers | null>(
-	null,
-);
+export const CanvasHandlersContext = createContext<CanvasHandlers | null>(null);
 
 export const CanvasHandlersProvider = CanvasHandlersContext.Provider;
 
