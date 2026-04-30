@@ -108,5 +108,32 @@ export async function boot(): Promise<BootResult> {
 		// cleanup is handled by the page going away.
 	};
 
+	// 5. DEV-only test hook. Exposes `window.__chonkers` to
+	//    Playwright governor specs (PRQ-5) when both `import.meta.env.DEV`
+	//    is true AND the URL carries `?testHook=1`. Production
+	//    builds strip the entire branch via Vite's dead-code
+	//    elimination — `import.meta.env.DEV` is statically `false`
+	//    in production, so the if-block is unreachable + removed.
+	if (
+		import.meta.env.DEV &&
+		typeof location !== "undefined" &&
+		new URLSearchParams(location.search).has("testHook")
+	) {
+		// Cast through unknown to assign to window — TypeScript
+		// doesn't let us augment the global type from inside the
+		// app barrel without a declaration file.
+		(window as unknown as { __chonkers: unknown }).__chonkers = {
+			actions,
+			audio,
+			get state() {
+				return sim.handle?.game ?? null;
+			},
+			get matchId() {
+				return sim.handle?.matchId ?? null;
+			},
+			world: sim.world,
+		};
+	}
+
 	return { sim, actions, audio, dispose };
 }
