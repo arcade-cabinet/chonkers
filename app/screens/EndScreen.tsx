@@ -88,11 +88,11 @@ export function EndScreen({ variant }: Props) {
 		<motion.div
 			initial={{ opacity: 0 }}
 			animate={{ opacity: 1 }}
-			transition={{ duration: 0.18, ease: "easeOut" }}
+			transition={{ duration: 0.22, ease: "easeOut" }}
 			style={{
 				position: "absolute",
 				inset: 0,
-				background: "rgba(15,10,5,0.85)",
+				background: "rgba(15,10,5,0.88)",
 				display: "flex",
 				alignItems: "center",
 				justifyContent: "center",
@@ -100,35 +100,62 @@ export function EndScreen({ variant }: Props) {
 		>
 			<Container size="1">
 				<Flex direction="column" align="center" gap="5">
-					<Heading
-						as="h1"
-						size="9"
-						color={v.accent}
-						style={{ fontFamily: "var(--ck-font-display, serif)" }}
+					<motion.div
+						initial={{ scale: 0.7, opacity: 0, y: 24 }}
+						animate={{ scale: 1, opacity: 1, y: 0 }}
+						transition={{
+							type: "spring",
+							stiffness: 220,
+							damping: 18,
+							delay: 0.08,
+						}}
 					>
-						{v.headline}
-					</Heading>
-					<Text size="3" color="gray">
-						{v.subhead}
-					</Text>
-					<Flex gap="3" mt="3">
-						<Button
-							size="3"
+						<Heading
+							as="h1"
+							size="9"
 							color={v.accent}
-							onClick={onPlayAgain}
-							disabled={busy}
+							align="center"
+							style={{
+								fontFamily: "var(--ck-font-display, serif)",
+								letterSpacing: "0.01em",
+							}}
 						>
-							Play again
-						</Button>
-						<Button
-							size="3"
-							variant="soft"
-							onClick={onMainMenu}
-							disabled={busy}
-						>
-							Main menu
-						</Button>
-					</Flex>
+							{v.headline}
+						</Heading>
+					</motion.div>
+					<motion.div
+						initial={{ opacity: 0, y: 8 }}
+						animate={{ opacity: 1, y: 0 }}
+						transition={{ delay: 0.32, duration: 0.28 }}
+					>
+						<Text size="3" color="gray" align="center" as="p">
+							{v.subhead}
+						</Text>
+					</motion.div>
+					<motion.div
+						initial={{ opacity: 0, y: 12 }}
+						animate={{ opacity: 1, y: 0 }}
+						transition={{ delay: 0.5, duration: 0.32 }}
+					>
+						<Flex gap="3" mt="3">
+							<Button
+								size="3"
+								color={v.accent}
+								onClick={onPlayAgain}
+								disabled={busy}
+							>
+								Play again
+							</Button>
+							<Button
+								size="3"
+								variant="soft"
+								onClick={onMainMenu}
+								disabled={busy}
+							>
+								Main menu
+							</Button>
+						</Flex>
+					</motion.div>
 				</Flex>
 			</Container>
 		</motion.div>

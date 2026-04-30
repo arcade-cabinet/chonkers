@@ -17,9 +17,11 @@
  * broker still accepts split actions from elsewhere.
  */
 
-import { Box, Button, Container, Flex, Text } from "@radix-ui/themes";
+import { AlertDialog, Box, Button, Flex, Text } from "@radix-ui/themes";
+import { AnimatePresence, motion } from "framer-motion";
 import { useTrait } from "koota/react";
 import { useCallback, useEffect, useState } from "react";
+import { tokens } from "@/design/tokens";
 import {
 	type Action,
 	AiThinking,
@@ -73,6 +75,8 @@ export function PlayView() {
 			setError(err instanceof Error ? err.message : String(err));
 		});
 	}, [actions]);
+
+	const [quitOpen, setQuitOpen] = useState(false);
 
 	const onQuit = useCallback(() => {
 		void actions.quitMatch();
@@ -152,8 +156,7 @@ export function PlayView() {
 		>
 			<Scene />
 			{/* HUD overlay */}
-			<Container
-				size="2"
+			<Box
 				p="3"
 				style={{
 					position: "absolute",
@@ -168,47 +171,66 @@ export function PlayView() {
 					align="center"
 					style={{ pointerEvents: "auto" }}
 				>
-					<Text
-						size="3"
-						weight="bold"
-						style={{
-							background: "rgba(15,10,5,0.72)",
-							color: "#F5EBD8",
-							padding: "6px 12px",
-							borderRadius: 8,
-						}}
-					>
-						{winner
-							? `${winner === "red" ? "Red" : "White"} wins`
-							: aiThinking?.value
-								? "AI thinking…"
-								: `${turn === "red" ? "Red" : "White"} to move`}
-					</Text>
+					<TurnIndicator
+						winner={winner}
+						thinking={aiThinking?.value === true}
+						turn={turn}
+					/>
 					<Flex gap="2">
 						{isHumanTurn ? (
-							<Button color="red" variant="soft" onClick={onForfeit}>
-								Forfeit
-							</Button>
+							<motion.div
+								initial={{ opacity: 0, scale: 0.92 }}
+								animate={{ opacity: 1, scale: 1 }}
+								transition={{ duration: 0.16 }}
+							>
+								<Button color="red" variant="soft" onClick={onForfeit}>
+									Forfeit
+								</Button>
+							</motion.div>
 						) : null}
-						<Button variant="soft" onClick={onQuit}>
+						<Button variant="soft" onClick={() => setQuitOpen(true)}>
 							Quit
 						</Button>
 					</Flex>
 				</Flex>
-				{error ? (
-					<Text
-						size="2"
-						color="red"
-						style={{
-							marginTop: 8,
-							display: "inline-block",
-							pointerEvents: "auto",
-						}}
-					>
-						{error}
-					</Text>
-				) : null}
-			</Container>
+				<AnimatePresence>
+					{error ? (
+						<motion.div
+							initial={{ opacity: 0, y: -4 }}
+							animate={{ opacity: 1, y: 0 }}
+							exit={{ opacity: 0, y: -4 }}
+							transition={{ duration: 0.18 }}
+							style={{ marginTop: 8, pointerEvents: "auto" }}
+						>
+							<Text size="2" color="red">
+								{error}
+							</Text>
+						</motion.div>
+					) : null}
+				</AnimatePresence>
+			</Box>
+			<AlertDialog.Root open={quitOpen} onOpenChange={setQuitOpen}>
+				<AlertDialog.Content style={{ maxWidth: 420 }}>
+					<AlertDialog.Title>Leave this match?</AlertDialog.Title>
+					<AlertDialog.Description size="2">
+						{winner
+							? "Match is already complete."
+							: "Progress is saved automatically. You can resume from the title screen."}
+					</AlertDialog.Description>
+					<Flex gap="3" mt="4" justify="end">
+						<AlertDialog.Cancel>
+							<Button variant="soft" color="gray">
+								Stay
+							</Button>
+						</AlertDialog.Cancel>
+						<AlertDialog.Action>
+							<Button variant="solid" color="amber" onClick={onQuit}>
+								Leave
+							</Button>
+						</AlertDialog.Action>
+					</Flex>
+				</AlertDialog.Content>
+			</AlertDialog.Root>
 			{/*
 			 * onCellClick consumed via a hidden bridge — PRQ-4 follow-up
 			 * lands the real R3F raycaster. For now the click pipeline
@@ -233,5 +255,83 @@ export function PlayView() {
 				}}
 			/>
 		</Box>
+	);
+}
+
+interface TurnIndicatorProps {
+	readonly winner: "red" | "white" | null;
+	readonly thinking: boolean;
+	readonly turn: "red" | "white";
+}
+
+/**
+ * The HUD's primary status pill. Animates between three states via
+ * AnimatePresence: turn indicator (with active-color chip), AI
+ * thinking spinner, and winner banner. Color of the indicator's
+ * accent chip mirrors the active player so the eye can read state
+ * at a glance even with the headline obscured.
+ */
+function TurnIndicator({ winner, thinking, turn }: TurnIndicatorProps) {
+	const phase: "win" | "thinking" | "turn" = winner
+		? "win"
+		: thinking
+			? "thinking"
+			: "turn";
+	const activeColor = winner ?? turn;
+	const chipColor =
+		activeColor === "red" ? tokens.wood.pieceRed : tokens.wood.pieceWhite;
+	const label =
+		phase === "win"
+			? `${winner === "red" ? "Red" : "White"} wins`
+			: phase === "thinking"
+				? "AI thinking…"
+				: `${turn === "red" ? "Red" : "White"} to move`;
+
+	return (
+		<motion.div
+			layout
+			initial={{ opacity: 0, x: -8 }}
+			animate={{ opacity: 1, x: 0 }}
+			transition={{ duration: 0.18 }}
+			style={{
+				display: "inline-flex",
+				alignItems: "center",
+				gap: 8,
+				background: tokens.surface.scrim,
+				color: tokens.ink.inverse,
+				padding: "6px 12px",
+				borderRadius: 999,
+			}}
+		>
+			<motion.span
+				layoutId="turn-chip"
+				animate={{
+					backgroundColor: chipColor,
+					boxShadow:
+						phase === "thinking"
+							? `0 0 0 0 ${chipColor}`
+							: `0 0 0 2px ${chipColor}33`,
+				}}
+				transition={{ type: "spring", stiffness: 320, damping: 26 }}
+				style={{
+					width: 12,
+					height: 12,
+					borderRadius: 999,
+					display: "inline-block",
+				}}
+			/>
+			<AnimatePresence mode="wait">
+				<motion.span
+					key={label}
+					initial={{ opacity: 0, y: 4 }}
+					animate={{ opacity: 1, y: 0 }}
+					exit={{ opacity: 0, y: -4 }}
+					transition={{ duration: 0.14 }}
+					style={{ fontSize: 14, fontWeight: 700 }}
+				>
+					{label}
+				</motion.span>
+			</AnimatePresence>
+		</motion.div>
 	);
 }
