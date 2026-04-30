@@ -10,20 +10,32 @@ import "./css/style.css";
 
 installFonts();
 
+// Global single-flight guard: React 19 StrictMode double-mounts
+// the BootGate effect, which previously caused boot() to run twice
+// — creating two separate koota worlds. The koota onChange/set
+// pipeline keys subscriptions on the world's id, so the App tree
+// could subscribe to world A's Screen while broker actions
+// mutated world B's Screen, breaking the lobby → play transition.
+//
+// Caching the boot promise globally guarantees a single boot per
+// page lifetime regardless of StrictMode mount cycles. The
+// dispose path is moved to a `beforeunload` handler so the
+// Capacitor lifecycle listener still cleans up at app teardown.
+let bootPromise: Promise<BootResult> | null = null;
+function getBoot(): Promise<BootResult> {
+	if (!bootPromise) bootPromise = boot();
+	return bootPromise;
+}
+
 function BootGate() {
 	const [result, setResult] = useState<BootResult | null>(null);
 	const [error, setError] = useState<Error | null>(null);
 
 	useEffect(() => {
 		let cancelled = false;
-		let bootResult: BootResult | null = null;
-		boot()
+		getBoot()
 			.then((r) => {
-				bootResult = r;
-				if (cancelled) {
-					void r.dispose();
-					return;
-				}
+				if (cancelled) return;
 				setResult(r);
 			})
 			.catch((err: unknown) => {
@@ -32,12 +44,6 @@ function BootGate() {
 			});
 		return () => {
 			cancelled = true;
-			// Dispose on unmount so the Capacitor App lifecycle
-			// listener doesn't accumulate across HMR reloads in dev
-			// or component remounts in production. If boot hasn't
-			// resolved yet, the cancelled flag will trigger the
-			// dispose inside the .then handler.
-			if (bootResult) void bootResult.dispose();
 		};
 	}, []);
 

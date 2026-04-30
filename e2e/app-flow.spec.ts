@@ -23,14 +23,7 @@
 import { expect, test } from "@playwright/test";
 
 test.describe("smoke — boot + AI-vs-AI demo", () => {
-	// FIXME(prq-11c-followup): koota Screen-trait subscription doesn't
-	// trigger an App.tsx re-render when newMatch's setScreen("play")
-	// runs, so the lobby → play transition is broken under the
-	// in-bezel-newgame-ceremony redesign. Tracked as a [WAIT-DEBUG]
-	// item in `.agent-state/directive.md`. Skipping the smoke until
-	// the koota subscription path is debugged so CI on PR #10 stays
-	// green for the rest of the polish PR's contents.
-	test.skip("lobby renders + new match starts + game progresses", async ({
+	test("lobby renders + new match starts + game progresses", async ({
 		page,
 	}) => {
 		await page.goto("/?testHook=1");
