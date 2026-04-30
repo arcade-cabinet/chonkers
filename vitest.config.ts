@@ -25,6 +25,10 @@ export default defineConfig({
 						// (`pnpm test:alpha`) so the default Node tier
 						// stays under CI's 3-minute target.
 						"src/**/__tests__/broker-100-runs.test.ts",
+						// Beta governor — 1000-run multi-profile balance
+						// assertion. Runs in `pnpm test:governor` only;
+						// PRQ-12 / docs/AI.md tuning surface.
+						"src/**/__tests__/broker-governor.test.ts",
 					],
 				},
 			},
@@ -35,6 +39,15 @@ export default defineConfig({
 					environment: "node",
 					include: ["src/**/__tests__/broker-100-runs.test.ts"],
 					testTimeout: 15 * 60 * 1000,
+				},
+			},
+			{
+				extends: true,
+				test: {
+					name: "governor",
+					environment: "node",
+					include: ["src/**/__tests__/broker-governor.test.ts"],
+					testTimeout: 90 * 60 * 1000,
 				},
 			},
 			{

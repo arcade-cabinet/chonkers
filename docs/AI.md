@@ -224,11 +224,21 @@ The tables above are the **alpha-stage initial weights**. As balance data lands 
 
 Authored 2026-04-29 from theoretical reasoning over the chonkers feature set. No empirical data yet. These values are committed to make alpha possible; the alpha 100-run pass is where empirical tuning begins.
 
+### beta governor wired (2026-04-30, PRQ-12)
+
+The 1000-run governor (`pnpm test:governor`) is now the canonical balance assertion surface. Acceptance ratios encoded as test expectations:
+
+- **Difficulty separability**: `hard-vs-easy` (red hard, white easy) win rate ≥ 0.70 — hard must convincingly beat easy across all three dispositions.
+- **Disposition separability**: aggressive-vs-aggressive avg moves-per-game ≤ 0.8 × defensive-vs-defensive avg moves-per-game — aggressive should converge faster.
+- **Coverage**: every cell of the 9×9 profile matrix gets at least one match (1000 runs / 81 cells ≈ 12 each via least-run-first scheduling).
+
+The governor lives in its own vitest project (`governor`) and runs on demand — NOT in the default `pnpm test:node` path. Re-run on each weight tune to confirm the assertions hold; paste the `=== beta governor: per-pairing summary ===` block under a new dated subsection here when committing a tune.
+
 ### (next entries appended on each balance tune)
 
 Each entry records:
 
-- The run cycle that fed the tune (alpha 100-run, beta 1000-run, rc 10000-run, or an interim ad-hoc tune)
+- The run cycle that fed the tune (alpha 100-run, beta 1000-run governor, rc 10000-run, or an interim ad-hoc tune)
 - Which weights / depths / thresholds changed and by how much
 - The balance signal that motivated the change (e.g. "aggressive-hard won 73% vs defensive-hard at alpha — too high; reduced `chonk_opportunities` weight from +1.5 to +1.1")
 - The `matches`-sample signature (number of matches counted, span of `started_at` values) for reproducibility
