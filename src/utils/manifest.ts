@@ -53,6 +53,12 @@ export const ASSETS = {
 			roughness: asset("pbr/white_piece/Wood031_1K-PNG_Roughness.png"),
 			displacement: asset("pbr/white_piece/Wood031_1K-PNG_Displacement.png"),
 		},
+		bezel: {
+			diffuse: asset("pbr/bezel/dark_wooden_planks_diff_1k.png"),
+			normal: asset("pbr/bezel/dark_wooden_planks_nor_gl_1k.png"),
+			roughness: asset("pbr/bezel/dark_wooden_planks_rough_1k.png"),
+			ao: asset("pbr/bezel/dark_wooden_planks_ao_1k.png"),
+		},
 	},
 	fonts: {
 		body: asset("fonts/body/Lato-Regular.ttf"),

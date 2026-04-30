@@ -43,6 +43,7 @@ export function Pieces() {
 					level={p.height}
 					worldX={x}
 					worldZ={z}
+					cell={{ col: p.col, row: p.row }}
 				/>
 			))}
 		</>

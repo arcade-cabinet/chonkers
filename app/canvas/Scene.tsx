@@ -4,33 +4,41 @@ import { Suspense } from "react";
 import * as THREE from "three";
 import { tokens } from "@/design/tokens";
 import { ASSETS } from "@/utils/manifest";
+import { Bezel } from "./Bezel";
 import { Board } from "./Board";
+import { CellHitboxGrid } from "./CellHitboxGrid";
 import { Lighting } from "./Lighting";
 import { Pieces } from "./Pieces";
 import { SelectionOverlay } from "./SelectionOverlay";
 
-const CAMERA_POSITION: [number, number, number] = [2.4, 9.5, 9];
+// Camera frames the bezel from slightly above + slightly back. The
+// scene composition reads as "tabletop-from-above" — the BEZEL is
+// flat to the camera plane, the BOARD tilts upward inside the bezel
+// to give perceived depth + see stack heights without rotating the
+// world.
+//
+// Camera height + fov tuned so the bezel + tilted board fills the
+// viewport with all four bezel slabs visible (front/back bezels
+// frame the top/bottom of the viewport, side bezels frame the
+// left/right).
+const CAMERA_POSITION: [number, number, number] = [0, 13.2, 0.8];
+const BOARD_TILT_X = -Math.PI / 7.2; // ~25° forward — gentle perspective inside bezel
+const BOARD_LIFT_Y = 0.04; // sit just above bezel inset
+
+const { cols, rows, cellSize } = tokens.board;
+const BOARD_INNER_WIDTH = cols * cellSize;
+const BOARD_INNER_DEPTH = rows * cellSize;
 
 /**
- * Top-level R3F scene. The board sits at world origin; the camera
- * looks at it from across the red home row, tilted ~40° down.
+ * Top-level R3F scene. Composition: bezel frame in XZ plane fills
+ * the frame; board (with pieces, selection overlay, hitboxes) tilts
+ * upward inside the bezel cutout. Camera shoots near-overhead with
+ * a slight tilt-back so the bezel reads as flat to the user while
+ * the board's tilt gives visible stack heights.
  *
- * Renderer config is fully declarative:
- *   - `gl` prop carries antialias + ACESFilmic tone mapping +
- *     exposure (no imperative onCreated reach-in needed).
- *   - `<color attach="background">` sets the scene's clear color
- *     to the wood-shadow token; React reconciles changes if the
- *     token ever shifts.
- *   - `camera` prop seeds position/fov/near/far. Camera lookAt is
- *     the one piece that *is* imperative — drei's
- *     <PerspectiveCamera> doesn't accept a lookAt prop and R3F's
- *     Canvas-level camera prop has no equivalent — so the
- *     onCreated callback aims the camera once at world origin.
- *
- * <Environment> provides image-based-lighting only — `background`
- * is intentionally omitted on the Environment so the board reads
- * against the wood-shadow clear color rather than the tone-mapped
- * sky.
+ * Renderer config is fully declarative (toneMapping + clear color
+ * via props/`<color attach>`). One imperative call: `camera.lookAt`
+ * targets the bezel center on first frame.
  */
 export function Scene() {
 	return (
@@ -42,17 +50,21 @@ export function Scene() {
 				toneMapping: THREE.ACESFilmicToneMapping,
 				toneMappingExposure: 1.0,
 			}}
-			camera={{ position: CAMERA_POSITION, fov: 42, near: 0.1, far: 60 }}
+			camera={{ position: CAMERA_POSITION, fov: 50, near: 0.1, far: 60 }}
 			onCreated={({ camera }) => camera.lookAt(0, 0, 0)}
 		>
 			<color attach="background" args={[tokens.surface.canvasClear]} />
 			<Suspense fallback={null}>
 				<Environment files={ASSETS.hdri} />
 				<Lighting />
-				<group>
+				{/* Bezel is flat to the camera plane (no rotation) */}
+				<Bezel innerWidth={BOARD_INNER_WIDTH} innerDepth={BOARD_INNER_DEPTH} />
+				{/* Board content tilts upward inside the bezel */}
+				<group rotation={[BOARD_TILT_X, 0, 0]} position={[0, BOARD_LIFT_Y, 0]}>
 					<Board />
 					<Pieces />
 					<SelectionOverlay />
+					<CellHitboxGrid />
 				</group>
 			</Suspense>
 		</Canvas>
