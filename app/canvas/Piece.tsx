@@ -13,7 +13,18 @@ interface Props {
 	worldX: number;
 	worldZ: number;
 	cell: Cell;
+	/**
+	 * True iff this piece is the TOP of its stack. Per RULES.md
+	 * §4.3 the top piece's color controls the stack — players move
+	 * stacks they control. Top pieces render an emissive ring at
+	 * the puck's top edge in the controlling color so a 4-tall
+	 * mixed stack reads unambiguously.
+	 */
+	isTop: boolean;
 }
+
+const TOP_CAP_INNER_FACTOR = 0.78;
+const TOP_CAP_OUTER_FACTOR = 0.98;
 
 /**
  * A single puck. The two player colours are textured with their
@@ -24,7 +35,7 @@ interface Props {
  * CellClickContext → PlayView's onCellClick. Stops propagation so
  * the cell-hitbox grid below the pieces doesn't double-fire.
  */
-export function Piece({ color, level, worldX, worldZ, cell }: Props) {
+export function Piece({ color, level, worldX, worldZ, cell, isTop }: Props) {
 	const set = color === "red" ? ASSETS.pbr.redPiece : ASSETS.pbr.whitePiece;
 	const onCellClick = useCellClick();
 	const { diffuse, normal, roughness } = useTexture({
@@ -44,6 +55,8 @@ export function Piece({ color, level, worldX, worldZ, cell }: Props) {
 
 	const { puckRadius, puckHeight, puckGap } = tokens.board;
 	const y = level * (puckHeight + puckGap) + puckHeight / 2;
+	const capColor =
+		color === "red" ? tokens.wood.pieceRed : tokens.wood.pieceWhite;
 
 	const handleClick = (e: ThreeEvent<MouseEvent>) => {
 		e.stopPropagation();
@@ -66,6 +79,36 @@ export function Piece({ color, level, worldX, worldZ, cell }: Props) {
 				roughness={0.7}
 				metalness={0}
 			/>
+			{/*
+			 * Top-cap ring — a thin emissive ring inset on the puck's
+			 * top face that matches the controlling color. Hides on
+			 * non-top pieces so the stack reads as "the topmost
+			 * colored band controls".
+			 */}
+			{isTop ? (
+				<mesh
+					position={[0, puckHeight / 2 + 0.001, 0]}
+					rotation={[-Math.PI / 2, 0, 0]}
+				>
+					<ringGeometry
+						args={[
+							puckRadius * TOP_CAP_INNER_FACTOR,
+							puckRadius * TOP_CAP_OUTER_FACTOR,
+							64,
+							1,
+						]}
+					/>
+					<meshStandardMaterial
+						color={capColor}
+						emissive={capColor}
+						emissiveIntensity={0.55}
+						toneMapped={false}
+						transparent
+						opacity={0.95}
+						side={THREE.DoubleSide}
+					/>
+				</mesh>
+			) : null}
 		</mesh>
 	);
 }

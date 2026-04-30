@@ -25,18 +25,27 @@ export function Pieces() {
 	// Memoise the position derivation by `pieces` reference. Match
 	// trait identity is stable until the broker commits a move, so
 	// this avoids 24 Vector3 allocations per unrelated re-render.
-	const placements = useMemo(
-		() =>
-			pieces.map((p) => {
-				const v = posToVector3({ col: p.col, row: p.row });
-				return { p, x: v.x, z: v.z } as const;
-			}),
-		[pieces],
-	);
+	// Also computes the max height per cell so each Piece knows
+	// whether it is the TOP piece of its stack (controls per
+	// RULES §4.3 — the top piece's color determines who can move
+	// the stack).
+	const placements = useMemo(() => {
+		const maxAtCell = new Map<string, number>();
+		for (const p of pieces) {
+			const k = `${p.col},${p.row}`;
+			const cur = maxAtCell.get(k) ?? -1;
+			if (p.height > cur) maxAtCell.set(k, p.height);
+		}
+		return pieces.map((p) => {
+			const v = posToVector3({ col: p.col, row: p.row });
+			const isTop = maxAtCell.get(`${p.col},${p.row}`) === p.height;
+			return { p, x: v.x, z: v.z, isTop } as const;
+		});
+	}, [pieces]);
 
 	return (
 		<>
-			{placements.map(({ p, x, z }) => (
+			{placements.map(({ p, x, z, isTop }) => (
 				<Piece
 					key={`${p.col}-${p.row}-${p.height}`}
 					color={p.color}
@@ -44,6 +53,7 @@ export function Pieces() {
 					worldX={x}
 					worldZ={z}
 					cell={{ col: p.col, row: p.row }}
+					isTop={isTop}
 				/>
 			))}
 		</>
