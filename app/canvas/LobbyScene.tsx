@@ -32,12 +32,15 @@ import { DemoPieces } from "./DemoPieces";
 import { Lighting } from "./Lighting";
 import { PiecePlacementReveal } from "./PiecePlacementReveal";
 
-const CAMERA_POSITION: [number, number, number] = [0, 13.2, 0.8];
+const CAMERA_POSITION: [number, number, number] = [
+	tokens.scene.cameraX,
+	tokens.scene.cameraY,
+	tokens.scene.cameraZ,
+];
 
 const { cols, rows, cellSize } = tokens.board;
 const BOARD_INNER_WIDTH = cols * cellSize;
 const BOARD_INNER_DEPTH = rows * cellSize;
-const BEZEL_FRAME_THICKNESS = 0.45;
 
 interface Props {
 	readonly onPlay: () => void;
@@ -55,7 +58,12 @@ export function LobbyScene({ onPlay, onResume, canResume }: Props) {
 				toneMapping: THREE.ACESFilmicToneMapping,
 				toneMappingExposure: 1.0,
 			}}
-			camera={{ position: CAMERA_POSITION, fov: 50, near: 0.1, far: 60 }}
+			camera={{
+				position: CAMERA_POSITION,
+				fov: tokens.scene.cameraFov,
+				near: tokens.scene.cameraNear,
+				far: tokens.scene.cameraFar,
+			}}
 			onCreated={({ camera }) => camera.lookAt(0, 0, 0)}
 		>
 			<color attach="background" args={[tokens.surface.canvasClear]} />
@@ -98,7 +106,7 @@ function LobbyContent({ onPlay, onResume, canResume }: Props) {
 			{showLobbyAffordances ? (
 				<BezelButtons
 					innerDepth={BOARD_INNER_DEPTH}
-					frameThickness={BEZEL_FRAME_THICKNESS}
+					frameThickness={tokens.bezel.frameThickness}
 					canResume={canResume}
 					onPlay={onPlay}
 					onResume={onResume}

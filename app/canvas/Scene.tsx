@@ -15,8 +15,6 @@ import { SelectionOverlay } from "./SelectionOverlay";
 import { SplitArmHeightBar } from "./SplitArmHeightBar";
 import { TippingBoard } from "./TippingBoard";
 
-const BEZEL_FRAME_THICKNESS = 0.45;
-
 // Camera frames the bezel from slightly above + slightly back. The
 // scene composition reads as "tabletop-from-above" — the BEZEL is
 // flat to the camera plane, the BOARD tilts on its center axle
@@ -26,8 +24,14 @@ const BEZEL_FRAME_THICKNESS = 0.45;
 // Camera height + fov tuned so the bezel + tilted board fills the
 // viewport with all four bezel slabs visible (front/back bezels
 // frame the top/bottom of the viewport, side bezels frame the
-// left/right).
-const CAMERA_POSITION: [number, number, number] = [0, 13.2, 0.8];
+// left/right). All camera + bezel constants flow from the design-
+// system tokens (`tokens.scene.*`, `tokens.bezel.*`) so rc fine-
+// tuning lands on a single surface.
+const CAMERA_POSITION: [number, number, number] = [
+	tokens.scene.cameraX,
+	tokens.scene.cameraY,
+	tokens.scene.cameraZ,
+];
 
 const { cols, rows, cellSize } = tokens.board;
 const BOARD_INNER_WIDTH = cols * cellSize;
@@ -54,7 +58,12 @@ export function Scene() {
 				toneMapping: THREE.ACESFilmicToneMapping,
 				toneMappingExposure: 1.0,
 			}}
-			camera={{ position: CAMERA_POSITION, fov: 50, near: 0.1, far: 60 }}
+			camera={{
+				position: CAMERA_POSITION,
+				fov: tokens.scene.cameraFov,
+				near: tokens.scene.cameraNear,
+				far: tokens.scene.cameraFar,
+			}}
 			onCreated={({ camera }) => camera.lookAt(0, 0, 0)}
 		>
 			<color attach="background" args={[tokens.surface.canvasClear]} />
@@ -66,7 +75,7 @@ export function Scene() {
 				<BezelGestures
 					innerWidth={BOARD_INNER_WIDTH}
 					innerDepth={BOARD_INNER_DEPTH}
-					frameThickness={BEZEL_FRAME_THICKNESS}
+					frameThickness={tokens.bezel.frameThickness}
 				/>
 				{/* Board content tilts on its center axle. Resting state
 				 * tips toward the human; AI's turn tips back toward AI;

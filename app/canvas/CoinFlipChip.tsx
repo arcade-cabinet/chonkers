@@ -16,10 +16,11 @@ import { useTexture } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
 import { useMemo, useRef } from "react";
 import * as THREE from "three";
+import { tokens } from "@/design/tokens";
 import type { Color } from "@/sim";
 import { ASSETS } from "@/utils/manifest";
 
-const FLIP_DURATION_MS = 1800;
+const FLIP_DURATION_MS = tokens.motion.coinFlipMs;
 // Number of full rotations during the flip. Even count means same
 // face is up at end as at start; we add +half-rotation when the
 // winner is the OTHER face so the resolved settle is correct.

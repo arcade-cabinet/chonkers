@@ -21,9 +21,9 @@ import * as THREE from "three";
 import { tokens } from "@/design/tokens";
 import { ASSETS } from "@/utils/manifest";
 
-const FRAME_THICKNESS = 0.45;
-const FRAME_DEPTH = 0.32;
-const FRAME_LIFT = -0.12;
+const FRAME_THICKNESS = tokens.bezel.frameThickness;
+const FRAME_DEPTH = tokens.bezel.frameDepth;
+const FRAME_LIFT = tokens.bezel.frameLift;
 
 interface Props {
 	readonly innerWidth: number;

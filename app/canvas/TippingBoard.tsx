@@ -44,18 +44,13 @@ import { useTrait } from "koota/react";
 import type { ReactNode } from "react";
 import { useRef } from "react";
 import type * as THREE from "three";
+import { tokens } from "@/design/tokens";
 import { AiThinking, Match } from "@/sim";
 import { useWorldEntity } from "../hooks/useWorldEntity";
 
-// Base tilt magnitude — the playable-from-camera angle. We bias
-// this toward whichever color is the human (tip toward player),
-// then layer the turn-active side bias on top.
-const BASE_TILT_MAGNITUDE = Math.PI / 7.2; // ~25°
-// Swing toward the active side, layered over the base.
-const TURN_TILT_DELTA = Math.PI / 28; // ~6.4°
-// Lerp rate. Damped via t = 1 - exp(-rate * dt) for frame-rate
-// independence. ~6.0 reads as a smooth ~250ms settle.
-const TILT_RATE = 6.0;
+const BASE_TILT_MAGNITUDE = tokens.scene.baseTiltMagnitude;
+const TURN_TILT_DELTA = tokens.scene.turnTiltDelta;
+const TILT_RATE = tokens.motion.tippingLerpRate;
 
 interface Props {
 	readonly children: ReactNode;

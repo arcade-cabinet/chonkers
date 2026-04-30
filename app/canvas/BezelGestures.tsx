@@ -24,14 +24,15 @@
 import type { ThreeEvent } from "@react-three/fiber";
 import { useTrait } from "koota/react";
 import { useRef } from "react";
+import { tokens } from "@/design/tokens";
 import { Match } from "@/sim";
 import { useWorldEntity } from "../hooks/useWorldEntity";
 import { useCanvasHandlers } from "./CellClickContext";
 
 const HIT_LIFT = 0.34; // sit just above the bezel mesh top
 const HIT_HEIGHT = 0.04;
-const KNOCK_WINDOW_MS = 600;
-const KNOCK_COUNT = 3;
+const KNOCK_WINDOW_MS = tokens.motion.knockWindowMs;
+const KNOCK_COUNT = tokens.motion.knockTapsRequired;
 
 interface Props {
 	readonly innerWidth: number;

@@ -47,6 +47,39 @@ export const tokens = {
 		splitExtractMs: 300,
 		// Split-arm hold duration
 		splitHoldMs: 3000,
+		// Board tipping animation — TippingBoard's exponential lerp
+		// rate. Higher = snappier; 6.0 reads as a smooth ~250ms settle.
+		tippingLerpRate: 6.0,
+		// Coin-flip total spin duration including ease-out landing.
+		coinFlipMs: 1800,
+		// Knock-to-forfeit: how long a tap window stays open before
+		// the rolling buffer expires + the count requirement.
+		knockWindowMs: 600,
+		knockTapsRequired: 3,
+	},
+	// 3D scene framing + tilt geometry. Tunable for rc fine-pass.
+	scene: {
+		// Camera world position relative to the bezel center; the
+		// onCreated hook calls camera.lookAt(0, 0, 0) so position
+		// alone determines the view.
+		cameraX: 0,
+		cameraY: 13.2,
+		cameraZ: 0.8,
+		cameraFov: 50,
+		cameraNear: 0.1,
+		cameraFar: 60,
+		// TippingBoard X-axis rotation magnitude when the board
+		// tips toward the human (resting bias). Active-side bias
+		// is layered on top for AI's-turn / win-loser-side states.
+		baseTiltMagnitude: Math.PI / 7.2, // ~25°
+		turnTiltDelta: Math.PI / 28, // ~6.4°
+	},
+	// Bezel geometry + frame thickness. Bezel.tsx + BezelGestures
+	// + BezelButtons read from this surface.
+	bezel: {
+		frameThickness: 0.45,
+		frameDepth: 0.32,
+		frameLift: -0.12,
 	},
 	board: {
 		cols: 9,
