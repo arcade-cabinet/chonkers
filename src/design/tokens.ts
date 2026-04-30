@@ -2,8 +2,10 @@
  * Design tokens for Chonkers — committed source of truth.
  *
  * Hex values are derived from the curated PBR diffuse mid-tones in
- * public/assets/pbr/. CSS counterparts live in src/css/style.css as
- * --ck-* variables; the two sources are kept in lockstep.
+ * public/assets/pbr/. Tokens are consumed directly by `src/scene/`
+ * (when constructing materials and SVG markup) and by gsap factories
+ * in `src/scene/animations.ts` (which read motion durations from
+ * `tokens.motion.*`).
  */
 
 export const tokens = {
@@ -24,28 +26,34 @@ export const tokens = {
 	},
 	surface: {
 		scrim: "rgba(15, 10, 5, 0.72)",
+		canvasClear: "#1a0f08",
 	},
 	font: {
 		body: '"Lato", system-ui, -apple-system, "Segoe UI", sans-serif',
 		display: '"Abril Fatface", "Lato", serif',
 	},
 	motion: {
-		// 2D UI motion budget (framer-motion)
+		// 2D SVG overlay motion (gsap)
 		uiOpenMs: 160,
-		// Closing animations (radial close, modal out) are slightly
+		// Closing animations (radial close, settings out) are slightly
 		// faster than open per UI convention.
 		uiCloseMs: 140,
 		uiFlashMs: 240,
-		modalMs: 180,
-		// Cross-fade between top-level Radix screens.
-		screenFadeMs: 200,
-		// 3D piece motion budget (R3F tweens)
+		// 3D piece motion (gsap)
 		pieceLiftMs: 120,
 		pieceArcMs: 200,
 		pieceSettleMs: 100,
 		splitExtractMs: 300,
-		// Split-arm hold duration
+		// Split-arm hold duration before the commit gesture arms.
 		splitHoldMs: 3000,
+		// Board-tip lerp toward the active player.
+		boardTipMs: 320,
+		// Coin-flip total spin duration.
+		coinFlipMs: 1400,
+		// Per-puck stagger during the placement reveal ceremony.
+		ceremonyStaggerMs: 90,
+		// Bezel knock detector window.
+		knockWindowMs: 600,
 	},
 	board: {
 		cols: 9,
@@ -58,9 +66,28 @@ export const tokens = {
 		// Vertical gap between stacked pucks so the wood seam reads.
 		puckGap: 0.005,
 	},
-	// Slice-state tokens for `app/components/SplitRadial.tsx`. The
-	// radial cycles through idle → hovered → selected → hold-ready →
-	// committed; each state has its own stroke + fill.
+	// Camera + scene-tilt tunables. The "sitting at the table" angle is
+	// determined by cameraY (height) and cameraZ (distance back); the
+	// tip-toward-active-player magnitude is `baseTiltMagnitude`.
+	scene: {
+		cameraX: 0,
+		cameraY: 8,
+		cameraZ: 14,
+		cameraFov: 42,
+		cameraNear: 0.1,
+		cameraFar: 100,
+		baseTiltMagnitude: Math.PI / 15, // ~12° baseline tilt
+		turnTiltDelta: Math.PI / 60, // ~3° added toward active player
+	},
+	// Cabinet bezel framing the board.
+	bezel: {
+		frameThickness: 0.6,
+		frameDepth: 0.3,
+		frameLift: 0.05,
+	},
+	// Slice-state tokens for the splitting radial. The radial cycles
+	// through idle → hovered → selected → hold-ready → committed; each
+	// state has its own stroke + fill.
 	splitRadial: {
 		idleStroke: "#1B1410", // ink.primary
 		idleFill: "transparent",
@@ -73,7 +100,8 @@ export const tokens = {
 		// destination cell takes focus.
 		committedOpacity: 0.45,
 	},
-	// Colour banding for `app/components/TurnBadge.tsx`.
+	// Colour banding for the diegetic turn indicator (a small lit pip
+	// on the bezel that flips colour with the active player).
 	turnBadge: {
 		redBg: "#7A3B22", // wood.pieceRed mid-tone
 		redInk: "#F5EBD8", // ink.inverse
