@@ -64,3 +64,4 @@ public/assets/pbr/**/WoodFloor008.png
 .claude/scheduled_tasks.lock
 .claude/state/
 __screenshots__/
+.commit-msg.tmp
