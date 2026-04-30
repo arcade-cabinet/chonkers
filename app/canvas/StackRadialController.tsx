@@ -13,23 +13,43 @@
  *      on fire, calls `actions.armSplitSelection()` + Haptic +
  *      audio.play("split").
  *   4. With armed === true, dragging beyond an 8px threshold begins
- *      drag-to-commit. The dragged sub-stack visual follows the
- *      pointer (rendered by a separate <DraggedSubStack> component
- *      not yet built). Releasing on a destination cell triggers
- *      PlayView's existing onCellClick path with the SplitSelection
- *      indices baked into the resulting Action.
+ *      drag-to-commit. `onCommit` projects the pointer's client
+ *      coords to a board cell via raycaster + y=0 plane intersection
+ *      and routes the cell through the same `onCellClick` path
+ *      PlayView's tap pipeline uses — which reads splitSelection's
+ *      indices to build the multi-run Action with `partitionRuns`.
  *
- * Today this commit covers steps 1 + 2 only — wedge selection state
- * round-trips through the trait. Hold-to-arm (step 3) + drag-to-commit
- * (step 4) land in the next commit.
+ * What's still NOT wired:
+ *   - The dragged sub-stack visual following the pointer in 3D
+ *     space (the spec says "selected slices detach into 3D pucks
+ *     following the pointer"). Today the pointer drag commits
+ *     immediately on threshold + release isn't required — the
+ *     drag-direction defines the destination cell, not where the
+ *     player happens to release. Future polish work.
+ *   - Forced-chain auto-arm: when state.chain is active, the next
+ *     detachment's slice indices should auto-populate
+ *     SplitSelection so the chain owner just drags-to-commit on
+ *     each turn. Today the human must manually re-tap the slices.
  */
 
+import { useThree } from "@react-three/fiber";
 import { useTrait } from "koota/react";
+import * as THREE from "three";
+import { Vector3 } from "yuka";
 import { tokens } from "@/design/tokens";
-import { Match, posToVector3, Selection, SplitSelection } from "@/sim";
+import {
+	BOARD_COLS,
+	BOARD_ROWS,
+	Match,
+	posToVector3,
+	Selection,
+	SplitSelection,
+	vector3ToPos,
+} from "@/sim";
 import { useAudio, useSimActions } from "../boot";
 import { useHaptics } from "../hooks/useHaptics";
 import { useWorldEntity } from "../hooks/useWorldEntity";
+import { useCanvasHandlers } from "./CellClickContext";
 import { RadialOverlay } from "./RadialOverlay";
 
 export function StackRadialController() {
@@ -40,6 +60,8 @@ export function StackRadialController() {
 	const actions = useSimActions();
 	const audio = useAudio();
 	const haptics = useHaptics();
+	const { camera, gl } = useThree();
+	const { onCellClick } = useCanvasHandlers();
 
 	if (!selection?.cell || !match) return null;
 	const cell = selection.cell;
@@ -81,17 +103,57 @@ export function StackRadialController() {
 				audio.play("split");
 				haptics.chonk();
 			}}
-			onCommit={() => {
-				// Drag-to-cell hit testing not yet wired — the player
-				// confirms via destination-tap on the existing
-				// PlayView click path, which already reads
-				// splitSelection.indices to build the multi-run
-				// action. This callback fires when the armed hold
-				// transitions to a drag, but until the cell hit-test
-				// lands, treat the drag as no-op + leave the
-				// selection armed so the next destination tap
-				// commits.
+			onCommit={({ clientX, clientY }) => {
+				// Drag-to-commit hit-test (RULES §5.3). Convert the
+				// pointer's client coords to a ray in world space,
+				// intersect the y=0 board plane, snap to the closest
+				// cell, and route through the same onCellClick path
+				// PlayView's tap pipeline uses (which reads
+				// splitSelection.indices to build the multi-run action).
+				const cell = cellAtClientPoint(clientX, clientY, camera, gl);
+				if (!cell) return;
+				if (
+					cell.col < 0 ||
+					cell.col >= BOARD_COLS ||
+					cell.row < 0 ||
+					cell.row >= BOARD_ROWS
+				) {
+					return;
+				}
+				onCellClick(cell);
 			}}
 		/>
 	);
+}
+
+/**
+ * Project a client-space pointer position to a board cell.
+ *
+ * Builds an NDC vector from the canvas's bounding rect, raycasts
+ * through the camera onto the y=0 plane (the board surface — pieces
+ * sit ABOVE this plane and the radial overlay anchors above the
+ * piece, but the destination-cell mapping uses the underlying
+ * board grid), then snaps the intersection to the nearest cell via
+ * the same `vector3ToPos` engine used by other hit-test paths.
+ *
+ * Returns null if the ray doesn't hit the plane (e.g., camera
+ * pointing parallel to it, which can't happen in practice with the
+ * tabletop-3/4 framing).
+ */
+function cellAtClientPoint(
+	clientX: number,
+	clientY: number,
+	camera: THREE.Camera,
+	gl: { domElement: HTMLCanvasElement },
+): { col: number; row: number } | null {
+	const rect = gl.domElement.getBoundingClientRect();
+	const ndcX = ((clientX - rect.left) / rect.width) * 2 - 1;
+	const ndcY = -(((clientY - rect.top) / rect.height) * 2 - 1);
+	const raycaster = new THREE.Raycaster();
+	raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), camera);
+	const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+	const target = new THREE.Vector3();
+	const hit = raycaster.ray.intersectPlane(plane, target);
+	if (!hit) return null;
+	return vector3ToPos(new Vector3(target.x, target.y, target.z));
 }
