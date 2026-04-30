@@ -43,7 +43,7 @@
 
 import { Html } from "@react-three/drei";
 import { motion } from "framer-motion";
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import { tokens } from "@/design/tokens";
 
 export type SliceState =
@@ -83,6 +83,30 @@ export interface RadialOverlayProps {
 	readonly slotLabel?: ((index: number) => string) | undefined;
 	/** Slice-tap handler. Called on click + space/enter on the focused button. */
 	readonly onSelectSlice?: ((index: number) => void) | undefined;
+	/**
+	 * Hold-to-arm callback. Fires after `holdMs` (default 3000) of
+	 * continuous pointer-down anywhere on the overlay. Per RULES.md
+	 * §5.2 the caller should: flash the selected slices, vibrate via
+	 * Capacitor Haptics if available, set `armed=true`. Only enabled
+	 * when at least one slice is currently selected.
+	 */
+	readonly onArm?: (() => void) | undefined;
+	/**
+	 * Drag-to-commit callback. Fires when an ARMED hold transitions
+	 * into a pointermove with displacement > 8px from the press
+	 * origin. Per RULES.md §5.3 the caller should detach the selected
+	 * slices and route the drag to a destination cell. Receives the
+	 * pointer's client coordinates so the caller can hit-test for the
+	 * legal destination.
+	 */
+	readonly onCommit?:
+		| ((evt: { clientX: number; clientY: number }) => void)
+		| undefined;
+	/**
+	 * Hold duration in ms. Defaults to 3000 (RULES §5.2). Lowered in
+	 * tests + the visual harness to keep spec wall-clock tight.
+	 */
+	readonly holdMs?: number | undefined;
 	/**
 	 * Outer radius in pixels. Default sized for a typical puck at the
 	 * design camera; lobby demo + live splits both work at 90px.
@@ -217,6 +241,9 @@ function styleForState(
 	};
 }
 
+const DRAG_THRESHOLD_PX = 8;
+const DEFAULT_HOLD_MS = 3000;
+
 export function RadialOverlay({
 	position,
 	slices,
@@ -226,6 +253,9 @@ export function RadialOverlay({
 	slotContent,
 	slotLabel,
 	onSelectSlice,
+	onArm,
+	onCommit,
+	holdMs = DEFAULT_HOLD_MS,
 	outerRadius = DEFAULT_OUTER,
 	innerRadius,
 	tint,
@@ -235,7 +265,86 @@ export function RadialOverlay({
 		() => computeSlices(slices, outerRadius, innerR),
 		[slices, outerRadius, innerR],
 	);
+
+	// Hold-to-arm + drag-to-commit gesture state. Refs (not state)
+	// because we don't need re-renders for the gesture itself — the
+	// component re-renders when `armed` flips via the parent's trait
+	// subscription. The pointerId guards against multi-touch confusion.
+	const pressOriginRef = useRef<{
+		x: number;
+		y: number;
+		pointerId: number;
+	} | null>(null);
+	const holdTimerRef = useRef<number | null>(null);
+	const armedRef = useRef(armed);
+	armedRef.current = armed;
+
 	if (slices < 1) return null;
+
+	const handlePointerDown = (e: React.PointerEvent<SVGRectElement>): void => {
+		// Only start the hold if the parent supplied an arm handler
+		// AND there's something to commit (selection non-empty). Mouse
+		// down on the gesture rect doesn't clear or set anything else
+		// — wedge taps go through their own foreignObject buttons.
+		if (!onArm || !selected || selected.size === 0) return;
+		// Ignore if a different pointer is already engaged (multi-touch).
+		if (pressOriginRef.current !== null) return;
+		(e.target as Element).setPointerCapture?.(e.pointerId);
+		pressOriginRef.current = {
+			x: e.clientX,
+			y: e.clientY,
+			pointerId: e.pointerId,
+		};
+		// Start the hold timer. On fire, run onArm() — caller flips
+		// `armed` via the trait, the next render passes armed=true,
+		// and the drag-threshold path becomes active.
+		holdTimerRef.current = window.setTimeout(() => {
+			holdTimerRef.current = null;
+			if (pressOriginRef.current !== null) onArm();
+		}, holdMs);
+	};
+
+	const handlePointerMove = (e: React.PointerEvent<SVGRectElement>): void => {
+		const origin = pressOriginRef.current;
+		if (!origin || origin.pointerId !== e.pointerId) return;
+		// Pre-arm: if pointer moves beyond the threshold BEFORE the
+		// hold timer fires, cancel the hold (the player is dragging
+		// without holding — treat as a swipe-cancel per RULES §5.6's
+		// implicit cancel rule).
+		if (!armedRef.current) {
+			const dx = e.clientX - origin.x;
+			const dy = e.clientY - origin.y;
+			if (Math.hypot(dx, dy) > DRAG_THRESHOLD_PX) {
+				if (holdTimerRef.current !== null) {
+					window.clearTimeout(holdTimerRef.current);
+					holdTimerRef.current = null;
+				}
+				pressOriginRef.current = null;
+			}
+			return;
+		}
+		// Post-arm: any pointermove past threshold commits.
+		const dx = e.clientX - origin.x;
+		const dy = e.clientY - origin.y;
+		if (Math.hypot(dx, dy) > DRAG_THRESHOLD_PX) {
+			pressOriginRef.current = null;
+			onCommit?.({ clientX: e.clientX, clientY: e.clientY });
+		}
+	};
+
+	const handlePointerUp = (e: React.PointerEvent<SVGRectElement>): void => {
+		const origin = pressOriginRef.current;
+		if (!origin || origin.pointerId !== e.pointerId) return;
+		if (holdTimerRef.current !== null) {
+			window.clearTimeout(holdTimerRef.current);
+			holdTimerRef.current = null;
+		}
+		pressOriginRef.current = null;
+		// If armed but not yet dragged, this is a release-without-drag
+		// at the moment of arming. Per RULES §5.3 the drag must follow
+		// the arm; a release at arm-time cancels. Caller is responsible
+		// for clearing armed-state via the trait when they detect this.
+	};
 
 	const stateOf = (i: number): SliceState => {
 		const isSel = selected?.has(i) === true;
@@ -277,6 +386,26 @@ export function RadialOverlay({
 				style={{ overflow: "visible" }}
 			>
 				<title>{`${slices}-stack split overlay`}</title>
+				{/* Gesture catcher: transparent rect at the bottom of
+				 * the SVG z-stack handles the hold-to-arm + drag-to-
+				 * commit gestures (RULES §5.2 + §5.3). Only mounts when
+				 * the parent supplies an arm handler — for non-
+				 * interactive configurations (top-color cap, lobby
+				 * single-tap), this rect is absent and pointer events
+				 * fall through to the wedges naturally. */}
+				{onArm ? (
+					<rect
+						x={-outerRadius}
+						y={-outerRadius}
+						width={outerRadius * 2}
+						height={outerRadius * 2}
+						fill="transparent"
+						onPointerDown={handlePointerDown}
+						onPointerMove={handlePointerMove}
+						onPointerUp={handlePointerUp}
+						onPointerCancel={handlePointerUp}
+					/>
+				) : null}
 				{geom.map((g) => {
 					const s = stateOf(g.index);
 					const style = styleForState(s, tint);

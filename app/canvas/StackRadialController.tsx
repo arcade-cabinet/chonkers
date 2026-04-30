@@ -27,7 +27,8 @@
 import { useTrait } from "koota/react";
 import { tokens } from "@/design/tokens";
 import { Match, posToVector3, Selection, SplitSelection } from "@/sim";
-import { useSimActions } from "../boot";
+import { useAudio, useSimActions } from "../boot";
+import { useHaptics } from "../hooks/useHaptics";
 import { useWorldEntity } from "../hooks/useWorldEntity";
 import { RadialOverlay } from "./RadialOverlay";
 
@@ -37,6 +38,8 @@ export function StackRadialController() {
 	const match = useTrait(worldEntity, Match);
 	const splitSelection = useTrait(worldEntity, SplitSelection);
 	const actions = useSimActions();
+	const audio = useAudio();
+	const haptics = useHaptics();
 
 	if (!selection?.cell || !match) return null;
 	const cell = selection.cell;
@@ -73,6 +76,22 @@ export function StackRadialController() {
 			outerRadius={70}
 			onSelectSlice={(index) => actions.toggleSplitSlice(index)}
 			slotLabel={(index) => `Slice ${index + 1} of ${stackHeight}`}
+			onArm={() => {
+				actions.armSplitSelection();
+				audio.play("split");
+				haptics.chonk();
+			}}
+			onCommit={() => {
+				// Drag-to-cell hit testing not yet wired — the player
+				// confirms via destination-tap on the existing
+				// PlayView click path, which already reads
+				// splitSelection.indices to build the multi-run
+				// action. This callback fires when the armed hold
+				// transitions to a drag, but until the cell hit-test
+				// lands, treat the drag as no-op + leave the
+				// selection armed so the next destination tap
+				// commits.
+			}}
 		/>
 	);
 }
