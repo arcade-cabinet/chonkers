@@ -24,6 +24,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useTrait } from "koota/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { tokens } from "@/design/tokens";
+import { partitionRuns } from "@/engine";
 import {
 	type Action,
 	AiThinking,
@@ -31,7 +32,7 @@ import {
 	cellsEqual,
 	Match,
 	Selection,
-	SplitArm,
+	SplitSelection,
 } from "@/sim";
 import { useAudio, useSimActions } from "../boot";
 import { CanvasHandlersProvider } from "../canvas/CellClickContext";
@@ -57,7 +58,7 @@ export function PlayView() {
 	const match = useTrait(worldEntity, Match);
 	const selection = useTrait(worldEntity, Selection);
 	const aiThinking = useTrait(worldEntity, AiThinking);
-	const splitArm = useTrait(worldEntity, SplitArm);
+	const splitSelection = useTrait(worldEntity, SplitSelection);
 	const actions = useSimActions();
 	const haptics = useHaptics();
 	const audio = useAudio();
@@ -188,23 +189,41 @@ export function PlayView() {
 				const stackHeight = match.pieces.filter(
 					(p) => p.col === cur.col && p.row === cur.row,
 				).length;
-				// SplitArm.count > 0 + < stackHeight means the user
-				// pre-selected a sub-stack via the SplitArmHeightBar
-				// widget (PRQ-A1). Otherwise full-stack move.
-				const armed = splitArm?.count ?? 0;
-				const moveCount =
-					armed > 0 && armed < stackHeight ? armed : stackHeight;
-				// indices 0..moveCount-1 = TOP `moveCount` pieces of
-				// the stack (height-0 is the top piece per RULES §5.1).
-				const action: Action = {
-					from: cur,
-					runs: [
-						{
-							indices: Array.from({ length: moveCount }, (_, i) => i),
+				// SplitSelection.indices empty OR full-stack → full-stack
+				// move (RULES.md §5.2: selecting all N is not a split).
+				// Otherwise partition the selection into contiguous runs
+				// and build a multi-run action — the engine will detach
+				// the head run on this turn and queue any tail runs as
+				// the forced split chain (RULES §5.4).
+				const sliceIndices = splitSelection?.indices ?? [];
+				const isPartialSelection =
+					sliceIndices.length > 0 && sliceIndices.length < stackHeight;
+				let action: Action;
+				if (isPartialSelection) {
+					const runs = partitionRuns(sliceIndices);
+					action = {
+						from: cur,
+						// First run gets the dragged-to destination; tail
+						// runs queue with the same destination as a
+						// placeholder (engine ignores their `.to` and the
+						// player picks per-turn during chain continuation).
+						runs: runs.map((indices) => ({
+							indices: [...indices],
 							to: cell,
-						},
-					],
-				};
+						})),
+					};
+				} else {
+					// indices 0..stackHeight-1 = the entire stack.
+					action = {
+						from: cur,
+						runs: [
+							{
+								indices: Array.from({ length: stackHeight }, (_, i) => i),
+								to: cell,
+							},
+						],
+					};
+				}
 				// Pre-detect chonk: if the destination has any pieces,
 				// the move is a chonk (engine validation runs inside
 				// commitHumanAction; this haptic fires regardless of
@@ -223,7 +242,15 @@ export function PlayView() {
 			}
 			// 3. Click empty cell with no selection → no-op.
 		},
-		[actions, haptics, humanColor, isHumanTurn, match, selection, splitArm],
+		[
+			actions,
+			haptics,
+			humanColor,
+			isHumanTurn,
+			match,
+			selection,
+			splitSelection,
+		],
 	);
 
 	return (

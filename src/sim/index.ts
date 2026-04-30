@@ -54,9 +54,10 @@ export {
 	type ScreenKind,
 	Selection,
 	type SelectionSnapshot,
-	SplitArm,
 	type SplitChainSnapshot,
 	SplitChainView,
+	SplitSelection,
+	type SplitSelectionSnapshot,
 } from "./traits";
 export {
 	buildSimActions,

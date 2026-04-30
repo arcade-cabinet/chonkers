@@ -37,8 +37,9 @@ import {
 	Screen,
 	type ScreenKind,
 	Selection,
-	SplitArm,
 	SplitChainView,
+	SplitSelection,
+	type SplitSelectionSnapshot,
 } from "./traits";
 
 /**
@@ -89,7 +90,7 @@ export function createSimWorld(options: CreateSimWorldOptions): SimWorld {
 		Selection({ cell: null }),
 		HoldProgress({ value: 0 }),
 		AiThinking({ value: false }),
-		SplitArm({ count: 0 }),
+		SplitSelection({ indices: [], armed: false }),
 		Ceremony({
 			phase: "idle",
 			firstPlayer: "red",
@@ -222,7 +223,7 @@ export function buildSimActions(sim: SimWorld) {
 			sim.worldEntity.set(Selection, { cell: null });
 			sim.worldEntity.set(HoldProgress, { value: 0 });
 			sim.worldEntity.set(AiThinking, { value: false });
-			sim.worldEntity.set(SplitArm, { count: 0 });
+			sim.worldEntity.set(SplitSelection, { indices: [], armed: false });
 			sim.worldEntity.set(Ceremony, {
 				phase: "idle",
 				firstPlayer: "red",
@@ -259,7 +260,7 @@ export function buildSimActions(sim: SimWorld) {
 			sim.worldEntity.set(Selection, { cell: null });
 			sim.worldEntity.set(HoldProgress, { value: 0 });
 			sim.worldEntity.set(AiThinking, { value: false });
-			sim.worldEntity.set(SplitArm, { count: 0 });
+			sim.worldEntity.set(SplitSelection, { indices: [], armed: false });
 			sim.worldEntity.set(Ceremony, {
 				phase: "idle",
 				firstPlayer: "red",
@@ -285,7 +286,7 @@ export function buildSimActions(sim: SimWorld) {
 			sim.worldEntity.set(Selection, { cell: null });
 			sim.worldEntity.set(HoldProgress, { value: 0 });
 			sim.worldEntity.set(AiThinking, { value: false });
-			sim.worldEntity.set(SplitArm, { count: 0 });
+			sim.worldEntity.set(SplitSelection, { indices: [], armed: false });
 			sim.worldEntity.set(Ceremony, {
 				phase: "idle",
 				firstPlayer: "red",
@@ -338,12 +339,54 @@ export function buildSimActions(sim: SimWorld) {
 					(prior.col !== cell.col || prior.row !== cell.row)) ||
 				(!cell && prior !== null);
 			sim.worldEntity.set(Selection, { cell });
-			if (cellsDiffer) sim.worldEntity.set(SplitArm, { count: 0 });
+			if (cellsDiffer)
+				sim.worldEntity.set(SplitSelection, { indices: [], armed: false });
 		},
 
-		setSplitArm(count: number): void {
-			sim.worldEntity.set(SplitArm, {
-				count: Math.max(0, Math.floor(count)),
+		/**
+		 * Toggle the slice at `index` in the current SplitSelection.
+		 * Tapping a wedge in the radial overlay routes here. Resets
+		 * `armed` to false on every toggle — re-arming requires a
+		 * fresh 3000ms hold (RULES.md §5.2).
+		 */
+		toggleSplitSlice(index: number): void {
+			// Reject invalid inputs silently (keeps the UI tap path
+			// idempotent even if a stray negative or fractional comes
+			// through). The radial caller already guards against
+			// out-of-range, so this is defense in depth.
+			if (!Number.isInteger(index) || index < 0) return;
+			const cur =
+				sim.worldEntity.get(SplitSelection) ??
+				({ indices: [], armed: false } as SplitSelectionSnapshot);
+			const has = cur.indices.includes(index);
+			const next = has
+				? cur.indices.filter((i: number) => i !== index)
+				: [...cur.indices, index];
+			sim.worldEntity.set(SplitSelection, {
+				indices: [...next].sort((a: number, b: number) => a - b),
+				armed: false,
+			});
+		},
+
+		/**
+		 * Clear the SplitSelection (no slices, not armed). Called on
+		 * cancellation gestures (tap-outside-overlay per RULES.md §6,
+		 * or selecting a different stack).
+		 */
+		clearSplitSelection(): void {
+			sim.worldEntity.set(SplitSelection, { indices: [], armed: false });
+		},
+
+		/**
+		 * Flip the `armed` flag — the 3000ms hold-to-arm timer (RULES
+		 * §5.2) has fired. Drag-to-commit (§5.3) is the next gesture.
+		 */
+		armSplitSelection(): void {
+			const cur = sim.worldEntity.get(SplitSelection);
+			if (!cur || cur.indices.length === 0) return;
+			sim.worldEntity.set(SplitSelection, {
+				indices: cur.indices,
+				armed: true,
 			});
 		},
 

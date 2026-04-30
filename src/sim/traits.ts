@@ -170,22 +170,33 @@ export const HoldProgress = trait({ value: 0 });
 export const AiThinking = trait({ value: false });
 
 /**
- * Sub-stack arming for split moves. When `count > 0` and the
- * selected stack's height is ≥ 2, the next destination commit
- * splits off the top `count` pieces (RULES.md §5) instead of
- * moving the full stack. `count = 0` (default) commits a full-
- * stack move.
+ * Slice selection for the radial split overlay (PRQ-A1).
  *
- * The UI surface is `app/canvas/SplitArmHeightBar.tsx` — a vertical
- * dot column rendered beside the selection ring; each dot
- * corresponds to a sub-stack count (1..stackHeight-1), and tapping
- * one sets `SplitArm.count`. A second tap on the same dot resets
- * to 0 (back to full-stack mode).
+ * `indices` is an array of slice indices (top-down, 0-based) the
+ * player has tapped on the radial of the currently-selected stack.
+ * When `armed` flips true (after the 3000ms hold-to-arm timer per
+ * RULES.md §5.2), the next pointer-drag commits the split:
+ * the engine partitions `indices` into contiguous runs (top-down),
+ * detaches the first run, and queues the remainder as a forced
+ * chain (RULES.md §5.4).
+ *
+ * Empty `indices` + `armed=false` is the default — meaning the
+ * selected stack will commit a full-stack move on the next
+ * destination tap, no split.
+ *
+ * Replaces the old `SplitArm.count` trait + `SplitArmHeightBar`
+ * widget with the unified RadialOverlay primitive.
  *
  * Reset on every newMatch / quitMatch / setSelection-to-different-
- * cell so a stale arm from one selection doesn't leak.
+ * cell so a stale selection from one stack doesn't leak.
  */
-export const SplitArm = trait({ count: 0 });
+export interface SplitSelectionSnapshot {
+	readonly indices: ReadonlyArray<number>;
+	readonly armed: boolean;
+}
+export const SplitSelection = trait(
+	(): SplitSelectionSnapshot => ({ indices: [], armed: false }),
+);
 
 /**
  * New-match ceremony state. Drives the visible piece-placement

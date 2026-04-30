@@ -13,7 +13,7 @@ import { Lighting } from "./Lighting";
 import { MoveAnimation } from "./MoveAnimation";
 import { Pieces } from "./Pieces";
 import { SelectionOverlay } from "./SelectionOverlay";
-import { SplitArmHeightBar } from "./SplitArmHeightBar";
+import { StackRadialController } from "./StackRadialController";
 import { TippingBoard } from "./TippingBoard";
 
 // Camera frames the bezel from slightly above + slightly back. The
@@ -96,7 +96,7 @@ export function Scene() {
 						<Pieces />
 						<MoveAnimation />
 						<SelectionOverlay />
-						<SplitArmHeightBar />
+						<StackRadialController />
 						<CellHitboxGrid />
 					</TippingBoard>
 				</Suspense>

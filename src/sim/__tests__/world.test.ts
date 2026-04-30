@@ -24,8 +24,8 @@ import {
 	Match,
 	Screen,
 	Selection,
-	SplitArm,
 	SplitChainView,
+	SplitSelection,
 } from "..";
 
 const easyKeys = ALL_PROFILE_KEYS.filter((k) => k.endsWith("-easy"));
@@ -172,40 +172,60 @@ describe("createSimWorld", () => {
 		expect(sim.worldEntity.has(SplitChainView)).toBe(false);
 	});
 
-	it("setSplitArm clamps + floors and round-trips via the SplitArm trait", () => {
+	it("toggleSplitSlice toggles indices in/out of SplitSelection (sorted)", () => {
 		const { db } = makeTestDb();
 		const sim = createSimWorld({ db });
 		const actions = buildSimActions(sim)(sim.world);
-		expect(sim.worldEntity.get(SplitArm)?.count).toBe(0);
-		actions.setSplitArm(2);
-		expect(sim.worldEntity.get(SplitArm)?.count).toBe(2);
-		// Negative input clamps to 0
-		actions.setSplitArm(-5);
-		expect(sim.worldEntity.get(SplitArm)?.count).toBe(0);
-		// Float floors to nearest integer below
-		actions.setSplitArm(2.7);
-		expect(sim.worldEntity.get(SplitArm)?.count).toBe(2);
+		expect(sim.worldEntity.get(SplitSelection)?.indices).toEqual([]);
+		actions.toggleSplitSlice(2);
+		expect(sim.worldEntity.get(SplitSelection)?.indices).toEqual([2]);
+		// Add another — output is sorted ascending.
+		actions.toggleSplitSlice(0);
+		expect(sim.worldEntity.get(SplitSelection)?.indices).toEqual([0, 2]);
+		// Toggle off
+		actions.toggleSplitSlice(2);
+		expect(sim.worldEntity.get(SplitSelection)?.indices).toEqual([0]);
+		// Float / negative inputs are rejected (no-op).
+		actions.toggleSplitSlice(2.7);
+		expect(sim.worldEntity.get(SplitSelection)?.indices).toEqual([0]);
+		actions.toggleSplitSlice(-5);
+		expect(sim.worldEntity.get(SplitSelection)?.indices).toEqual([0]);
 	});
 
-	it("setSelection to a different cell resets SplitArm to 0", () => {
+	it("armSplitSelection only flips when the selection is non-empty", () => {
+		const { db } = makeTestDb();
+		const sim = createSimWorld({ db });
+		const actions = buildSimActions(sim)(sim.world);
+		// No-op on empty selection.
+		actions.armSplitSelection();
+		expect(sim.worldEntity.get(SplitSelection)?.armed).toBe(false);
+		actions.toggleSplitSlice(0);
+		actions.armSplitSelection();
+		expect(sim.worldEntity.get(SplitSelection)?.armed).toBe(true);
+		// Toggling a slice resets armed (re-arm requires fresh hold).
+		actions.toggleSplitSlice(1);
+		expect(sim.worldEntity.get(SplitSelection)?.armed).toBe(false);
+	});
+
+	it("setSelection to a different cell clears SplitSelection", () => {
 		const { db } = makeTestDb();
 		const sim = createSimWorld({ db });
 		const actions = buildSimActions(sim)(sim.world);
 		actions.setSelection({ col: 4, row: 4 });
-		actions.setSplitArm(3);
-		expect(sim.worldEntity.get(SplitArm)?.count).toBe(3);
-		// Same-cell selection re-set does NOT reset the arm
+		actions.toggleSplitSlice(0);
+		actions.toggleSplitSlice(1);
+		expect(sim.worldEntity.get(SplitSelection)?.indices).toEqual([0, 1]);
+		// Same-cell selection re-set does NOT reset the SplitSelection.
 		actions.setSelection({ col: 4, row: 4 });
-		expect(sim.worldEntity.get(SplitArm)?.count).toBe(3);
-		// Different-cell selection clears the arm so a stale count
-		// from the prior selection doesn't leak to a stack of
-		// different height.
+		expect(sim.worldEntity.get(SplitSelection)?.indices).toEqual([0, 1]);
+		// Different-cell selection clears the slices so a stale
+		// selection from the prior stack doesn't leak.
 		actions.setSelection({ col: 5, row: 4 });
-		expect(sim.worldEntity.get(SplitArm)?.count).toBe(0);
-		// Clear selection also resets the arm
-		actions.setSplitArm(2);
+		expect(sim.worldEntity.get(SplitSelection)?.indices).toEqual([]);
+		// Clear selection also resets.
+		actions.toggleSplitSlice(0);
 		actions.setSelection(null);
-		expect(sim.worldEntity.get(SplitArm)?.count).toBe(0);
+		expect(sim.worldEntity.get(SplitSelection)?.indices).toEqual([]);
 	});
 
 	it("setCeremony writes the full snapshot through to the trait", () => {
