@@ -18,11 +18,13 @@ import { ALL_PROFILE_KEYS } from "@/ai";
 import { makeTestDb } from "@/persistence/sqlite/__tests__/test-db";
 import {
 	buildSimActions,
+	Ceremony,
 	createSimWorld,
 	HoldProgress,
 	Match,
 	Screen,
 	Selection,
+	SplitArm,
 	SplitChainView,
 } from "..";
 
@@ -168,5 +170,115 @@ describe("createSimWorld", () => {
 			humanColor: null,
 		});
 		expect(sim.worldEntity.has(SplitChainView)).toBe(false);
+	});
+
+	it("setSplitArm clamps + floors and round-trips via the SplitArm trait", () => {
+		const { db } = makeTestDb();
+		const sim = createSimWorld({ db });
+		const actions = buildSimActions(sim)(sim.world);
+		expect(sim.worldEntity.get(SplitArm)?.count).toBe(0);
+		actions.setSplitArm(2);
+		expect(sim.worldEntity.get(SplitArm)?.count).toBe(2);
+		// Negative input clamps to 0
+		actions.setSplitArm(-5);
+		expect(sim.worldEntity.get(SplitArm)?.count).toBe(0);
+		// Float floors to nearest integer below
+		actions.setSplitArm(2.7);
+		expect(sim.worldEntity.get(SplitArm)?.count).toBe(2);
+	});
+
+	it("setSelection to a different cell resets SplitArm to 0", () => {
+		const { db } = makeTestDb();
+		const sim = createSimWorld({ db });
+		const actions = buildSimActions(sim)(sim.world);
+		actions.setSelection({ col: 4, row: 4 });
+		actions.setSplitArm(3);
+		expect(sim.worldEntity.get(SplitArm)?.count).toBe(3);
+		// Same-cell selection re-set does NOT reset the arm
+		actions.setSelection({ col: 4, row: 4 });
+		expect(sim.worldEntity.get(SplitArm)?.count).toBe(3);
+		// Different-cell selection clears the arm so a stale count
+		// from the prior selection doesn't leak to a stack of
+		// different height.
+		actions.setSelection({ col: 5, row: 4 });
+		expect(sim.worldEntity.get(SplitArm)?.count).toBe(0);
+		// Clear selection also resets the arm
+		actions.setSplitArm(2);
+		actions.setSelection(null);
+		expect(sim.worldEntity.get(SplitArm)?.count).toBe(0);
+	});
+
+	it("setCeremony writes the full snapshot through to the trait", () => {
+		const { db } = makeTestDb();
+		const sim = createSimWorld({ db });
+		const actions = buildSimActions(sim)(sim.world);
+		const initial = sim.worldEntity.get(Ceremony);
+		expect(initial?.phase).toBe("idle");
+		expect(initial?.firstPlayer).toBe("red");
+		actions.setCeremony({
+			phase: "placing-first",
+			firstPlayer: "white",
+			pieceProgress: 7,
+			startedAtMs: 1234567,
+		});
+		const after = sim.worldEntity.get(Ceremony);
+		expect(after?.phase).toBe("placing-first");
+		expect(after?.firstPlayer).toBe("white");
+		expect(after?.pieceProgress).toBe(7);
+		expect(after?.startedAtMs).toBe(1234567);
+	});
+
+	it("findResumableMatch returns null when no matches exist + the id of an unfinished match", async () => {
+		const { db } = makeTestDb();
+		const sim = createSimWorld({ db });
+		const actions = buildSimActions(sim)(sim.world);
+		expect(await actions.findResumableMatch()).toBeNull();
+		await actions.newMatch({
+			redProfile: RED,
+			whiteProfile: WHITE,
+			humanColor: "red",
+			coinFlipSeed: "33".repeat(8),
+		});
+		const matchId = sim.handle?.matchId;
+		expect(matchId).toBeTruthy();
+		// quitMatch wipes the in-memory handle but the matches row
+		// is still in the db with finishedAt = null. That row is
+		// the resumable target.
+		await actions.quitMatch();
+		expect(await actions.findResumableMatch()).toBe(matchId);
+	});
+
+	it("resumeMatch reconstructs GameState by replaying persisted moves", async () => {
+		const { db } = makeTestDb();
+		const sim = createSimWorld({ db });
+		const actions = buildSimActions(sim)(sim.world);
+		await actions.newMatch({
+			redProfile: RED,
+			whiteProfile: WHITE,
+			humanColor: null,
+			coinFlipSeed: "44".repeat(8),
+		});
+		const matchId = sim.handle?.matchId;
+		expect(matchId).toBeTruthy();
+		// Run two AI plies to seed the moves table with replay data.
+		await actions.stepTurn();
+		await actions.stepTurn();
+		const turnAfterTwo = sim.worldEntity.get(Match)?.turn;
+		const piecesAfterTwo = sim.worldEntity.get(Match)?.pieces.length;
+		// Quit drops the handle; resumeMatch reads it back from the db.
+		await actions.quitMatch();
+		expect(sim.handle).toBeNull();
+		await actions.resumeMatch({
+			matchId: matchId as string,
+			humanColor: null,
+		});
+		expect(sim.handle?.matchId).toBe(matchId);
+		expect(sim.worldEntity.get(Screen)?.value).toBe("play");
+		const resumed = sim.worldEntity.get(Match);
+		// Replay must reproduce the SAME turn + piece count as the
+		// in-memory state had before quit. Same coin-flip seed +
+		// same engine = same trajectory.
+		expect(resumed?.turn).toBe(turnAfterTwo);
+		expect(resumed?.pieces.length).toBe(piecesAfterTwo);
 	});
 });

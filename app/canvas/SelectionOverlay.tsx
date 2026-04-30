@@ -30,6 +30,17 @@ import { useWorldEntity } from "../hooks/useWorldEntity";
 const isOnBoard = (c: { col: number; row: number }): boolean =>
 	c.col >= 0 && c.col < BOARD_COLS && c.row >= 0 && c.row < BOARD_ROWS;
 
+/**
+ * Deterministic per-cell phase offset for the bob animation.
+ * Hash of (col, row) into [0, 2π) so adjacent markers don't bob
+ * in lockstep but the same cell always gets the same phase
+ * across renders + sessions (replay-safe).
+ */
+function cellPhase(c: { col: number; row: number }): number {
+	const h = (c.col * 73856093) ^ (c.row * 19349663);
+	return ((h >>> 0) % 1000) * (Math.PI * 2) * 0.001;
+}
+
 const RING_LIFT = 0.012;
 const SELECTION_RING_INNER = 0.34;
 const SELECTION_RING_OUTER = 0.5;
@@ -68,6 +79,7 @@ export function SelectionOverlay() {
 				<TargetMarker
 					key={`${cell.col}-${cell.row}`}
 					position={[vec.x, RING_LIFT, vec.z]}
+					phase={cellPhase(cell)}
 				/>
 			))}
 		</>
@@ -105,11 +117,15 @@ function SelectionRing({ position }: { position: [number, number, number] }) {
 	);
 }
 
-function TargetMarker({ position }: { position: [number, number, number] }) {
+function TargetMarker({
+	position,
+	phase,
+}: {
+	position: [number, number, number];
+	phase: number;
+}) {
 	const meshRef = useRef<THREE.Mesh | null>(null);
 	const matRef = useRef<THREE.MeshStandardMaterial | null>(null);
-	// Per-marker phase offset so they don't all bob in lockstep.
-	const phase = useMemo(() => Math.random() * Math.PI * 2, []);
 
 	useFrame((_, delta) => {
 		const m = meshRef.current;

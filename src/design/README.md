@@ -52,8 +52,10 @@ See `docs/DESIGN.md` "Palette" + "Motion" for the full table. Sub-trees:
 | `tokens.font.*` | Display + body font stacks |
 | `tokens.motion.*` | UI + 3D-piece motion duration budgets (in ms) |
 | `tokens.board.*` | Board dimensions (cols, rows, cellSize, puck dims) |
-| `tokens.splitRadial.*` | Slice-state colours for `app/components/SplitRadial.tsx` |
-| `tokens.turnBadge.*` | Red/white colour banding for `app/components/TurnBadge.tsx` |
+| `tokens.splitRadial.*` | Slice-state colours consumed today by `app/canvas/SplitArmHeightBar.tsx`; reserved colour grammar for a future radial overlay |
+| `tokens.turnBadge.*` | Red/white colour banding consumed by the `TurnIndicator` pill in `app/screens/PlayView.tsx` |
+| `tokens.scene.*` | 3D camera framing (cameraX/Y/Z/Fov/Near/Far) + tilt geometry (baseTiltMagnitude, turnTiltDelta) |
+| `tokens.bezel.*` | Bezel frame geometry (frameThickness, frameDepth, frameLift) |
 
 ## Motion variants
 

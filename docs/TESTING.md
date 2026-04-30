@@ -122,7 +122,7 @@ Specs use **DOM locators**, not `page.evaluate()` against the WebGL surface — 
 **Where files live:** `maestro/*.yml`.
 
 **Coverage:**
-- Boot to title screen on each platform.
+- Boot to lobby on each platform.
 - Start a new match → AI plays its first move within `time_budget_ms` for the chosen profile.
 - Tap a piece, see selection ring.
 - Pause + resume.

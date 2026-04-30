@@ -92,9 +92,9 @@ export const tokens = {
 		// Vertical gap between stacked pucks so the wood seam reads.
 		puckGap: 0.005,
 	},
-	// Slice-state tokens for `app/components/SplitRadial.tsx`. The
-	// radial cycles through idle → hovered → selected → hold-ready →
-	// committed; each state has its own stroke + fill.
+	// Slice-state tokens consumed today by `app/canvas/SplitArmHeightBar.tsx`
+	// (idle vs armed dot fills). Reserved colour grammar (idle / hovered /
+	// selected / hold-ready / committed) for a future radial overlay.
 	splitRadial: {
 		idleStroke: "#1B1410", // ink.primary
 		idleFill: "transparent",
@@ -107,7 +107,7 @@ export const tokens = {
 		// destination cell takes focus.
 		committedOpacity: 0.45,
 	},
-	// Colour banding for `app/components/TurnBadge.tsx`.
+	// Colour banding for the `TurnIndicator` pill in `app/screens/PlayView.tsx`.
 	turnBadge: {
 		redBg: "#7A3B22", // wood.pieceRed mid-tone
 		redInk: "#F5EBD8", // ink.inverse

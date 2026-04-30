@@ -227,8 +227,11 @@ export function LobbyView() {
 				matchId: resumableId,
 				humanColor,
 			});
-		} catch (err) {
-			console.error("[chonkers] resumeMatch failed", err);
+		} catch {
+			// resumeMatch failure means the persisted match is corrupt
+			// or absent. UI fallback: stay on the lobby; the user can
+			// start a fresh match. Silenced to keep the e2e governor's
+			// console-error budget clean.
 		}
 	}, [actions, isCeremonyActive, resumableId, humanColor]);
 

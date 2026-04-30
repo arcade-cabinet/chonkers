@@ -20,7 +20,7 @@ Stages reflect *kind of validation completed*, not *version number*. release-ple
 | **beta** | 1,000 in-browser AI-vs-AI governor runs pass | playtesting the real visual stack | R3F render + framer-motion + audio + Radix UI + input pipeline all integrate cleanly under sustained automated play; second AI-weight tune at higher statistical power |
 | **rc** | 10,000 governor runs + balance + profiling clean | outlier hunting + perf | no remaining visual glitches; AI-weight tuning finalised; profile pairs surveyed for unresolved-match outliers (AI evaluation gaps, not draws — the rule set has no draw condition); perf within budget |
 
-**Current stage: pre-alpha.** PRQ-1 (persistence + db) in flight on branch `prd/persistence` (PR #5).
+**Current stage: alpha** (reached 2026-04-30). All six framework PRDs (persistence-and-db, logic-surfaces-and-broker, audio-and-design-tokens, visual-shell, e2e-governor, native-shell) have merged via PRs #5/#7/#8/#9. Polish work continues on `prd/polish` (PR #10) — alpha-blockers cleared (split-radial UI, top-color cap, resume hydration, bezel-framed scene, koota subscription fix); beta-tier polish in flight (animated piece motion + audio integration + difficulty/color picker + magic-numbers-to-tokens all shipped; 1000-run governor + e2e-governor RUN are the only outstanding gates before beta flips).
 
 ## What is committed
 
@@ -38,17 +38,12 @@ Stages reflect *kind of validation completed*, not *version number*. release-ple
 
 ## What is in flight
 
-- **PRQ-1 (persistence + db)** — `prd/persistence` branch, PR #5. Combines the typed `kv` surface (committed) with the drizzle ORM + capacitor-sqlite runtime + version-replay bootstrap (in progress per `docs/DB.md`). Schema PRD has been merged into this PRQ; there is no separate schema PR.
+- **PR #10 (`prd/polish`)** — polish-phase PR stacking PRQ-7..13 (deploy hotfix → visual fix → HUD polish → selection overlay → R3F pointer events → bezel composition → tipping board → bezel knock gesture → lobby + ceremony → 1000-run balance governor → e2e governor) plus PRQ-A0..A6 (koota subscription fix → split-arm UI → top-color cap → piece motion → resume hydration → audio integration → doc realignment) plus PRQ-B1/B3 (difficulty/color picker, magic-numbers-to-tokens). Currently waiting on the in-flight 1000-run governor RUN + e2e governor RUN to land green before beta flips.
 
 ## What has not started
 
-PRDs queued, in dependency order:
-
-- PRQ-2: logic surfaces + broker (`src/engine/`, `src/ai/`, `src/store/`, `src/analytics/`, `src/sim/`). Acceptance gate: 100-run broker pass → **alpha**.
-- PRQ-3: audio + design tokens reconciliation (`src/audio/`, `src/design/`).
-- PRQ-4: visual shell (`app/`).
-- PRQ-5: e2e governor + accessibility (`e2e/`). Acceptance gate: 1,000-run governor pass → **beta**.
-- PRQ-6: native shell (Capacitor iOS + Android). Acceptance gate: 10,000-run governor + balance + profiling clean → **rc**.
+- **rc gate (PRQ-R1)**: raise BETA_RUNS to 10000 in the e2e governor + add mobile/iPad Playwright projects + Maestro Android smoke on real APK. Lands as a post-beta PR.
+- **store-listing prep (PRQ-R2)**: real iOS + Android screenshots via Maestro, privacy policy + ToS, app icon + splash + adaptive icon, store-listing copy under `docs/store/`. Tag rc-1.0.0. Final pre-release PR.
 
 ## Reference snapshots
 

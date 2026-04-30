@@ -10,7 +10,7 @@ domain: technical
 ## Top-level boundaries
 
 ```
-Input (pointer/touch + radial overlay, app/input/)
+Input (R3F pointer events on Pieces + CellHitboxGrid + BezelGestures, routed through app/canvas/CellClickContext)
     │
     ▼
 Sim broker (src/sim/) ──── coordinates engine + ai + store + persistence
@@ -20,10 +20,10 @@ Sim broker (src/sim/) ──── coordinates engine + ai + store + persistence
     ├─► Store     (src/store/)    typed CRUD over db tables
     ├─► Analytics (src/analytics/) materialised aggregate queries
     │
-    ├─► R3F render tree   (app/canvas/)     subscribes to koota
-    ├─► Radix UI shell    (app/screens/)                  subscribes to koota
+    ├─► R3F render tree   (app/canvas/)   subscribes to koota
+    ├─► Radix UI shell    (app/screens/)  subscribes to koota
     │
-    └─► Audio bus        (src/audio/)       dispatched as side-effects from sim broker
+    └─► Audio bus        (src/audio/)     dispatched from app/screens/{Lobby,Play}View useEffects on Match.lastMove + ceremony phase + winner transitions
 
 Persistence:
     ├─► Capacitor Preferences  (src/persistence/)  typed JSON kv  — settings, last-camera-angle, profile pair, audio volume
@@ -68,7 +68,7 @@ Provable rules:
 | `src/design/` | Design tokens, Radix theme config, framer-motion variant library. | Pure TS. |
 | `src/utils/` | Pure utilities: coords, type guards, asserts. | Pure TS. |
 | `app/canvas/` | R3F scene tree: board mesh, piece pucks, bezel, lighting, environment, selection + split-arm overlays, click pipeline. | All `.tsx`. |
-| `app/screens/` | Radix full-screen views: lobby, play, win, lose, spectator-result, paused. | All `.tsx`. |
+| `app/screens/` | Radix full-screen views: `LobbyView`, `PlayView`, `EndScreen` (variant: win / lose / spectator-result), `PauseView`. | All `.tsx`. |
 | `app/hooks/` | React hooks: `useWorldEntity`, `useHaptics`, etc. | All `.tsx`. |
 | `app/boot/` | App boot sequence + ErrorBoundary + SimContext. | All `.tsx`. |
 | `app/css/` | Global CSS + runtime-installed `@font-face` rules (`fonts.ts`). | |
@@ -82,23 +82,24 @@ Persistence is *not* in koota. The koota world is rebuilt on app boot (or on mat
 ## R3F scene tree
 
 ```
-<Canvas shadows dpr={[1, 2]}>
-  <Environment files="/assets/hdri/background.exr" background blur={0.4} />
-  <Lighting />                 // key + fill + rim
-  <Board />                    // 9×11 mesh, wood PBR, engraved gridlines
-  <HomeRowGradient />          // shader overlay on rows 0 + 10 (distinct PBR wood)
-  <StackGroup>                 // one <Stack> per non-empty cell
-    <Stack col row stack />    // N <Piece> stacked vertically
-  </StackGroup>
-  <SelectionRing />            // selected cell glow
-  <ValidMoveMarkers />         // dots on legal destinations
-  <SplitOverlayAnchor />       // 3D position → 2D screen-projection sink
+<Canvas shadows dpr={[1, 2]} gl={{ toneMapping: ACESFilmic, ... }} camera={tokens.scene.*}>
+  <color attach="background" args={[tokens.surface.canvasClear]} />
+  <Environment files={ASSETS.hdri} />     // image-based-lighting only (no `background` prop — bezel + clear color carry the look)
+  <Lighting />                            // key + fill + rim
+  <Bezel innerWidth innerDepth />         // dark-wood frame (BezelButtons + BezelGestures sit on its slabs)
+  <BezelGestures />                       // invisible knock-zone for triple-tap-forfeit
+  <TippingBoard>                          // X-axis axle-tip toward whoever owns the turn
+    <Board />                             // 9×11 wood surface (main + home PBR)
+    <Pieces />                            // one <Piece> per stack-piece (top piece carries the color cap)
+    <MoveAnimation />                     // transient flying-piece overlay reading Match.lastMove
+    <SelectionOverlay />                  // pulsing emissive ring + adjacent-cell target markers
+    <SplitArmHeightBar />                 // vertical sub-stack arm dots (1..h-1)
+    <CellHitboxGrid />                    // invisible per-cell click receivers
+  </TippingBoard>
 </Canvas>
-<SplitRadial />                // SVG, html-layered above canvas
-<Hud />                        // Radix UI HUD
 ```
 
-The split overlay is **outside** `<Canvas>` — it's HTML/SVG. An anchor inside the canvas projects the active stack's world position to screen-space and writes the screen-coords to a koota trait; the overlay reads the trait and positions itself with CSS `transform`.
+In the lobby state, `<TippingBoard>` is replaced by `<DemoPieces>` + `<BezelButtons>` + (during ceremony) `<PiecePlacementReveal>` + `<CoinFlipChip>`. The overlay flow is now entirely R3F-internal — no HTML/SVG split overlay sitting above the canvas.
 
 ## Asset loading
 
@@ -131,7 +132,7 @@ export const ASSETS = {
 } as const;
 ```
 
-Loading is funnelled through drei's `useTexture` and `useLoader` for textures + HDRI. Audio files load on first user interaction (browser autoplay policy). Fonts declare via CSS `@font-face` in `app/css/fonts.css`.
+Loading is funnelled through drei's `useTexture` and `useLoader` for textures + HDRI. Audio files load on first user interaction (browser autoplay policy). Fonts install at runtime via `app/css/fonts.ts::installFonts()` which builds `@font-face` rules from `ASSETS.fonts.*` (BASE_URL-aware) and injects them as a single `<style>` element on boot.
 
 The asset manifest is the **only** layer that references string paths. Components import from `ASSETS.*` — never typing literals.
 

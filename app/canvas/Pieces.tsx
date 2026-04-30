@@ -5,8 +5,8 @@
  * array, NOT the live engine state) and re-renders.
  *
  * Falls back to the canonical 5-4-3 starting layout when no match
- * is active (title screen + spectator mode) so the board never reads
- * as empty behind the title scrim.
+ * is active (lobby + spectator-result + paused) so the board never
+ * reads as empty behind a screen scrim.
  */
 
 import { useTrait } from "koota/react";
