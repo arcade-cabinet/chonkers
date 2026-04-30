@@ -172,7 +172,7 @@ Outliers are not flaky tests. They're real games the AI played. Replaying any ou
 | `core` (typecheck + lint + Tier 1 tests + build) | 1 | yes |
 | `browser` (Tier 2 — Vitest browser) | 2 | yes |
 | `e2e-smoke` (Tier 3 smoke subset) | 3 | yes |
-| `governor-alpha` (Tier 3, GOVERNOR_RUNS=alpha) | 3 | yes during alpha and later stages |
+| `governor-alpha` (Tier 1, 100-run broker spec via `pnpm test:alpha`) | 1 | yes during alpha and later stages |
 
 Scheduled jobs (not PR-gating):
 - Nightly: `governor-beta` (1000 runs) during beta stage.

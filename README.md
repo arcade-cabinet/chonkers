@@ -13,13 +13,30 @@ Built with React + R3F + Radix Themes + framer-motion in TypeScript, shelled by 
 ```bash
 pnpm install        # install deps (requires pnpm 10+)
 pnpm dev            # Vite dev server → http://localhost:5173/chonkers/
-pnpm typecheck      # tsc --noEmit
-pnpm lint           # biome check
-pnpm test:node      # tier-1 pure-logic unit tests
-pnpm test:browser   # tier-2 R3F render tests (real Chromium GPU)
-pnpm test:e2e:ci    # tier-3 Playwright smoke
-pnpm build          # production web bundle → dist/
 pnpm cap:sync       # build + sync to android/ios native projects
+```
+
+See [Test surfaces](#test-surfaces) below for the full test/lint/build matrix.
+
+## Test surfaces
+
+The project ships five distinct test surfaces, in roughly increasing order of cost. The full pyramid is documented in [`docs/TESTING.md`](docs/TESTING.md); this table is the executable summary.
+
+| Command | Tier | Runtime | What it covers | When it runs |
+|---|---|---|---|---|
+| `pnpm test:node` | 1 | ~2s | Pure-logic unit tests (engine, AI, sim broker, store) — no UI, no GPU, no browser | Every commit + every PR (`core` job) |
+| `pnpm test:browser` | 2 | ~30s | R3F render assertions on real Chromium GPU via Vitest browser | Every PR (`browser` job) |
+| `pnpm test:alpha` | 1 (governor) | ~100s | 100-run broker spec — alpha-stage end-to-end signal in `replay` mode (host-independent) | Every PR (`governor-alpha` job) once wired |
+| `pnpm test:governor` | 1 (governor) | ~30–60min | 1000-run broker spec — beta-stage balance assertions across all 9 profile pairings | Nightly during beta stage |
+| `pnpm test:e2e:ci` | 3 | ~10s | Playwright smoke — boot, lobby renders, AI-vs-AI demo progresses | Every PR (`e2e-smoke` job) |
+| `pnpm test:e2e:nightly` | 3 | (planned) | Full Playwright governor + visual snapshots | Nightly during beta+ stages |
+
+Lint, typecheck, build:
+
+```bash
+pnpm typecheck   # tsc --noEmit
+pnpm lint        # biome check
+pnpm build       # production web bundle → dist/
 ```
 
 ## Documentation
