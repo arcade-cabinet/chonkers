@@ -172,6 +172,54 @@ describe("createSimWorld", () => {
 		expect(sim.worldEntity.has(SplitChainView)).toBe(false);
 	});
 
+	it("forced-chain auto-arm does NOT fire spuriously on regular Match writes", async () => {
+		// PRQ-A1 audit regression. The broker's syncMatchTraits
+		// auto-arms SplitSelection ONLY when state.chain transitions
+		// to a non-empty head AND the chain owner is the human's
+		// color AND it's their turn. A regular newMatch (no chain) +
+		// stepTurn (no chain) must leave SplitSelection untouched.
+		const { db } = makeTestDb();
+		const sim = createSimWorld({ db });
+		const actions = buildSimActions(sim)(sim.world);
+		await actions.newMatch({
+			redProfile: RED,
+			whiteProfile: WHITE,
+			humanColor: "red",
+			coinFlipSeed: "ab".repeat(8),
+		});
+		expect(sim.worldEntity.get(SplitSelection)?.indices).toEqual([]);
+		expect(sim.worldEntity.get(SplitSelection)?.armed).toBe(false);
+		// Step a few AI turns — none should populate SplitSelection
+		// because no chain is in flight from the standard opening.
+		await actions.stepTurn();
+		await actions.stepTurn();
+		expect(sim.worldEntity.get(SplitSelection)?.indices).toEqual([]);
+		expect(sim.worldEntity.get(SplitSelection)?.armed).toBe(false);
+	});
+
+	it("SplitSelection clears on quitMatch even if it was armed", async () => {
+		// PRQ-A1 audit regression. syncMatchTraits's no-handle
+		// branch must clear SplitSelection so a stale armed
+		// selection from the prior match can't leak into the lobby.
+		const { db } = makeTestDb();
+		const sim = createSimWorld({ db });
+		const actions = buildSimActions(sim)(sim.world);
+		await actions.newMatch({
+			redProfile: RED,
+			whiteProfile: WHITE,
+			humanColor: "red",
+			coinFlipSeed: "cd".repeat(8),
+		});
+		// Manually arm a selection (no chain — exercising the leak
+		// path).
+		actions.toggleSplitSlice(0);
+		actions.armSplitSelection();
+		expect(sim.worldEntity.get(SplitSelection)?.armed).toBe(true);
+		await actions.quitMatch();
+		expect(sim.worldEntity.get(SplitSelection)?.indices).toEqual([]);
+		expect(sim.worldEntity.get(SplitSelection)?.armed).toBe(false);
+	});
+
 	it("toggleSplitSlice toggles indices in/out of SplitSelection (sorted)", () => {
 		const { db } = makeTestDb();
 		const sim = createSimWorld({ db });

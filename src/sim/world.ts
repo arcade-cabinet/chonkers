@@ -114,6 +114,27 @@ export function createSimWorld(options: CreateSimWorldOptions): SimWorld {
  * time-add primitive. This helper picks the right one so callers
  * don't need to track which traits are currently present.
  */
+/**
+ * Shallow array equality. Used by `syncMatchTraits` to detect chain-
+ * head transitions without holding a separate ref — both `prevHead`
+ * and `nextHead` are read off the engine's `state.chain.remainingDetachments`,
+ * which produces fresh array references on every commit, so reference
+ * equality would always be false. Element-wise comparison gives us
+ * "did the head's INTENT change" semantics.
+ */
+function arrayShallowEqual(
+	a: ReadonlyArray<number> | null,
+	b: ReadonlyArray<number> | null,
+): boolean {
+	if (a === b) return true;
+	if (a === null || b === null) return false;
+	if (a.length !== b.length) return false;
+	for (let i = 0; i < a.length; i += 1) {
+		if (a[i] !== b[i]) return false;
+	}
+	return true;
+}
+
 function upsert<T>(
 	entity: Entity,
 	traitDef: { (...args: unknown[]): unknown; id: number } & object,
@@ -165,6 +186,9 @@ function syncMatchTraits(sim: SimWorld, ctx: SyncMatchTraitsContext): void {
 	if (!handle) {
 		if (worldEntity.has(Match)) worldEntity.remove(Match);
 		if (worldEntity.has(SplitChainView)) worldEntity.remove(SplitChainView);
+		// Match cleared → no chain → ensure SplitSelection is empty
+		// so a stale armed selection from the prior match can't leak.
+		worldEntity.set(SplitSelection, { indices: [], armed: false });
 		return;
 	}
 	upsert(worldEntity, Match as never, {
@@ -178,14 +202,69 @@ function syncMatchTraits(sim: SimWorld, ctx: SyncMatchTraitsContext): void {
 		pieces: piecesFromBoard(handle.game.board),
 		lastMove: ctx.lastMove ?? null,
 	});
+
+	// Chain mirror + auto-arm (PRQ-A1 §5.4 chain UX, audited
+	// 2026-04-30). When state.chain transitions to a non-empty head
+	// AND the chain owner is the human's color AND it's their turn,
+	// auto-populate SplitSelection with the head's slice indices and
+	// flip armed=true so the player just needs to drag-to-commit. No
+	// re-tap, no re-hold per chain step. Critically: this lives in
+	// the broker-side trait flush, NOT in a React useEffect — the
+	// previous attempt at a `useEffect([chainView.remainingDetachments[0]])`
+	// triggered an OOM render-loop because koota traits hand back
+	// fresh array literals on every snapshot, so the dep array
+	// re-fired every render.
+	//
+	// Detection: compare `prevHead` (read from the existing
+	// SplitChainView trait BEFORE we overwrite it) against the new
+	// head. Auto-arm only on transition (prev !== next), not on
+	// every sync that happens to carry the same chain.
+	const prevView = worldEntity.has(SplitChainView)
+		? worldEntity.get(SplitChainView)
+		: null;
+	const prevHead =
+		prevView?.remainingDetachments?.[0] ??
+		(null as ReadonlyArray<number> | null);
+
 	if (handle.game.chain) {
+		const nextHead = handle.game.chain.remainingDetachments[0] ?? null;
 		upsert(worldEntity, SplitChainView as never, {
 			source: handle.game.chain.source,
 			owner: handle.game.chain.owner,
 			remainingDetachments: handle.game.chain.remainingDetachments,
 		});
-	} else if (worldEntity.has(SplitChainView)) {
-		worldEntity.remove(SplitChainView);
+		// Auto-arm logic: only fire when the head detachment changed
+		// (chain entered, OR a chain step landed and the queue
+		// advanced). A no-op sync (turn flip with same chain head)
+		// produces no auto-arm side effect.
+		const headChanged = !arrayShallowEqual(prevHead, nextHead);
+		const ownerIsHuman =
+			handle.game.chain.owner !== null &&
+			ctx.humanColor !== null &&
+			handle.game.chain.owner === ctx.humanColor;
+		const ownerOnTurn = handle.game.turn === handle.game.chain.owner;
+		if (
+			headChanged &&
+			nextHead !== null &&
+			nextHead.length > 0 &&
+			ownerIsHuman &&
+			ownerOnTurn
+		) {
+			worldEntity.set(SplitSelection, {
+				indices: [...nextHead].sort((a, b) => a - b),
+				armed: true,
+			});
+		}
+	} else {
+		if (worldEntity.has(SplitChainView)) worldEntity.remove(SplitChainView);
+		// Chain cleared (terminal commit, forfeit, or no-chain match
+		// move) — clear any stale SplitSelection so the radial
+		// doesn't show armed slices that no longer correspond to a
+		// pending detachment.
+		const cur = worldEntity.get(SplitSelection);
+		if (cur && (cur.indices.length > 0 || cur.armed)) {
+			worldEntity.set(SplitSelection, { indices: [], armed: false });
+		}
 	}
 }
 
