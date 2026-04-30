@@ -281,7 +281,13 @@ class HowlerAudioBus implements AudioBus {
 	}
 
 	async setVolume(v: number): Promise<void> {
-		this.volume = clamp01(v);
+		// Guard against non-finite inputs: `clamp01(NaN) === NaN`
+		// (NaN comparisons short-circuit the min/max), so without the
+		// finite check a tampered or buggy caller can push NaN into
+		// `Howl.volume(...)` (silently dropped by Web Audio) or
+		// Infinity (RangeError in some browsers). Same defense as
+		// the init-time kv read.
+		this.volume = Number.isFinite(v) ? clamp01(v) : DEFAULT_VOLUME;
 		await kv.put(SETTINGS_NAMESPACE, VOLUME_KEY, this.volume);
 		// Apply the new volume to every Howl IMMEDIATELY. If a sting
 		// is in flight, ambient gets the ducked target rather than

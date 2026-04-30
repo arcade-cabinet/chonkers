@@ -66,4 +66,18 @@ describe("audioBus — kv-backed volume + mute", () => {
 		const c = await getAudioBus();
 		expect(c.getVolume()).toBe(1); // clamped to upper bound
 	});
+
+	it("setVolume rejects NaN / Infinity at the runtime entry point too", async () => {
+		// `clamp01(NaN) === NaN` because NaN comparisons short-
+		// circuit the min/max chain. Without the finite-number
+		// guard, calling setVolume(NaN) would land NaN into
+		// `Howl.volume()` (silently dropped by Web Audio).
+		const bus = await getAudioBus();
+		await bus.setVolume(0.5);
+		expect(bus.getVolume()).toBe(0.5);
+		await bus.setVolume(Number.NaN);
+		expect(bus.getVolume()).toBe(0.7); // falls back to DEFAULT_VOLUME
+		await bus.setVolume(Number.POSITIVE_INFINITY);
+		expect(bus.getVolume()).toBe(0.7);
+	});
 });
