@@ -13,14 +13,18 @@
  */
 
 import { createActions, createWorld, type Entity, type World } from "koota";
-import type { Color } from "@/engine";
-import type { StoreDb } from "@/store";
+import type { Action, Color } from "@/engine";
+import { matchesRepo, type StoreDb } from "@/store";
 import {
+	applyHumanAction,
 	type CreateMatchOptions,
 	createMatch,
 	type MatchHandle,
 	playTurn,
 } from "./broker";
+
+const matchesRepoForfeit = matchesRepo.forfeit;
+
 import { decideFirstPlayer } from "./coinFlip";
 import {
 	AiThinking,
@@ -252,6 +256,74 @@ export function buildSimActions(sim: SimWorld) {
 		// preserve them implicitly across removes/adds.
 		syncTraits(ctx: { humanColor: Color | null; plyCount: number }): void {
 			syncMatchTraits(sim, ctx);
+		},
+
+		/**
+		 * Apply a human-supplied action via the broker. Use from the
+		 * input pipeline's commit path (drag-and-release, click-to-
+		 * move, split-overlay commit). The engine validates legality;
+		 * an `IllegalActionError` rejects the promise.
+		 *
+		 * Mirrors `stepTurn`'s screen-transition logic for terminal
+		 * outcomes — wins/losses route to the right screen for the
+		 * player's perspective.
+		 */
+		async commitHumanAction(action: Action): Promise<void> {
+			const handle = sim.handle;
+			if (!handle) return;
+			const prior = sim.worldEntity.get(Match);
+			const humanColor = prior?.humanColor ?? null;
+			const priorPly = prior?.plyCount ?? 0;
+			const result = await applyHumanAction(sim.db, handle, action, {
+				...(sim.onMatchEnd ? { onTerminal: sim.onMatchEnd } : {}),
+			});
+			const newPly = result.persistedMove ? priorPly + 1 : priorPly;
+			syncMatchTraits(sim, { humanColor, plyCount: newPly });
+			// Selection clears after every committed action — the
+			// human starts the next turn fresh.
+			sim.worldEntity.set(Selection, { cell: null });
+			if (result.terminal && handle.game.winner) {
+				if (humanColor === null) {
+					sim.worldEntity.set(Screen, { value: "spectator-result" });
+				} else {
+					sim.worldEntity.set(Screen, {
+						value: handle.game.winner === humanColor ? "win" : "lose",
+					});
+				}
+			}
+		},
+
+		/**
+		 * Mark the on-turn human as forfeiting. Stamps the
+		 * `forfeit-<color>` outcome on the matches row + flips the
+		 * screen. Per the no-resignation-UI directive, this is also
+		 * how the AI's weighted-forfeit decision lands when stepTurn
+		 * returns kind:'forfeit' — but THIS action is the human-
+		 * triggered button.
+		 */
+		async forfeit(): Promise<void> {
+			const handle = sim.handle;
+			if (!handle) return;
+			const prior = sim.worldEntity.get(Match);
+			const humanColor = prior?.humanColor ?? null;
+			const mover = handle.game.turn;
+			await matchesRepoForfeit(sim.db, handle.matchId, mover);
+			handle.game = {
+				...handle.game,
+				winner: mover === "red" ? "white" : "red",
+			};
+			if (sim.onMatchEnd) await sim.onMatchEnd(handle.matchId);
+			syncMatchTraits(sim, {
+				humanColor,
+				plyCount: prior?.plyCount ?? 0,
+			});
+			if (humanColor === null) {
+				sim.worldEntity.set(Screen, { value: "spectator-result" });
+			} else {
+				sim.worldEntity.set(Screen, {
+					value: humanColor === mover ? "lose" : "win",
+				});
+			}
 		},
 
 		// First-player coin-flip exposed so the title screen can show

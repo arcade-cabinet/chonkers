@@ -14,7 +14,12 @@
 
 import { trait } from "koota";
 import type { ProfileKey } from "@/ai";
-import type { Cell, Color, Piece } from "@/engine";
+import {
+	type Cell,
+	type Color,
+	createInitialState,
+	type Piece,
+} from "@/engine";
 
 /**
  * Top-level screen the app is showing.
@@ -105,6 +110,18 @@ export function piecesFromBoard(
 	}
 	return Object.freeze(out);
 }
+
+/**
+ * The canonical 5-4-3 starting layout, derived once at module load.
+ * Visual-shell components (Pieces.tsx) reference this as the
+ * fallback when no match is active so the board renders behind the
+ * title scrim. Exported from `@/sim` so `app/*` components don't
+ * have to import `@/engine` directly per the CLAUDE.md import-
+ * boundary rule.
+ */
+export const FALLBACK_PIECES: ReadonlyArray<PiecePlacement> = piecesFromBoard(
+	createInitialState().board,
+);
 
 /** Currently selected source cell (if any). */
 export interface SelectionSnapshot {

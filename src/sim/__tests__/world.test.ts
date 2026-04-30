@@ -88,14 +88,27 @@ describe("createSimWorld", () => {
 			coinFlipSeed: "01".repeat(8),
 		});
 		const turnBefore = sim.worldEntity.get(Match)?.turn;
+		// Snapshot the broker's piece count BEFORE stepTurn so the
+		// post-stepTurn assertion compares against a stable
+		// reference rather than the live engine state.
+		const expectedPieceCount = sim.handle?.game.board.size;
 		await actions.stepTurn();
 		const after = sim.worldEntity.get(Match);
 		expect(after).toBeDefined();
-		// `pieces` field is the primitive snapshot — count must
-		// match the broker's authoritative engine state's piece
-		// count. (We don't compare reference identity because the
-		// trait stores a frozen primitive copy, not the live ref.)
-		expect(after?.pieces.length).toBe(sim.handle?.game.board.size);
+		expect(after?.pieces).toBeDefined();
+		// The trait MUST be a frozen primitive snapshot, not a live
+		// reference — these freezes are the engine/UI boundary.
+		expect(Object.isFrozen(after?.pieces)).toBe(true);
+		expect(Object.isFrozen(after?.pieces[0])).toBe(true);
+		// Pre-step piece count drives the assertion (alpha-easy
+		// profiles never lose pieces in a single ply on the opening
+		// move; chonking is the first event that changes count).
+		expect(after?.pieces.length).toBe(expectedPieceCount);
+		// Every piece carries a valid color — sanity check on the
+		// derivation in piecesFromBoard.
+		expect(
+			after?.pieces.every((p) => p.color === "red" || p.color === "white"),
+		).toBe(true);
 		// turnBefore captured for posterity — may equal after.turn
 		// on stalled outcomes, but must not be undefined.
 		expect(turnBefore).toBeDefined();

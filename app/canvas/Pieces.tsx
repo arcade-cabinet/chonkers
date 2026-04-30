@@ -11,21 +11,16 @@
 
 import { useTrait } from "koota/react";
 import { useMemo } from "react";
-import { createInitialState, posToVector3 } from "@/engine";
-import { Match, type PiecePlacement, piecesFromBoard } from "@/sim";
+import { FALLBACK_PIECES, Match, posToVector3 } from "@/sim";
 import { useWorldEntity } from "../hooks/useWorldEntity";
 import { Piece } from "./Piece";
 
 export function Pieces() {
 	const worldEntity = useWorldEntity();
 	const match = useTrait(worldEntity, Match);
-	// Fallback derives once from the canonical initial state so the
-	// board shows the 5-4-3 layout even before a match starts.
-	const fallback: ReadonlyArray<PiecePlacement> = useMemo(
-		() => piecesFromBoard(createInitialState().board),
-		[],
-	);
-	const pieces = match?.pieces ?? fallback;
+	// FALLBACK_PIECES is a module-level frozen constant in `@/sim`
+	// — derived once at module load, no per-mount allocation.
+	const pieces = match?.pieces ?? FALLBACK_PIECES;
 
 	// Memoise the position derivation by `pieces` reference. Match
 	// trait identity is stable until the broker commits a move, so

@@ -10,8 +10,10 @@
 
 import { useTrait } from "koota/react";
 import { Screen, type ScreenKind } from "@/sim";
-import { Scene } from "./canvas/Scene";
+import { useSimActions } from "./boot";
 import { useWorldEntity } from "./hooks/useWorldEntity";
+import { EndScreen } from "./screens/EndScreen";
+import { PlayView } from "./screens/PlayView";
 import { TitleScreen } from "./screens/TitleScreen";
 
 export function App() {
@@ -25,11 +27,11 @@ export function App() {
 		case "play":
 			return <PlayView />;
 		case "win":
-			return <WinView />;
+			return <EndScreen variant="win" />;
 		case "lose":
-			return <LoseView />;
+			return <EndScreen variant="lose" />;
 		case "spectator-result":
-			return <SpectatorResultView />;
+			return <EndScreen variant="spectator" />;
 		case "paused":
 			return <PauseView />;
 		case "settings":
@@ -37,53 +39,65 @@ export function App() {
 	}
 }
 
-// PRQ-4 stub views — minimal placeholders that the subsequent
-// commits in this PR will flesh out (real Radix screens, real
-// R3F integration, real input pipeline). Keeping the screen
-// router shape complete now means each follow-up commit lands
-// a single screen at a time without touching the router.
-
-function PlayView() {
-	return <Scene />;
-}
-
-function WinView() {
-	return <PlaceholderScreen label="You win" />;
-}
-
-function LoseView() {
-	return <PlaceholderScreen label="You lose" />;
-}
-
-function SpectatorResultView() {
-	// AI-vs-AI termination — the viewer wasn't either side, so the
-	// label is neutral. PRQ-4 follow-up will show the winning
-	// profile + final stack distribution + a "watch another"
-	// button. For now the placeholder communicates "the demo ended".
-	return <PlaceholderScreen label="Match complete" />;
-}
-
 function PauseView() {
-	return <PlaceholderScreen label="Paused" />;
+	const actions = useSimActions();
+	return (
+		<PlaceholderScreen
+			label="Paused"
+			actionLabel="Resume"
+			onAction={() => actions.setScreen("play")}
+		/>
+	);
 }
 
 function SettingsView() {
-	return <PlaceholderScreen label="Settings" />;
+	const actions = useSimActions();
+	return (
+		<PlaceholderScreen
+			label="Settings"
+			actionLabel="Back"
+			onAction={() => actions.setScreen("title")}
+		/>
+	);
 }
 
-function PlaceholderScreen({ label }: { readonly label: string }) {
+function PlaceholderScreen({
+	label,
+	actionLabel,
+	onAction,
+}: {
+	readonly label: string;
+	readonly actionLabel: string;
+	readonly onAction: () => void;
+}) {
 	return (
 		<div
 			style={{
 				display: "flex",
+				flexDirection: "column",
 				alignItems: "center",
 				justifyContent: "center",
+				gap: 24,
 				height: "100vh",
 				fontFamily: "var(--ck-font-display, serif)",
-				fontSize: "3rem",
 			}}
 		>
-			{label}
+			<div style={{ fontSize: "3rem" }}>{label}</div>
+			<button
+				type="button"
+				onClick={onAction}
+				style={{
+					padding: "10px 24px",
+					fontSize: "1rem",
+					borderRadius: 6,
+					border: "1px solid #E8B83A",
+					background: "transparent",
+					color: "#F5EBD8",
+					cursor: "pointer",
+				}}
+			>
+				{actionLabel}
+			</button>
 		</div>
 	);
 }
