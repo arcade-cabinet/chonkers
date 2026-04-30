@@ -35,6 +35,19 @@ import { Scene } from "../canvas/Scene";
 import { useHaptics } from "../hooks/useHaptics";
 import { useWorldEntity } from "../hooks/useWorldEntity";
 
+const errMsg = (err: unknown): string =>
+	err instanceof Error ? err.message : String(err);
+
+function computeIndicatorLabel(
+	phase: "win" | "thinking" | "turn",
+	winner: "red" | "white" | null,
+	turn: "red" | "white",
+): string {
+	if (phase === "win") return `${winner === "red" ? "Red" : "White"} wins`;
+	if (phase === "thinking") return "AI thinking…";
+	return `${turn === "red" ? "Red" : "White"} to move`;
+}
+
 export function PlayView() {
 	const worldEntity = useWorldEntity();
 	const match = useTrait(worldEntity, Match);
@@ -62,7 +75,7 @@ export function PlayView() {
 				() => setError(null),
 				(err) => {
 					console.error("[chonkers] stepTurn failed", err);
-					setError(err instanceof Error ? err.message : String(err));
+					setError(errMsg(err));
 				},
 			);
 		}, 60);
@@ -72,7 +85,7 @@ export function PlayView() {
 	const onForfeit = useCallback(() => {
 		void actions.forfeit().catch((err) => {
 			console.error("[chonkers] forfeit failed", err);
-			setError(err instanceof Error ? err.message : String(err));
+			setError(errMsg(err));
 		});
 	}, [actions]);
 
@@ -136,7 +149,7 @@ export function PlayView() {
 					setError(null);
 					if (isChonk) haptics.chonk();
 				} catch (err) {
-					setError(err instanceof Error ? err.message : String(err));
+					setError(errMsg(err));
 				}
 				return;
 			}
@@ -272,24 +285,22 @@ interface TurnIndicatorProps {
  * at a glance even with the headline obscured.
  */
 function TurnIndicator({ winner, thinking, turn }: TurnIndicatorProps) {
-	const phase: "win" | "thinking" | "turn" = winner
-		? "win"
-		: thinking
-			? "thinking"
-			: "turn";
+	let phase: "win" | "thinking" | "turn" = "turn";
+	if (winner) phase = "win";
+	else if (thinking) phase = "thinking";
 	const activeColor = winner ?? turn;
 	const chipColor =
 		activeColor === "red" ? tokens.wood.pieceRed : tokens.wood.pieceWhite;
-	const label =
-		phase === "win"
-			? `${winner === "red" ? "Red" : "White"} wins`
-			: phase === "thinking"
-				? "AI thinking…"
-				: `${turn === "red" ? "Red" : "White"} to move`;
-
+	const label = computeIndicatorLabel(phase, winner, turn);
+	// Winner announcement is the load-bearing assistive event;
+	// `role="status"` + aria-live polite ensures screen readers
+	// pick up the morph from "to move" → "wins" without needing
+	// focus management.
 	return (
 		<motion.div
 			layout
+			role="status"
+			aria-live="polite"
 			initial={{ opacity: 0, x: -8 }}
 			animate={{ opacity: 1, x: 0 }}
 			transition={{ duration: 0.18 }}

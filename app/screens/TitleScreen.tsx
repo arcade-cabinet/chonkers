@@ -9,6 +9,7 @@ import {
 } from "@radix-ui/themes";
 import { AnimatePresence, motion } from "framer-motion";
 import { useState } from "react";
+import { isProfileKey, type ProfileKey } from "@/ai";
 import { tokens } from "@/design/tokens";
 import { useSimActions } from "../boot";
 
@@ -16,17 +17,33 @@ type Disposition = "aggressive" | "balanced" | "defensive";
 type Difficulty = "easy" | "medium" | "hard";
 type ColorChoice = "red" | "white" | "watch";
 
-const DISPOSITIONS: ReadonlyArray<{ key: Disposition; label: string }> = [
-	{ key: "aggressive", label: "Aggressive" },
-	{ key: "balanced", label: "Balanced" },
-	{ key: "defensive", label: "Defensive" },
-];
+const DISPOSITIONS = [
+	"aggressive",
+	"balanced",
+	"defensive",
+] as const satisfies readonly Disposition[];
+const DIFFICULTIES = [
+	"easy",
+	"medium",
+	"hard",
+] as const satisfies readonly Difficulty[];
 
-const DIFFICULTIES: ReadonlyArray<{ key: Difficulty; label: string }> = [
-	{ key: "easy", label: "Easy" },
-	{ key: "medium", label: "Medium" },
-	{ key: "hard", label: "Hard" },
-];
+const cap = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);
+
+// Compile-time check: every (disposition, difficulty) combo must be
+// a valid ProfileKey. Adding a Disposition without the matching three
+// `*-easy/medium/hard` ProfileKey entries fails this assertion at
+// the call site that builds the key — surfaces missing profile
+// entries at the type layer instead of as a runtime getProfile throw.
+function buildProfileKey(d: Disposition, df: Difficulty): ProfileKey {
+	const key = `${d}-${df}` as const;
+	// `satisfies ProfileKey` would assert at the type level; we use
+	// the runtime guard as belt-and-braces for state-tampering.
+	if (!isProfileKey(key)) {
+		throw new Error(`buildProfileKey: invariant violated — ${key}`);
+	}
+	return key;
+}
 
 const COLOR_CHOICES: ReadonlyArray<{
 	key: ColorChoice;
@@ -62,8 +79,8 @@ export function TitleScreen() {
 	const onStart = async () => {
 		if (starting) return;
 		setStarting(true);
-		const profile = `${disposition}-${difficulty}` as const;
 		try {
+			const profile = buildProfileKey(disposition, difficulty);
 			await actions.newMatch({
 				redProfile: profile,
 				whiteProfile: profile,
@@ -173,8 +190,8 @@ export function TitleScreen() {
 								style={{ width: "100%" }}
 							>
 								{DISPOSITIONS.map((d) => (
-									<SegmentedControl.Item key={d.key} value={d.key}>
-										{d.label}
+									<SegmentedControl.Item key={d} value={d}>
+										{cap(d)}
 									</SegmentedControl.Item>
 								))}
 							</SegmentedControl.Root>
@@ -188,8 +205,8 @@ export function TitleScreen() {
 								style={{ width: "100%" }}
 							>
 								{DIFFICULTIES.map((d) => (
-									<SegmentedControl.Item key={d.key} value={d.key}>
-										{d.label}
+									<SegmentedControl.Item key={d} value={d}>
+										{cap(d)}
 									</SegmentedControl.Item>
 								))}
 							</SegmentedControl.Root>

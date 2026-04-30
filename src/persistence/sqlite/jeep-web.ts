@@ -65,13 +65,12 @@ function installAssetsPathShim(): void {
 	const REWRITE_RE = /^\/assets\//;
 	const patched: XHROpenFn = function patchedOpen(this, ...args) {
 		const raw = args[1];
-		const path =
-			typeof raw === "string" ? raw : raw instanceof URL ? raw.pathname : null;
-		if (path !== null && REWRITE_RE.test(path)) {
-			args[1] =
-				typeof raw === "string"
-					? `${BASE}${raw}`
-					: new URL(`${BASE}${path}${(raw as URL).search}`, raw as URL);
+		// Only string-form is exercised in practice. URL-form callers
+		// fall through unchanged — the shim's whole job is to rewrite
+		// jeep-sqlite's hardcoded string paths, not to second-guess
+		// hypothetical URL-object callers.
+		if (typeof raw === "string" && REWRITE_RE.test(raw)) {
+			args[1] = `${BASE}${raw}`;
 		}
 		return original.apply(this, args);
 	};

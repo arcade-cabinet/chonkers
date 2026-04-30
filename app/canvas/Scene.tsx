@@ -7,6 +7,7 @@ import { ASSETS } from "@/utils/manifest";
 import { Board } from "./Board";
 import { Lighting } from "./Lighting";
 import { Pieces } from "./Pieces";
+import { SelectionOverlay } from "./SelectionOverlay";
 
 const CAMERA_POSITION: [number, number, number] = [2.4, 9.5, 9];
 
@@ -51,6 +52,7 @@ export function Scene() {
 				<group>
 					<Board />
 					<Pieces />
+					<SelectionOverlay />
 				</group>
 			</Suspense>
 		</Canvas>
