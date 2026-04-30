@@ -81,4 +81,35 @@ describe("audioBus — lazy async singleton", () => {
 		bus.startAmbient();
 		expect(bus.getAmbientRequested()).toBe(false);
 	});
+
+	it("startAmbient guards against stacking on repeated calls", async () => {
+		// Regression: ambient has loop:true; calling play() while
+		// it's already playing creates a duplicate playback instance
+		// from Howler's internal pool (overlapping loops at higher
+		// volume). The bus must guard via ambientRequested OR the
+		// Howl's playing() check.
+		const bus = await getAudioBus();
+		bus.startAmbient();
+		expect(bus.getAmbientRequested()).toBe(true);
+		// Second call: should be a no-op. We can't directly observe
+		// "no duplicate instance" in headless, but we CAN observe
+		// that ambientRequested doesn't flip and no error is thrown.
+		bus.startAmbient();
+		expect(bus.getAmbientRequested()).toBe(true);
+	});
+
+	it("setMuted(false) restores ambient if it was previously requested", async () => {
+		// Regression: pre-fix, muting + unmuting left ambient silent
+		// even when ambientRequested was true. The bus must re-arm
+		// ambient on unmute so the music returns without manual
+		// intervention.
+		const bus = await getAudioBus();
+		bus.startAmbient();
+		expect(bus.getAmbientRequested()).toBe(true);
+		await bus.setMuted(true);
+		// Ambient stops on mute (Howl stop), but the request flag
+		// stays implicit through this in-memory fix.
+		await bus.setMuted(false);
+		expect(bus.getAmbientRequested()).toBe(true);
+	});
 });

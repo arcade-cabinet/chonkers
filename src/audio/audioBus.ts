@@ -30,6 +30,10 @@ const DEFAULT_MUTED = false;
 const DUCK_FACTOR = 0.25;
 const DUCK_FADE_MS = 200;
 const RESTORE_FADE_MS = 400;
+// Used by `startAmbient` when stings are already active (open at
+// the same level the duck would have faded ambient to) and by
+// `setVolume` when adjusting the ambient layer mid-duck.
+const AMBIENT_DUCK_FACTOR_FOR_OPEN = DUCK_FACTOR;
 
 function duckAmbient(ambient: Howl | undefined, busVolume: number): void {
 	if (!ambient?.playing()) return;
@@ -80,8 +84,18 @@ class HowlerAudioBus implements AudioBus {
 	private howls: Map<AudioRole, Howl> = new Map();
 	private volume = DEFAULT_VOLUME;
 	private muted = DEFAULT_MUTED;
-	private activeDucks = 0;
 	private ambientRequested = false;
+	// Per-role sound-id sets for sting playbacks. Howler's
+	// `sound.play()` allocates a fresh playback id from an internal
+	// pool every call, so the same sting role can have multiple
+	// concurrent instances. Tracking ids per-role lets us:
+	//   • derive activeDucks as the SUM of the sets' sizes (not a
+	//     separate counter that drifts when stop() cancels multiple
+	//     instances at once)
+	//   • call `sound.stop(id)` for each tracked id so 'end'
+	//     handlers stay in lockstep with the duck counter
+	// Non-sting roles aren't tracked (no ducking → nothing to count).
+	private stingIds: Map<AudioRole, Set<number>> = new Map();
 
 	async init(): Promise<void> {
 		const persistedVolume = await kv.get<number>(
@@ -174,7 +188,9 @@ class HowlerAudioBus implements AudioBus {
 	}
 
 	getActiveDucks(): number {
-		return this.activeDucks;
+		let total = 0;
+		for (const set of this.stingIds.values()) total += set.size;
+		return total;
 	}
 
 	getAmbientRequested(): boolean {
@@ -185,22 +201,25 @@ class HowlerAudioBus implements AudioBus {
 		if (this.muted) return;
 		const sound = this.howls.get(role);
 		if (!sound) return;
-		// One-shots fire fresh each time; ambient has loop:true so
-		// re-calling play() while it's already playing re-triggers.
-		// Ducking decisions are made BEFORE the play() call so the
-		// fade can run alongside the new clip.
 		if (STING_ROLES.includes(role)) {
-			this.activeDucks += 1;
-			if (this.activeDucks === 1) {
-				duckAmbient(this.howls.get("ambient"), this.volume);
-			}
+			// Allocate a fresh playback id; track it per-role. Ducking
+			// fires when the FIRST sting (across any role) becomes
+			// active so stacked stings don't re-trigger the duck fade.
+			const wasIdle = this.getActiveDucks() === 0;
 			sound.volume(this.volume);
 			const id = sound.play();
+			let set = this.stingIds.get(role);
+			if (!set) {
+				set = new Set();
+				this.stingIds.set(role, set);
+			}
+			set.add(id);
+			if (wasIdle) duckAmbient(this.howls.get("ambient"), this.volume);
 			sound.once(
 				"end",
 				() => {
-					this.activeDucks = Math.max(0, this.activeDucks - 1);
-					if (this.activeDucks === 0) {
+					const s = this.stingIds.get(role);
+					if (s?.delete(id) && this.getActiveDucks() === 0) {
 						restoreAmbient(this.howls.get("ambient"), this.volume);
 					}
 				},
@@ -215,18 +234,24 @@ class HowlerAudioBus implements AudioBus {
 	stop(role: AudioRole): void {
 		const sound = this.howls.get(role);
 		if (!sound) return;
-		sound.stop();
-		// `stop()` cancels the Howler 'end' event, so we drive the
-		// duck counter manually here. We DON'T gate on `playing()` —
-		// in headless test environments the Howl may report
-		// `playing()` as false even right after `play()`, but the
-		// counter was incremented by our own `play()` and must be
-		// decremented by the matching `stop()` to stay coherent.
-		if (STING_ROLES.includes(role) && this.activeDucks > 0) {
-			this.activeDucks -= 1;
-			if (this.activeDucks === 0) {
-				restoreAmbient(this.howls.get("ambient"), this.volume);
+		if (STING_ROLES.includes(role)) {
+			// Per-id stop() so each instance's 'end' handler is
+			// effectively cancelled at the right granularity. Then
+			// clear the per-role set ourselves (Howler's stop fires
+			// 'end' for stopped instances in some configs but not
+			// others — clearing the set is the authoritative reset).
+			const set = this.stingIds.get(role);
+			if (set && set.size > 0) {
+				for (const id of set) sound.stop(id);
+				set.clear();
+				if (this.getActiveDucks() === 0) {
+					restoreAmbient(this.howls.get("ambient"), this.volume);
+				}
+			} else {
+				sound.stop();
 			}
+		} else {
+			sound.stop();
 		}
 	}
 
@@ -234,8 +259,19 @@ class HowlerAudioBus implements AudioBus {
 		if (this.muted) return;
 		const ambient = this.howls.get("ambient");
 		if (!ambient) return;
+		// Guard against stacking. ambient has loop:true; calling
+		// play() again while it's already playing creates a duplicate
+		// playback instance from Howler's internal pool, producing
+		// overlapping loops at increasing volume.
+		if (this.ambientRequested || ambient.playing()) return;
 		this.ambientRequested = true;
-		ambient.volume(this.volume);
+		// If a sting is already active when the caller starts ambient,
+		// open ducked so the introduction isn't ear-piercing.
+		const targetVolume =
+			this.getActiveDucks() > 0
+				? this.volume * AMBIENT_DUCK_FACTOR_FOR_OPEN
+				: this.volume;
+		ambient.volume(targetVolume);
 		ambient.play();
 	}
 
@@ -247,12 +283,17 @@ class HowlerAudioBus implements AudioBus {
 	async setVolume(v: number): Promise<void> {
 		this.volume = clamp01(v);
 		await kv.put(SETTINGS_NAMESPACE, VOLUME_KEY, this.volume);
-		// Mirror to every Howl so subsequent plays use the new
-		// volume without rebuilding. Only sync if no duck is in
-		// flight; ducking will pick up the new volume on its next
-		// fade target.
-		if (this.activeDucks === 0) {
-			for (const sound of this.howls.values()) sound.volume(this.volume);
+		// Apply the new volume to every Howl IMMEDIATELY. If a sting
+		// is in flight, ambient gets the ducked target rather than
+		// being skipped entirely — the player can change volume mid-
+		// sting and have it take effect on both layers.
+		const ducking = this.getActiveDucks() > 0;
+		for (const [role, sound] of this.howls.entries()) {
+			const target =
+				role === "ambient" && ducking
+					? this.volume * AMBIENT_DUCK_FACTOR_FOR_OPEN
+					: this.volume;
+			sound.volume(target);
 		}
 	}
 
@@ -261,7 +302,13 @@ class HowlerAudioBus implements AudioBus {
 		await kv.put(SETTINGS_NAMESPACE, MUTED_KEY, m);
 		if (m) {
 			for (const sound of this.howls.values()) sound.stop();
-			this.activeDucks = 0;
+			for (const set of this.stingIds.values()) set.clear();
+		} else if (this.ambientRequested) {
+			// Re-arm ambient if the caller had it requested before mute.
+			// Reset the flag so startAmbient's guard doesn't trip and
+			// silently skip the resume.
+			this.ambientRequested = false;
+			this.startAmbient();
 		}
 	}
 
@@ -274,7 +321,8 @@ class HowlerAudioBus implements AudioBus {
 	__teardown(): void {
 		for (const sound of this.howls.values()) sound.unload();
 		this.howls.clear();
-		this.activeDucks = 0;
+		for (const set of this.stingIds.values()) set.clear();
+		this.stingIds.clear();
 		this.ambientRequested = false;
 	}
 }
@@ -290,7 +338,15 @@ let busPromise: Promise<AudioBus> | null = null;
 export function getAudioBus(): Promise<AudioBus> {
 	if (!busPromise) {
 		const bus = new HowlerAudioBus();
-		busPromise = bus.init().then(() => bus as AudioBus);
+		busPromise = bus
+			.init()
+			.then(() => bus as AudioBus)
+			.catch((error) => {
+				// Clear the singleton so a subsequent call retries init
+				// rather than caching the rejected promise forever.
+				busPromise = null;
+				throw error;
+			});
 	}
 	return busPromise;
 }

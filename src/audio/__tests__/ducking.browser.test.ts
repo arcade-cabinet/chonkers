@@ -59,4 +59,19 @@ describe("audioBus — duck-counter stacking", () => {
 		await bus.setMuted(true);
 		expect(bus.getActiveDucks()).toBe(0);
 	});
+
+	it("stop(role) on a doubly-played sting clears all instances of that role", async () => {
+		// Regression: the original implementation called sound.stop()
+		// without a playback id, cancelling all instances + their
+		// 'end' handlers but only decrementing the counter once.
+		// Two stings → stop('sting') once → counter must hit 0,
+		// not stay at 1, so ambient can restore.
+		const bus = await getAudioBus();
+		bus.startAmbient();
+		bus.play("sting");
+		bus.play("sting");
+		expect(bus.getActiveDucks()).toBe(2);
+		bus.stop("sting");
+		expect(bus.getActiveDucks()).toBe(0);
+	});
 });

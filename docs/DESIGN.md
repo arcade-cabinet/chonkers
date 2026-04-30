@@ -162,16 +162,14 @@ The 2D variants live in `src/design/motion.ts` as a shared library. Visual-shell
 | Variant | Where it's used | Token |
 |---------|-----------------|-------|
 | `radialOpen` | `app/components/SplitRadial.tsx` open animation | `tokens.motion.uiOpenMs` |
-| `radialClose` | `app/components/SplitRadial.tsx` close (faster: 140ms) | hardcoded |
-| `sliceSelect` | Slice idle → hovered → selected (80ms ease-out) | hardcoded |
+| `radialClose` | `app/components/SplitRadial.tsx` close (faster than open) | `tokens.motion.uiCloseMs` |
+| `sliceSelect` | Slice idle → hovered → selected (80ms ease-out) | hardcoded (one-off) |
 | `holdFlash` | Selected slice pulses while the hold-arm timer runs | `tokens.motion.uiFlashMs` |
-| `modalIn` / `modalOut` | Forfeit confirm, settings, game-over screen | `tokens.motion.modalMs` / 140ms |
-| `screenFade` | Cross-fade between top-level Radix screens (200ms) | hardcoded |
+| `modalIn` / `modalOut` | Forfeit confirm, settings, game-over screen | `tokens.motion.modalMs` / `uiCloseMs` |
+| `screenFade` | Cross-fade between top-level Radix screens | `tokens.motion.screenFadeMs` |
 | `reducedMotionFallback` | Drop-in for any of the above when reduced-motion is on | 0.001s |
 
 Reduce-motion users (`prefers-reduced-motion` OR `kv.get('settings', 'reducedMotion')`) get the fallback for all variants and a flat 200ms linear translate for 3D pieces — no arcs, no bounces.
-
-Reduce-motion users (`prefers-reduced-motion`) get instant snaps for UI and a flat 200ms linear translate for pieces — no arcs, no bounces.
 
 ---
 

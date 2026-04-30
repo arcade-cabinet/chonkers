@@ -11,7 +11,7 @@ Design tokens + Radix Themes config + framer-motion variant library. Pure consta
 
 ## Layout
 
-```
+```text
 src/design/
 ├── index.ts        # barrel: tokens, radixTheme, all motion variants
 ├── tokens.ts       # one `tokens as const` export — wood, ink, accent,
