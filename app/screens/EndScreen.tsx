@@ -13,7 +13,7 @@
 import { Button, Container, Flex, Heading, Text } from "@radix-ui/themes";
 import { motion } from "framer-motion";
 import { useTrait } from "koota/react";
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { Match } from "@/sim";
 import { useSimActions } from "../boot";
 import { useWorldEntity } from "../hooks/useWorldEntity";
@@ -46,10 +46,16 @@ export function EndScreen({ variant }: Props) {
 	const worldEntity = useWorldEntity();
 	const match = useTrait(worldEntity, Match);
 	const actions = useSimActions();
+	// Re-entrancy guard: repeated clicks on Play again could
+	// queue overlapping quitMatch + newMatch sequences and race
+	// the screen transition. The buttons disable while busy so
+	// double-tap is a no-op.
+	const [busy, setBusy] = useState(false);
 
 	const v = VARIANTS[variant];
 
 	const onPlayAgain = useCallback(() => {
+		if (busy) return;
 		if (!match) {
 			void actions.setScreen("title");
 			return;
@@ -62,15 +68,21 @@ export function EndScreen({ variant }: Props) {
 			whiteProfile: match.whiteProfile,
 			humanColor: match.humanColor,
 		} as const;
+		setBusy(true);
 		void (async () => {
-			await actions.quitMatch();
-			await actions.newMatch(config);
+			try {
+				await actions.quitMatch();
+				await actions.newMatch(config);
+			} finally {
+				setBusy(false);
+			}
 		})();
-	}, [actions, match]);
+	}, [actions, busy, match]);
 
 	const onMainMenu = useCallback(() => {
+		if (busy) return;
 		void actions.quitMatch();
-	}, [actions]);
+	}, [actions, busy]);
 
 	return (
 		<motion.div
@@ -100,10 +112,20 @@ export function EndScreen({ variant }: Props) {
 						{v.subhead}
 					</Text>
 					<Flex gap="3" mt="3">
-						<Button size="3" color={v.accent} onClick={onPlayAgain}>
+						<Button
+							size="3"
+							color={v.accent}
+							onClick={onPlayAgain}
+							disabled={busy}
+						>
 							Play again
 						</Button>
-						<Button size="3" variant="soft" onClick={onMainMenu}>
+						<Button
+							size="3"
+							variant="soft"
+							onClick={onMainMenu}
+							disabled={busy}
+						>
 							Main menu
 						</Button>
 					</Flex>

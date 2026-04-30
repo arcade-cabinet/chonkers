@@ -46,6 +46,8 @@ function BootGate() {
 	if (!result) {
 		return (
 			<div
+				role="status"
+				aria-live="polite"
 				style={{
 					display: "flex",
 					alignItems: "center",

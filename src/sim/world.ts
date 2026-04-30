@@ -60,6 +60,16 @@ export interface SimWorld {
 	readonly onMatchEnd: ((matchId: string) => Promise<void> | void) | undefined;
 	/** The currently in-progress match handle, if any. */
 	handle: MatchHandle | null;
+	/**
+	 * Monotonically-increasing token bumped by `newMatch` and
+	 * `quitMatch`. Async actions (`stepTurn`, `commitHumanAction`,
+	 * `forfeit`) capture the epoch at entry and bail out before
+	 * mutating traits if the epoch has changed during the await —
+	 * the user quit or started a new match while the AI was
+	 * thinking, and the stale result must not overwrite the new
+	 * world state.
+	 */
+	epoch: number;
 }
 
 export function createSimWorld(options: CreateSimWorldOptions): SimWorld {
@@ -82,6 +92,7 @@ export function createSimWorld(options: CreateSimWorldOptions): SimWorld {
 		db: options.db,
 		onMatchEnd: options.onMatchEnd,
 		handle: null,
+		epoch: 0,
 	};
 }
 
@@ -173,6 +184,7 @@ export interface NewMatchInput
 export function buildSimActions(sim: SimWorld) {
 	return createActions(() => ({
 		async newMatch(input: NewMatchInput): Promise<void> {
+			sim.epoch += 1;
 			const handle = await createMatch(sim.db, {
 				redProfile: input.redProfile,
 				whiteProfile: input.whiteProfile,
@@ -186,6 +198,7 @@ export function buildSimActions(sim: SimWorld) {
 		},
 
 		async quitMatch(): Promise<void> {
+			sim.epoch += 1;
 			sim.handle = null;
 			sim.worldEntity.set(Selection, { cell: null });
 			sim.worldEntity.set(HoldProgress, { value: 0 });
@@ -225,6 +238,12 @@ export function buildSimActions(sim: SimWorld) {
 			// proceed in parallel, and produce two persisted moves
 			// for one logical ply.
 			if (sim.worldEntity.get(AiThinking)?.value) return;
+			// Epoch token captured at entry. If newMatch / quitMatch
+			// fires during the AI's `await playTurn`, the epoch
+			// mismatches and we bail before mutating traits — the
+			// stale result from the previous match must not overwrite
+			// the new world state.
+			const epoch = sim.epoch;
 			const prior = sim.worldEntity.get(Match);
 			const humanColor = prior?.humanColor ?? null;
 			const priorPly = prior?.plyCount ?? 0;
@@ -234,6 +253,7 @@ export function buildSimActions(sim: SimWorld) {
 					mode: "live",
 					...(sim.onMatchEnd ? { onTerminal: sim.onMatchEnd } : {}),
 				});
+				if (sim.epoch !== epoch || sim.handle !== handle) return;
 				const newPly = result.persistedMove ? priorPly + 1 : priorPly;
 				syncMatchTraits(sim, { humanColor, plyCount: newPly });
 				if (result.terminal && handle.game.winner) {
@@ -279,12 +299,16 @@ export function buildSimActions(sim: SimWorld) {
 		async commitHumanAction(action: Action): Promise<void> {
 			const handle = sim.handle;
 			if (!handle) return;
+			// Same epoch / handle-identity guard as stepTurn — protects
+			// against quitMatch / newMatch firing during the await.
+			const epoch = sim.epoch;
 			const prior = sim.worldEntity.get(Match);
 			const humanColor = prior?.humanColor ?? null;
 			const priorPly = prior?.plyCount ?? 0;
 			const result = await applyHumanAction(sim.db, handle, action, {
 				...(sim.onMatchEnd ? { onTerminal: sim.onMatchEnd } : {}),
 			});
+			if (sim.epoch !== epoch || sim.handle !== handle) return;
 			const newPly = result.persistedMove ? priorPly + 1 : priorPly;
 			syncMatchTraits(sim, { humanColor, plyCount: newPly });
 			// Selection clears after every committed action — the
@@ -312,15 +336,19 @@ export function buildSimActions(sim: SimWorld) {
 		async forfeit(): Promise<void> {
 			const handle = sim.handle;
 			if (!handle) return;
+			// Same epoch / handle-identity guard as stepTurn.
+			const epoch = sim.epoch;
 			const prior = sim.worldEntity.get(Match);
 			const humanColor = prior?.humanColor ?? null;
 			const mover = handle.game.turn;
 			await matchesRepoForfeit(sim.db, handle.matchId, mover);
+			if (sim.epoch !== epoch || sim.handle !== handle) return;
 			handle.game = {
 				...handle.game,
 				winner: mover === "red" ? "white" : "red",
 			};
 			if (sim.onMatchEnd) await sim.onMatchEnd(handle.matchId);
+			if (sim.epoch !== epoch || sim.handle !== handle) return;
 			syncMatchTraits(sim, {
 				humanColor,
 				plyCount: prior?.plyCount ?? 0,

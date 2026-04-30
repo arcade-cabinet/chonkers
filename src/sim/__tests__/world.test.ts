@@ -114,7 +114,7 @@ describe("createSimWorld", () => {
 		expect(turnBefore).toBeDefined();
 	});
 
-	it("onMatchEnd fires when the match concludes", async () => {
+	it("onMatchEnd does NOT fire on quitMatch (quit is not a terminal transition)", async () => {
 		const { db } = makeTestDb();
 		const calls: string[] = [];
 		const sim = createSimWorld({
@@ -129,12 +129,33 @@ describe("createSimWorld", () => {
 			whiteProfile: WHITE,
 			humanColor: null,
 			coinFlipSeed: "ff".repeat(8),
-			matchId: "test-end",
-		} as Parameters<typeof actions.newMatch>[0] & { matchId: string });
-		// Force-finalize via quitMatch — onMatchEnd shouldn't fire on
-		// quit, only on a real terminal transition.
+		});
 		await actions.quitMatch();
 		expect(calls.length).toBe(0);
+	});
+
+	it("onMatchEnd fires once on a terminal transition (forfeit)", async () => {
+		const { db } = makeTestDb();
+		const calls: string[] = [];
+		const sim = createSimWorld({
+			db,
+			onMatchEnd: (matchId) => {
+				calls.push(matchId);
+			},
+		});
+		const actions = buildSimActions(sim)(sim.world);
+		await actions.newMatch({
+			redProfile: RED,
+			whiteProfile: WHITE,
+			humanColor: "red",
+			coinFlipSeed: "ee".repeat(8),
+		});
+		const matchId = sim.handle?.matchId;
+		expect(matchId).toBeTruthy();
+		// Forfeit is a deterministic terminal transition — no AI
+		// search involved, no race against background work.
+		await actions.forfeit();
+		expect(calls).toEqual([matchId]);
 	});
 
 	it("SplitChainView reflects the engine chain absence on a fresh match", async () => {

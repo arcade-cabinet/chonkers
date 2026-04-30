@@ -15,7 +15,10 @@ import { expect, test } from "@playwright/test";
 declare global {
 	interface Window {
 		readonly __chonkers?: {
-			readonly state: unknown;
+			readonly state: {
+				readonly board?: ReadonlyMap<unknown, unknown>;
+				readonly turn?: "red" | "white";
+			} | null;
 			readonly matchId: string | null;
 		};
 	}
@@ -44,18 +47,25 @@ test.describe("smoke — boot + AI-vs-AI demo", () => {
 			{ timeout: 5_000 },
 		);
 
-		// Game progresses — wait for at least one ply.
-		// (Easy AIs decide quickly; this should resolve well under 30s.)
+		// Capture the initial side-on-turn before waiting for
+		// progression. After at least one move lands, `state.turn`
+		// flips to the opponent. (Board piece-count alone is not
+		// a reliable progress signal — chonkers' move action
+		// detaches+places, so total piece count stays at 24
+		// across normal play; only chonking compacts a stack into
+		// one Map entry, and the alpha-easy AI may not chonk on
+		// move 1.)
+		const initialTurn = await page.evaluate(
+			() => window.__chonkers?.state?.turn ?? null,
+		);
+		expect(initialTurn).not.toBeNull();
+
 		await page.waitForFunction(
-			() => {
-				const state = window.__chonkers?.state as
-					| { board?: Map<unknown, unknown> }
-					| null
-					| undefined;
-				if (!state || !state.board) return false;
-				return state.board.size <= 24; // start = 24, decreasing means moves happened
+			(baseline) => {
+				const turn = window.__chonkers?.state?.turn;
+				return turn !== undefined && turn !== baseline;
 			},
-			null,
+			initialTurn,
 			{ timeout: 30_000 },
 		);
 

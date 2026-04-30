@@ -93,7 +93,21 @@ export async function boot(): Promise<BootResult> {
 	//    seam (per CLAUDE.md, src/sim cannot import @/analytics).
 	const sim = createSimWorld({
 		db,
-		onMatchEnd: (matchId) => refreshOnMatchEnd(db, matchId),
+		// Safe-wrap: analytics refresh failures must not propagate
+		// into stepTurn/commitHumanAction/forfeit. A failed analytics
+		// upsert leaves the matches row finalised, the screen in the
+		// terminal state, and the user able to play again — the next
+		// onMatchEnd will rescan + recover the divergence.
+		onMatchEnd: async (matchId) => {
+			try {
+				await refreshOnMatchEnd(db, matchId);
+			} catch (err) {
+				console.warn(
+					"[chonkers/boot] refreshOnMatchEnd failed; continuing",
+					err,
+				);
+			}
+		},
 	});
 	const actions = buildSimActions(sim)(sim.world);
 

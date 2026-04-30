@@ -123,6 +123,7 @@ export function PlayView() {
 				);
 				try {
 					await actions.commitHumanAction(action);
+					setError(null);
 					if (isChonk) haptics.chonk();
 				} catch (err) {
 					setError(err instanceof Error ? err.message : String(err));

@@ -40,7 +40,15 @@ export class ErrorBoundary extends Component<Props, State> {
 
 	render(): ReactNode {
 		if (!this.state.error) return this.props.children;
-		const message = this.state.error.message || String(this.state.error);
+		// Production builds show a generic message — exposing raw
+		// error.message to end-users can leak internal type names,
+		// stack frames, or environmental details that aren't useful
+		// to them and may surface implementation we didn't intend
+		// to disclose. Dev mode shows the full message so debugging
+		// stays painless.
+		const message = import.meta.env.DEV
+			? this.state.error.message || String(this.state.error)
+			: "An unexpected error occurred while starting the app.";
 		return (
 			<Container size="2" p="6">
 				<Flex direction="column" gap="4">

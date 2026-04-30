@@ -1,5 +1,6 @@
 import { Box, Button, Flex, Heading, Text } from "@radix-ui/themes";
 import { motion } from "framer-motion";
+import { useState } from "react";
 import { tokens } from "@/design/tokens";
 import { useSimActions } from "../boot";
 
@@ -15,13 +16,25 @@ import { useSimActions } from "../boot";
  */
 export function TitleScreen() {
 	const actions = useSimActions();
+	// Re-entrancy guard: double-clicking "New game" before the first
+	// match is created could queue overlapping createMatch calls and
+	// produce two persisted matches with the user only seeing one.
+	const [starting, setStarting] = useState(false);
 
-	const onStart = () => {
-		void actions.newMatch({
-			redProfile: "balanced-easy",
-			whiteProfile: "balanced-easy",
-			humanColor: null,
-		});
+	const onStart = async () => {
+		if (starting) return;
+		setStarting(true);
+		try {
+			await actions.newMatch({
+				redProfile: "balanced-easy",
+				whiteProfile: "balanced-easy",
+				humanColor: null,
+			});
+		} catch (err) {
+			console.error("[chonkers] newMatch failed", err);
+		} finally {
+			setStarting(false);
+		}
 	};
 	return (
 		<motion.div
@@ -84,7 +97,13 @@ export function TitleScreen() {
 					animate={{ opacity: 1 }}
 					transition={{ delay: 0.32, duration: 0.32 }}
 				>
-					<Button size="4" onClick={onStart} variant="solid" color="amber">
+					<Button
+						size="4"
+						onClick={() => void onStart()}
+						variant="solid"
+						color="amber"
+						disabled={starting}
+					>
 						New game
 					</Button>
 				</motion.div>
