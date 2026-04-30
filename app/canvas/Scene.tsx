@@ -9,6 +9,7 @@ import { BezelGestures } from "./BezelGestures";
 import { Board } from "./Board";
 import { CellHitboxGrid } from "./CellHitboxGrid";
 import { Lighting } from "./Lighting";
+import { MoveAnimation } from "./MoveAnimation";
 import { Pieces } from "./Pieces";
 import { SelectionOverlay } from "./SelectionOverlay";
 import { SplitArmHeightBar } from "./SplitArmHeightBar";
@@ -73,6 +74,7 @@ export function Scene() {
 				<TippingBoard>
 					<Board />
 					<Pieces />
+					<MoveAnimation />
 					<SelectionOverlay />
 					<SplitArmHeightBar />
 					<CellHitboxGrid />
