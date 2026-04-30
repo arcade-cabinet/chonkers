@@ -59,6 +59,7 @@
 		"@capacitor/preferences": "^8.0.1",
 		"@capacitor/screen-orientation": "^8.0.1",
 		"@capacitor/splash-screen": "^8.0.1",
+		"@capacitor/status-bar": "^8.0.2",
 		"@radix-ui/themes": "^3.3.0",
 		"@react-three/drei": "^10.7.7",
 		"@react-three/fiber": "^9.6.1",

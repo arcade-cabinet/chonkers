@@ -30,6 +30,7 @@ import {
 } from "@/sim";
 import { useSimActions } from "../boot";
 import { Scene } from "../canvas/Scene";
+import { useHaptics } from "../hooks/useHaptics";
 import { useWorldEntity } from "../hooks/useWorldEntity";
 
 export function PlayView() {
@@ -38,6 +39,7 @@ export function PlayView() {
 	const selection = useTrait(worldEntity, Selection);
 	const aiThinking = useTrait(worldEntity, AiThinking);
 	const actions = useSimActions();
+	const haptics = useHaptics();
 	const [error, setError] = useState<string | null>(null);
 
 	const turn = match?.turn ?? "red";
@@ -81,6 +83,7 @@ export function PlayView() {
 					p.col === cell.col && p.row === cell.row && p.color === humanColor,
 			);
 			if (clickedOwnStack && (!cur || !cellsEqual(cur, cell))) {
+				haptics.selection();
 				actions.setSelection(cell);
 				setError(null);
 				return;
@@ -99,8 +102,16 @@ export function PlayView() {
 						},
 					],
 				};
+				// Pre-detect chonk: if the destination has any pieces,
+				// the move is a chonk (engine validation runs inside
+				// commitHumanAction; this haptic fires regardless of
+				// outcome — simpler than threading the result back).
+				const isChonk = match.pieces.some(
+					(p) => p.col === cell.col && p.row === cell.row,
+				);
 				try {
 					await actions.commitHumanAction(action);
+					if (isChonk) haptics.chonk();
 				} catch (err) {
 					setError(err instanceof Error ? err.message : String(err));
 				}
@@ -108,7 +119,7 @@ export function PlayView() {
 			}
 			// 3. Click empty cell with no selection → no-op.
 		},
-		[actions, humanColor, isHumanTurn, match, selection],
+		[actions, haptics, humanColor, isHumanTurn, match, selection],
 	);
 
 	return (

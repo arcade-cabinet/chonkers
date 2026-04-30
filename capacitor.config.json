@@ -1,10 +1,28 @@
 {
 	"appId": "com.arcadecabinet.chonkers",
-	"appName": "chonkers",
+	"appName": "Chonkers",
 	"webDir": "dist",
 	"plugins": {
 		"SplashScreen": {
-			"launchAutoHide": false
+			"launchShowDuration": 1500,
+			"launchAutoHide": false,
+			"backgroundColor": "#0F0A05",
+			"showSpinner": false,
+			"splashFullScreen": true,
+			"splashImmersive": true
+		},
+		"ScreenOrientation": {
+			"default": ["portrait"]
+		},
+		"StatusBar": {
+			"style": "DARK",
+			"backgroundColor": "#0F0A05"
 		}
+	},
+	"android": {
+		"backgroundColor": "#0F0A05"
+	},
+	"ios": {
+		"backgroundColor": "#0F0A05"
 	}
 }

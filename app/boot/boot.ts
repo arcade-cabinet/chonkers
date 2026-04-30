@@ -19,12 +19,18 @@
 
 import { App as CapacitorApp } from "@capacitor/app";
 import { Capacitor } from "@capacitor/core";
+import {
+	type OrientationLockType,
+	ScreenOrientation,
+} from "@capacitor/screen-orientation";
+import { StatusBar, Style as StatusBarStyle } from "@capacitor/status-bar";
 import { refreshOnMatchEnd } from "@/analytics";
 import { type AudioBus, getAudioBus } from "@/audio";
 import { bootstrap } from "@/persistence/sqlite";
 import {
 	buildSimActions,
 	createSimWorld,
+	Screen,
 	type SimActions,
 	type SimWorld,
 } from "@/sim";
@@ -91,13 +97,37 @@ export async function boot(): Promise<BootResult> {
 	});
 	const actions = buildSimActions(sim)(sim.world);
 
-	// 4. Capacitor App lifecycle. Native platforms emit
+	// 4. Native-platform setup: orientation lock + status bar style
+	//    + app-lifecycle pause/resume. All gated on
+	//    `Capacitor.isNativePlatform()` so the web build is
+	//    untouched. Each call is best-effort wrapped — the screen
+	//    orientation API can reject on iOS Safari-on-iPad (which
+	//    advertises as native to Capacitor in some configurations).
+	if (Capacitor.isNativePlatform()) {
+		void ScreenOrientation.lock({
+			orientation: "portrait" as OrientationLockType,
+		}).catch(() => {});
+		void StatusBar.setStyle({ style: StatusBarStyle.Dark }).catch(() => {});
+	}
+
+	// 5. Capacitor App lifecycle. Native platforms emit
 	//    'appStateChange'; web has Page Visibility (handled by a
-	//    separate hook). This listener is a no-op on web.
+	//    separate hook). On background, route to the paused screen
+	//    iff a match is in progress; on foreground, return to play.
+	//    The user can still manually navigate to settings/quit from
+	//    the paused screen.
 	const lifecycleHandle = Capacitor.isNativePlatform()
 		? await CapacitorApp.addListener("appStateChange", ({ isActive }) => {
-				if (!isActive && sim.handle) {
-					actions.setScreen("paused");
+				if (!sim.handle) return;
+				const screenTrait = sim.worldEntity.get(Screen);
+				if (!isActive) {
+					if (screenTrait?.value === "play") {
+						actions.setScreen("paused");
+					}
+				} else {
+					if (screenTrait?.value === "paused") {
+						actions.setScreen("play");
+					}
 				}
 			})
 		: null;
