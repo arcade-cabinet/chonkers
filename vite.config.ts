@@ -5,12 +5,13 @@ import { defineConfig } from "vite";
 const isCapacitor = process.env.CAPACITOR === "true";
 
 export default defineConfig({
-	root: "./src",
+	root: "./app",
 	publicDir: path.resolve(__dirname, "public"),
 	base: isCapacitor ? "/" : "/chonkers/",
 	resolve: {
 		alias: {
 			"@": path.resolve(__dirname, "src"),
+			"@app": path.resolve(__dirname, "app"),
 		},
 	},
 	plugins: [react()],

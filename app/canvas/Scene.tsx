@@ -5,7 +5,7 @@ import {
 } from "@react-three/drei";
 import { Canvas } from "@react-three/fiber";
 import { Suspense } from "react";
-import { ASSETS } from "@/assets/manifest";
+import { ASSETS } from "@/utils/manifest";
 import { Board } from "./Board";
 import { InitialPieces } from "./InitialPieces";
 import { Lighting } from "./Lighting";

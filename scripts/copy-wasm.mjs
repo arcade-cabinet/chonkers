@@ -18,7 +18,10 @@ const repoRoot = path.resolve(here, "..");
 const require = createRequire(import.meta.url);
 
 const files = ["sql-wasm.wasm", "sql-wasm-browser.wasm"];
-const targets = [path.join(repoRoot, "public"), path.join(repoRoot, "public", "assets")];
+const targets = [
+	path.join(repoRoot, "public"),
+	path.join(repoRoot, "public", "assets"),
+];
 
 for (const dir of targets) {
 	mkdirSync(dir, { recursive: true });
@@ -40,4 +43,6 @@ for (const file of files) {
 	}
 }
 
-console.log(`copy-wasm: copied ${copied} file(s) into public/ + public/assets/`);
+console.log(
+	`copy-wasm: copied ${copied} file(s) into public/ + public/assets/`,
+);

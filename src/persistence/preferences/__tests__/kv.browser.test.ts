@@ -13,13 +13,26 @@ describe("kv — typed JSON key-value store", () => {
 	});
 
 	it("round-trips arbitrary JSON-serializable values via put → get", async () => {
+		// `fc.jsonValue()` emits values that stringify cleanly. We
+		// additionally filter out `-0` because `JSON.stringify(-0) === "0"`
+		// — it's a JSON-representation gap, not a kv bug. The kv layer
+		// guarantees JSON-string round-trip; values that don't survive
+		// `JSON.stringify` round-trip are out of contract.
+		const hasNegativeZero = (v: unknown): boolean => {
+			if (typeof v === "number") return Object.is(v, -0);
+			if (Array.isArray(v)) return v.some(hasNegativeZero);
+			if (v !== null && typeof v === "object") {
+				return Object.values(v).some(hasNegativeZero);
+			}
+			return false;
+		};
 		await fc.assert(
 			fc.asyncProperty(
 				fc
 					.string({ minLength: 1, maxLength: 32 })
 					.filter((s) => !s.includes("::")),
 				fc.string({ minLength: 1, maxLength: 32 }),
-				fc.jsonValue(),
+				fc.jsonValue().filter((v) => !hasNegativeZero(v)),
 				async (namespace, key, value) => {
 					await kv.put(namespace, key, value);
 					const got = await kv.get(namespace, key);

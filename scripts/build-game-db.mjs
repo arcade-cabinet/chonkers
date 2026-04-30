@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 /**
  * Build-time pipeline: produce the chonkers SQLite asset from the
  * committed drizzle migration ladder.
@@ -21,9 +24,6 @@
  * See `docs/DB.md` "Build time" for the full contract.
  */
 import BetterSqlite3 from "better-sqlite3";
-import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, "..");

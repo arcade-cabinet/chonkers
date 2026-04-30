@@ -1,8 +1,8 @@
 import { useTexture } from "@react-three/drei";
 import { useMemo } from "react";
 import * as THREE from "three";
-import { ASSETS } from "@/assets/manifest";
 import { tokens } from "@/design/tokens";
+import { ASSETS } from "@/utils/manifest";
 
 const BOARD_THICKNESS = 0.18;
 const SURFACE_LIFT = 0.0008;

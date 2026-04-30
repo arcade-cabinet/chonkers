@@ -8,10 +8,11 @@
  * There is no `updateMove` — moves are immutable once recorded.
  */
 
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 import {
 	type Move,
 	type MoveColor,
+	matches,
 	moves,
 	type NewMove,
 } from "@/persistence/sqlite/schema";
@@ -33,6 +34,29 @@ export interface AppendMoveInput {
 }
 
 /**
+ * Build the `{ field: value }` slice for the three optional columns,
+ * suppressing keys whose input value is `undefined`. drizzle's `values`
+ * helper treats `undefined` and "key absent" differently for nullable
+ * columns — we want the latter (DEFAULT NULL) on every optional input.
+ */
+function optionalMoveFields(
+	input: Pick<
+		AppendMoveInput,
+		"sliceIndicesJson" | "moveDurationMs" | "createdAt"
+	>,
+): Partial<NewMove> {
+	return {
+		...(input.sliceIndicesJson !== undefined
+			? { sliceIndicesJson: input.sliceIndicesJson }
+			: {}),
+		...(input.moveDurationMs !== undefined
+			? { moveDurationMs: input.moveDurationMs }
+			: {}),
+		...(input.createdAt !== undefined ? { createdAt: input.createdAt } : {}),
+	};
+}
+
+/**
  * Insert a single move. Composite primary key (match_id, ply) means
  * inserting the same (match_id, ply) twice is a constraint error —
  * the engine guarantees ply monotonicity, so duplicates are a bug.
@@ -51,13 +75,7 @@ export async function appendMove(
 		toRow: input.toRow,
 		stackHeightAfter: input.stackHeightAfter,
 		positionHashAfter: input.positionHashAfter,
-		...(input.sliceIndicesJson !== undefined
-			? { sliceIndicesJson: input.sliceIndicesJson }
-			: {}),
-		...(input.moveDurationMs !== undefined
-			? { moveDurationMs: input.moveDurationMs }
-			: {}),
-		...(input.createdAt !== undefined ? { createdAt: input.createdAt } : {}),
+		...optionalMoveFields(input),
 	};
 	await db.insert(moves).values(row);
 	const inserted = await getMove(db, input.matchId, input.ply);
@@ -92,6 +110,84 @@ export async function listMovesByMatch(
 		.from(moves)
 		.where(eq(moves.matchId, matchId))
 		.orderBy(asc(moves.ply));
+}
+
+/**
+ * Insert a move and bump `matches.ply_count` in one atomic ply-claim.
+ *
+ * Implementation: a single `UPDATE matches SET ply_count = ply_count + 1
+ * WHERE id = ? RETURNING ply_count - 1 AS ply` claims a ply slot.
+ * SQLite serialises UPDATE-RETURNING at the engine level for the
+ * embedded sqlite-proxy / better-sqlite3 backends used here, so
+ * concurrent callers cannot pick the same ply. (Note: this argument
+ * does NOT carry to a remote-server sqlite-proxy adapter — chonkers
+ * uses the embedded capacitor-sqlite plugin and Node better-sqlite3
+ * for tests, both of which serialise writes at the file level.)
+ *
+ * The UPDATE-RETURNING and the subsequent INSERT are SEPARATE
+ * commits. If the INSERT throws (or the process dies between them),
+ * `matches.ply_count` is permanently one ahead of the move log,
+ * leaving a gap at the claimed ply that is unrecoverable on the
+ * same match. This is the "torn write window" — and it is acceptable
+ * here ONLY because:
+ *
+ *   1. The broker calls this helper inside `playTurn`, and any throw
+ *      propagates up; `playToCompletion` exits the loop without
+ *      finalising the match. `matches.finishedAt` stays null.
+ *   2. Analytics' `refreshOnMatchEnd` early-bails on any match
+ *      whose `finishedAt` is null, so the divergence never poisons
+ *      aggregates.
+ *   3. There is no resume-and-retry path on the same match — the
+ *      broker treats the throw as fatal and tears down the in-
+ *      memory handle. A new match (different matchId) starts from
+ *      ply 0 and is unaffected.
+ *
+ * The invariant we protect is "ply_count is never BEHIND the move
+ * log"; "ply_count one ahead after a fatal abort" is inert.
+ *
+ * Why not `db.transaction()`? Drizzle's transaction wrapper is
+ * incompatible across runtimes: drizzle-orm/better-sqlite3 forbids
+ * async tx callbacks (the Node test tier), while
+ * drizzle-orm/sqlite-proxy requires them (the capacitor-sqlite
+ * runtime tier). A single-statement claim works on both. SQLite
+ * itself does not support a single statement that performs both an
+ * UPDATE and a dependent INSERT — `WITH ... AS (UPDATE ... RETURNING ...) INSERT INTO ...`
+ * is a Postgres-only construct.
+ */
+export async function appendMoveAndBumpPly(
+	db: StoreDb,
+	input: Omit<AppendMoveInput, "ply">,
+): Promise<Move> {
+	const claimed = await db
+		.update(matches)
+		.set({ plyCount: sql`${matches.plyCount} + 1` })
+		.where(eq(matches.id, input.matchId))
+		.returning({ ply: sql<number>`${matches.plyCount} - 1` });
+	const claim = claimed[0];
+	if (!claim) {
+		throw new Error(`appendMoveAndBumpPly: no match ${input.matchId}`);
+	}
+	const ply = Number(claim.ply);
+	const row: NewMove = {
+		matchId: input.matchId,
+		ply,
+		color: input.color,
+		fromCol: input.fromCol,
+		fromRow: input.fromRow,
+		toCol: input.toCol,
+		toRow: input.toRow,
+		stackHeightAfter: input.stackHeightAfter,
+		positionHashAfter: input.positionHashAfter,
+		...optionalMoveFields(input),
+	};
+	await db.insert(moves).values(row);
+	const inserted = await getMove(db, input.matchId, ply);
+	if (!inserted) {
+		throw new Error(
+			`appendMoveAndBumpPly: insert succeeded but row (${input.matchId}, ${ply}) missing`,
+		);
+	}
+	return inserted;
 }
 
 /** Most recent move in a match, or null if no moves yet. */
