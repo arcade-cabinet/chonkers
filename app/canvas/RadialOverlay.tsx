@@ -43,7 +43,7 @@
 
 import { Html } from "@react-three/drei";
 import { motion } from "framer-motion";
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { tokens } from "@/design/tokens";
 
 export type SliceState =
@@ -278,6 +278,26 @@ export function RadialOverlay({
 	const holdTimerRef = useRef<number | null>(null);
 	const armedRef = useRef(armed);
 	armedRef.current = armed;
+
+	// Unmount cleanup (PRQ-A1 audit 2026-04-30 — hazard H1). The
+	// hold timer is started in handlePointerDown and cleared in
+	// pointerUp / pointerCancel / pre-arm-cancel branches. But if
+	// the component unmounts while a hold is in flight (selection
+	// flips, AI moves the player's stack, match ends), none of those
+	// branches fire and the timer fires `onArm()` against a stale
+	// closure ~3000ms later — spurious sound, spurious haptic,
+	// spurious broker action. This effect catches the unmount path.
+	// Cited: pmndrs/react-three-fiber #802 (setInterval-not-cleared
+	// pattern) — same shape applies to setTimeout.
+	useEffect(() => {
+		return () => {
+			if (holdTimerRef.current !== null) {
+				window.clearTimeout(holdTimerRef.current);
+				holdTimerRef.current = null;
+			}
+			pressOriginRef.current = null;
+		};
+	}, []);
 
 	if (slices < 1) return null;
 
