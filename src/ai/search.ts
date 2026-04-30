@@ -27,6 +27,17 @@ import type { AiState } from "./state";
 
 export type SearchMode = "live" | "replay";
 
+/**
+ * Hard cap on transposition-table size. Hit at ~1M entries the table
+ * is wiped (see alphaBeta). V8's Map has a hard ceiling around 2^24
+ * = 16,777,216 entries; the 1000-run beta governor observed a
+ * RangeError on hard-vs-hard at depth 6+ in long games, so the cap
+ * sits well below that with headroom for memory pressure on mobile.
+ *
+ * Exported so the unit test can witness the cap rather than guessing.
+ */
+export const TT_MAX_ENTRIES = 1_000_000;
+
 export interface SearchResult {
 	readonly action: Action | null;
 	readonly score: number;
@@ -220,7 +231,20 @@ function alphaBeta(
 	if (!ctx.deadlineHit) {
 		const flag: TTFlag =
 			best <= alpha ? "upperBound" : best >= beta ? "lowerBound" : "exact";
-		ctx.aiState.transpositionTable.set(ttKey, {
+		const tt = ctx.aiState.transpositionTable;
+		// Bounded TT: at-cap, drop the whole table and let it refill.
+		// Why a clear instead of LRU eviction: the TT is a perf hint,
+		// not part of the determinism contract (per docs/AI.md, dumps
+		// don't serialise it). A clear is O(1) amortised + keeps this
+		// hot path branchless except for the cap check, where LRU
+		// would add bookkeeping per insert. The 1000-run governor
+		// observed V8's Map size limit (~16M) blowing up mid-match in
+		// hard-vs-hard at depth 6+ — capping at 1M keeps each match
+		// well under that ceiling.
+		if (tt.size >= TT_MAX_ENTRIES) {
+			tt.clear();
+		}
+		tt.set(ttKey, {
 			hash: ttKey,
 			depth,
 			score: best,

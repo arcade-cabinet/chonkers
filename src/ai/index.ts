@@ -33,7 +33,12 @@ export {
 	type Profile,
 	type ProfileKey,
 } from "./profiles";
-export { type SearchMode, type SearchResult, search } from "./search";
+export {
+	type SearchMode,
+	type SearchResult,
+	TT_MAX_ENTRIES,
+	search,
+} from "./search";
 export {
 	type AiState,
 	createAiState,
