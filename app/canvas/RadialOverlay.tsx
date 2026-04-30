@@ -457,7 +457,20 @@ export function RadialOverlay({
 				transition={{ duration: tokens.motion.uiOpenMs / 1000 }}
 				style={{ overflow: "visible" }}
 			>
-				<title>{`${slices}-stack split overlay`}</title>
+				{/*
+				 * NOTE: do NOT put <title> here. The SVG body lives
+				 * INSIDE the JSX subtree of a component that renders
+				 * inside <Canvas>, even though createPortal escapes
+				 * the children out to document.body. R3F's reconciler
+				 * walks the entire JSX tree and tries to mount any
+				 * lowercase intrinsic name as a Three.js primitive —
+				 * `<title>` becomes `THREE.Title`, which doesn't
+				 * exist, and the canvas crashes with "Title is not
+				 * part of the THREE namespace! Did you forget to
+				 * extend?" The accessible name is already provided
+				 * by the parent <motion.svg role="group" aria-label=
+				 * "Stack split overlay (N slices)">.
+				 */}
 				{/* Gesture catcher: transparent rect at the bottom of
 				 * the SVG z-stack handles the hold-to-arm + drag-to-
 				 * commit gestures (RULES §5.2 + §5.3). Only mounts when

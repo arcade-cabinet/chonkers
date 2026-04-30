@@ -44,21 +44,36 @@ const SCREENSHOT_DIR = "artifacts/visual-review";
 
 interface ViewportConfig {
 	readonly id: string;
-	/** Playwright `test.use` payload — passed verbatim. */
+	/**
+	 * Playwright `test.use` payload — viewport + UA + scale only.
+	 * We deliberately strip `defaultBrowserType` from the device
+	 * payload because Playwright forbids changing it via per-describe
+	 * `test.use` (it would force a new worker per describe, which
+	 * conflicts with workers=1 + fullyParallel=false). Browser stays
+	 * chromium across all viewports — the project config controls
+	 * that — and we only override the viewport/UA/touch hints.
+	 */
 	readonly use: Parameters<(typeof test)["use"]>[0];
+}
+
+function viewportOnly(
+	d: (typeof devices)[keyof typeof devices],
+): ViewportConfig["use"] {
+	const { defaultBrowserType: _drop, ...rest } = d;
+	return rest;
 }
 
 const VIEWPORTS: ReadonlyArray<ViewportConfig> = [
 	{
 		id: "desktop",
 		use: {
-			...devices["Desktop Chrome"],
+			...viewportOnly(devices["Desktop Chrome"]),
 			viewport: { width: 1920, height: 1080 },
 		},
 	},
-	{ id: "iphone-14", use: devices["iPhone 14"] },
-	{ id: "pixel-7", use: devices["Pixel 7"] },
-	{ id: "ipad-landscape", use: devices["iPad Pro 11 landscape"] },
+	{ id: "iphone-14", use: viewportOnly(devices["iPhone 14"]) },
+	{ id: "pixel-7", use: viewportOnly(devices["Pixel 7"]) },
+	{ id: "ipad-landscape", use: viewportOnly(devices["iPad Pro 11 landscape"]) },
 ];
 
 async function runPlaythrough(
