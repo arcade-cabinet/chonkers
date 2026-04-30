@@ -34,6 +34,7 @@
 
 import { useThree } from "@react-three/fiber";
 import { useTrait } from "koota/react";
+import { useCallback, useMemo } from "react";
 import * as THREE from "three";
 import { Vector3 } from "yuka";
 import { tokens } from "@/design/tokens";
@@ -63,6 +64,55 @@ export function StackRadialController() {
 	const { camera, gl } = useThree();
 	const { onCellClick } = useCanvasHandlers();
 
+	// Stable canonical key for the selection indices — joins to a
+	// string so identity tracks content, not array reference. The
+	// koota `useTrait` adapter returns a fresh snapshot reference on
+	// every broker write (even no-op writes that produce identical
+	// content), and `match.pieces` is replaced on every move. Without
+	// these memos, `selectedSet` and the four callback props would
+	// receive fresh identities on every parent render — a trap shape
+	// that becomes a render-loop the moment any child memoises
+	// against them. PRQ-A1 audit hazard H2.
+	//
+	// The memo reads ONLY the key string and reconstructs the Set
+	// from it, so biome's useExhaustiveDependencies rule sees a
+	// single-dep effect with no array-identity hazard.
+	const indicesKey = (splitSelection?.indices ?? []).join(",");
+	const selectedSet = useMemo<ReadonlySet<number>>(() => {
+		if (indicesKey === "") return new Set<number>();
+		return new Set<number>(indicesKey.split(",").map((s) => Number(s)));
+	}, [indicesKey]);
+
+	const handleSelectSlice = useCallback(
+		(index: number) => {
+			actions.toggleSplitSlice(index);
+		},
+		[actions],
+	);
+	const handleArm = useCallback(() => {
+		actions.armSplitSelection();
+		audio.play("split");
+		haptics.chonk();
+	}, [actions, audio, haptics]);
+	const handleCommit = useCallback(
+		({ clientX, clientY }: { clientX: number; clientY: number }) => {
+			// Drag-to-commit hit-test (RULES §5.3). Convert pointer
+			// coords → world ray → y=0 plane intersection → cell.
+			const hitCell = cellAtClientPoint(clientX, clientY, camera, gl);
+			if (!hitCell) return;
+			if (
+				hitCell.col < 0 ||
+				hitCell.col >= BOARD_COLS ||
+				hitCell.row < 0 ||
+				hitCell.row >= BOARD_ROWS
+			) {
+				return;
+			}
+			onCellClick(hitCell);
+		},
+		[camera, gl, onCellClick],
+	);
+
 	if (!selection?.cell || !match) return null;
 	const cell = selection.cell;
 	const piecesAtCell = match.pieces.filter(
@@ -86,9 +136,12 @@ export function StackRadialController() {
 	const { puckHeight, puckGap } = tokens.board;
 	const topY = topPiece.height * (puckHeight + puckGap) + puckHeight + 0.001;
 
-	const selectedSet = new Set<number>(splitSelection?.indices ?? []);
 	const armed = splitSelection?.armed ?? false;
 
+	// `slotLabel` is fine inline — its identity changes only when
+	// stackHeight changes, which already invalidates RadialOverlay's
+	// internal `geom` useMemo, so a fresh closure here doesn't add
+	// extra invalidation surface.
 	return (
 		<RadialOverlay
 			position={[v.x, topY, v.z]}
@@ -96,32 +149,10 @@ export function StackRadialController() {
 			selected={selectedSet}
 			armed={armed}
 			outerRadius={70}
-			onSelectSlice={(index) => actions.toggleSplitSlice(index)}
+			onSelectSlice={handleSelectSlice}
 			slotLabel={(index) => `Slice ${index + 1} of ${stackHeight}`}
-			onArm={() => {
-				actions.armSplitSelection();
-				audio.play("split");
-				haptics.chonk();
-			}}
-			onCommit={({ clientX, clientY }) => {
-				// Drag-to-commit hit-test (RULES §5.3). Convert the
-				// pointer's client coords to a ray in world space,
-				// intersect the y=0 board plane, snap to the closest
-				// cell, and route through the same onCellClick path
-				// PlayView's tap pipeline uses (which reads
-				// splitSelection.indices to build the multi-run action).
-				const cell = cellAtClientPoint(clientX, clientY, camera, gl);
-				if (!cell) return;
-				if (
-					cell.col < 0 ||
-					cell.col >= BOARD_COLS ||
-					cell.row < 0 ||
-					cell.row >= BOARD_ROWS
-				) {
-					return;
-				}
-				onCellClick(cell);
-			}}
+			onArm={handleArm}
+			onCommit={handleCommit}
 		/>
 	);
 }
