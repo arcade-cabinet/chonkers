@@ -15,16 +15,26 @@
  *   3. **Golden-path playthrough** (`@visual` tag, `pnpm test:golden`)
  *      — `e2e/golden-path.spec.ts` watches one full AI-vs-AI match
  *      from lobby through end screen, snapping screenshots at each
- *      meaningful state. Runs against four device profiles
- *      (visual-desktop / visual-iphone-14 / visual-pixel-7 /
- *      visual-ipad-landscape), all with GPU_ARGS so WebGL/R3F shaders
- *      render with ANGLE GL, not SwiftShader software rasterisation.
+ *      meaningful state. Runs against four viewports inside ONE
+ *      Chromium process via per-describe `test.use({viewport})` —
+ *      see the spec for the iteration. GPU_ARGS enable ANGLE GL so
+ *      WebGL/R3F shaders render correctly headlessly (vs SwiftShader
+ *      software rasterisation).
+ *
+ *      WHY ONE PROJECT, NOT FOUR: PRQ-A1 audit on 2026-04-30 found
+ *      that running four parallel Chromium projects each holding
+ *      ~600MB (HDRI + PBR + WebGL + ANGLE GL) plus the warm Vite
+ *      dev server was the actual amplifier behind the OOM crash.
+ *      Single process + viewport iteration caps memory at one
+ *      browser-context worth, regardless of how many viewports the
+ *      spec snaps.
+ *
  *      Pattern adapted from ../stellar-descent/playwright.config.ts +
  *      ../midway-mayhem/e2e/governor-playthrough.spec.ts.
  *
  * The golden-path harness uses Playwright's standard runner: webServer
  * lifecycle, retry semantics, trace/HAR capture on failure, and
- * per-device sharding all come for free.
+ * per-viewport snap iteration inside the spec.
  */
 
 import { defineConfig, devices } from "@playwright/test";
@@ -66,10 +76,14 @@ export default defineConfig({
 	},
 	forbidOnly: isCI,
 	retries: isCI ? 2 : 0,
-	// Golden-path parallelise per-project; smoke needs the single
-	// shared dev server. Default to 1 worker — the visual project
-	// overrides via `fullyParallel: true` below.
+	// 1 worker globally — golden-path is the long-runner, smoke is
+	// fast and shares a dev server, no parallelism gain locally.
 	workers: 1,
+	// Disable cross-test parallelism. Golden-path internally iterates
+	// viewports in a single chromium context; smoke runs one test.
+	// Parallel chromium contexts on a workstation = OOM amplifier
+	// (PRQ-A1 audit 2026-04-30).
+	fullyParallel: false,
 	reporter: isCI ? "github" : "list",
 	use: {
 		baseURL: "http://localhost:5173/chonkers/",
@@ -84,44 +98,17 @@ export default defineConfig({
 			use: { ...devices["Desktop Chrome"] },
 		},
 
-		// ── Golden-path across device profiles ──
-		// All four projects use GPU_ARGS so R3F renders correctly in
-		// headless mode. Output lands in `artifacts/visual-review/<name>/`
-		// driven by the spec's per-step screenshot path.
+		// ── Golden-path: ONE Chromium context, viewports iterated
+		// inside the spec via per-describe test.use({viewport}). All
+		// four viewports' captures land in
+		// `artifacts/visual-review/<viewport-name>/` driven by the
+		// spec's per-step screenshot path.
 		{
-			name: "visual-desktop",
+			name: "visual",
 			testMatch: /golden-path\.spec\.ts/,
-			fullyParallel: true,
 			use: {
 				...devices["Desktop Chrome"],
 				viewport: { width: 1920, height: 1080 },
-				launchOptions: { args: GPU_ARGS },
-			},
-		},
-		{
-			name: "visual-iphone-14",
-			testMatch: /golden-path\.spec\.ts/,
-			fullyParallel: true,
-			use: {
-				...devices["iPhone 14"],
-				launchOptions: { args: GPU_ARGS },
-			},
-		},
-		{
-			name: "visual-pixel-7",
-			testMatch: /golden-path\.spec\.ts/,
-			fullyParallel: true,
-			use: {
-				...devices["Pixel 7"],
-				launchOptions: { args: GPU_ARGS },
-			},
-		},
-		{
-			name: "visual-ipad-landscape",
-			testMatch: /golden-path\.spec\.ts/,
-			fullyParallel: true,
-			use: {
-				...devices["iPad Pro 11 landscape"],
 				launchOptions: { args: GPU_ARGS },
 			},
 		},
