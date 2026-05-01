@@ -25,105 +25,112 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import "./_lib/test-hook";
 
-test.describe(
-	"accessibility — diegetic UI surfaces",
-	{ tag: "@axe" },
-	() => {
-		test.beforeEach(async ({ page }) => {
-			await page.goto("/chonkers/?testHook=1");
-			await page.waitForFunction(
-				() => window.__chonkers !== undefined,
-				null,
-				{ timeout: 15_000 },
-			);
+test.describe("accessibility — diegetic UI surfaces", { tag: "@axe" }, () => {
+	test.beforeEach(async ({ page }) => {
+		await page.goto("/chonkers/?testHook=1");
+		await page.waitForFunction(() => window.__chonkers !== undefined, null, {
+			timeout: 15_000,
 		});
+	});
 
-		test("lobby surface — Play + Resume affordances", async ({ page }) => {
-			// Wait for the lobby to fully mount.
-			await page.waitForFunction(
-				() =>
-					document.querySelectorAll(".ck-lobby-affordance").length >= 2,
-				null,
-				{ timeout: 10_000 },
-			);
+	test("lobby surface — Play + Resume affordances", async ({ page }) => {
+		// Wait for the lobby to fully mount.
+		await page.waitForFunction(
+			() => document.querySelectorAll(".ck-lobby-affordance").length >= 2,
+			null,
+			{ timeout: 10_000 },
+		);
 
-			const results = await new AxeBuilder({ page })
-				.withTags(["wcag2a", "wcag2aa", "wcag21aa"])
-				.analyze();
+		const results = await new AxeBuilder({ page })
+			.withTags(["wcag2a", "wcag2aa", "wcag21aa"])
+			.analyze();
 
-			const critical = results.violations.filter(
-				(v) => v.impact === "critical" || v.impact === "serious",
-			);
-			expect.soft(critical, `lobby a11y violations: ${formatViolations(critical)}`).toEqual([]);
+		const critical = results.violations.filter(
+			(v) => v.impact === "critical" || v.impact === "serious",
+		);
+		expect
+			.soft(critical, `lobby a11y violations: ${formatViolations(critical)}`)
+			.toEqual([]);
+	});
+
+	test("splitting radial surface", async ({ page }) => {
+		// Boot a match so a stack exists to split.
+		await page.evaluate(() => {
+			window.__chonkers?.actions.startNewMatch(null);
 		});
+		await page.waitForFunction(
+			() => window.__chonkers?.screen === "play",
+			null,
+			{ timeout: 30_000 },
+		);
 
-		test("splitting radial surface", async ({ page }) => {
-			// Boot a match so a stack exists to split.
-			await page.evaluate(() => {
-				window.__chonkers?.actions.startNewMatch(null);
-			});
-			await page.waitForFunction(
-				() => window.__chonkers?.screen === "play",
-				null,
-				{ timeout: 30_000 },
-			);
+		// Open the splitting radial at a known starting cell. The
+		// initial 5-4-3 layout has 1-stacks everywhere so we need to
+		// build a 2-stack first — but for the a11y audit we just need
+		// the radial DOM mounted. The scene helper opens it directly.
+		const opened = await page.evaluate(() => {
+			// Use any owned cell; height=2 is a fiction for the audit
+			// but the radial accepts it and renders 2 slice buttons.
+			return window.__chonkers?.scene.openSplitRadialAt(2, 1, 2) ?? false;
+		});
+		expect(opened).toBe(true);
 
-			// Open the splitting radial at a known starting cell. The
-			// initial 5-4-3 layout has 1-stacks everywhere so we need to
-			// build a 2-stack first — but for the a11y audit we just need
-			// the radial DOM mounted. The scene helper opens it directly.
-			const opened = await page.evaluate(() => {
-				// Use any owned cell; height=2 is a fiction for the audit
-				// but the radial accepts it and renders 2 slice buttons.
-				return window.__chonkers?.scene.openSplitRadialAt(2, 1, 2) ?? false;
-			});
-			expect(opened).toBe(true);
-
-			// Wait for the SVG overlay to render.
-			await page.waitForSelector(".ck-split-radial, [data-overlay='split']", {
+		// Wait for the SVG overlay to render.
+		await page
+			.waitForSelector(".ck-split-radial, [data-overlay='split']", {
 				timeout: 5_000,
-			}).catch(() => {
+			})
+			.catch(() => {
 				// Fallback: just wait a tick for any overlay to mount.
 				return page.waitForTimeout(500);
 			});
 
-			const results = await new AxeBuilder({ page })
-				.withTags(["wcag2a", "wcag2aa", "wcag21aa"])
-				.analyze();
+		const results = await new AxeBuilder({ page })
+			.withTags(["wcag2a", "wcag2aa", "wcag21aa"])
+			.analyze();
 
-			const critical = results.violations.filter(
-				(v) => v.impact === "critical" || v.impact === "serious",
-			);
-			expect.soft(critical, `split-radial a11y violations: ${formatViolations(critical)}`).toEqual([]);
+		const critical = results.violations.filter(
+			(v) => v.impact === "critical" || v.impact === "serious",
+		);
+		expect
+			.soft(
+				critical,
+				`split-radial a11y violations: ${formatViolations(critical)}`,
+			)
+			.toEqual([]);
+	});
+
+	test("pause radial surface", async ({ page }) => {
+		await page.evaluate(() => {
+			window.__chonkers?.actions.startNewMatch(null);
 		});
+		await page.waitForFunction(
+			() => window.__chonkers?.screen === "play",
+			null,
+			{ timeout: 30_000 },
+		);
 
-		test("pause radial surface", async ({ page }) => {
-			await page.evaluate(() => {
-				window.__chonkers?.actions.startNewMatch(null);
-			});
-			await page.waitForFunction(
-				() => window.__chonkers?.screen === "play",
-				null,
-				{ timeout: 30_000 },
-			);
-
-			await page.evaluate(() => {
-				window.__chonkers?.scene.openPauseRadial();
-			});
-			// Allow the radial to mount.
-			await page.waitForTimeout(500);
-
-			const results = await new AxeBuilder({ page })
-				.withTags(["wcag2a", "wcag2aa", "wcag21aa"])
-				.analyze();
-
-			const critical = results.violations.filter(
-				(v) => v.impact === "critical" || v.impact === "serious",
-			);
-			expect.soft(critical, `pause-radial a11y violations: ${formatViolations(critical)}`).toEqual([]);
+		await page.evaluate(() => {
+			window.__chonkers?.scene.openPauseRadial();
 		});
-	},
-);
+		// Allow the radial to mount.
+		await page.waitForTimeout(500);
+
+		const results = await new AxeBuilder({ page })
+			.withTags(["wcag2a", "wcag2aa", "wcag21aa"])
+			.analyze();
+
+		const critical = results.violations.filter(
+			(v) => v.impact === "critical" || v.impact === "serious",
+		);
+		expect
+			.soft(
+				critical,
+				`pause-radial a11y violations: ${formatViolations(critical)}`,
+			)
+			.toEqual([]);
+	});
+});
 
 function formatViolations(violations: readonly AxeViolation[]): string {
 	if (violations.length === 0) return "none";

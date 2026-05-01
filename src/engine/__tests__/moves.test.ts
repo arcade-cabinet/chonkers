@@ -487,12 +487,22 @@ describe("enumerateLegalActions — chain lock-in (RULES §5.4.1)", () => {
 		}
 		// Surround with 1-stacks (all illegal for a 2-piece sub-stack).
 		const around = [
-			[3, 3], [4, 3], [5, 3],
-			[3, 4],         [5, 4],
-			[3, 5], [4, 5], [5, 5],
+			[3, 3],
+			[4, 3],
+			[5, 3],
+			[3, 4],
+			[5, 4],
+			[3, 5],
+			[4, 5],
+			[5, 5],
 		];
 		for (const [c, r] of around) {
-			b = setPiece(b, { col: c as number, row: r as number, height: 0, color: "white" });
+			b = setPiece(b, {
+				col: c as number,
+				row: r as number,
+				height: 0,
+				color: "white",
+			});
 		}
 		const state: GameState = {
 			board: b,

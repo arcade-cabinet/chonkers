@@ -1,10 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-	type Board,
-	emptyBoard,
-	type GameState,
-	setPiece,
-} from "@/engine";
+import { type Board, emptyBoard, type GameState, setPiece } from "@/engine";
 import { computeFeatures } from "../features";
 
 function gs(board: Board, turn: "red" | "white" = "red"): GameState {

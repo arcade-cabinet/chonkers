@@ -206,9 +206,7 @@ export function computeFeatures(
 	}
 
 	// Build owned-cell sets for adjacency-aware features.
-	const playerOwnedSet = new Set(
-		playerCells.map((c) => `${c.col}:${c.row}`),
-	);
+	const playerOwnedSet = new Set(playerCells.map((c) => `${c.col}:${c.row}`));
 	const opponentOwnedCells: Cell[] = [];
 	for (const s of summary) {
 		if (s.topColor === opponent) opponentOwnedCells.push(s.cell);

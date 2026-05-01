@@ -78,28 +78,35 @@ describe("profiles", () => {
 	describe("disposition-modulated cluster + threat features", () => {
 		it("aggressive funnels harder; defensive clusters harder", () => {
 			// funnel_pressure: aggressive (encircle) > balanced > defensive.
-			expect(PROFILES["aggressive-medium"].weights.funnel_pressure)
-				.toBeGreaterThan(PROFILES["balanced-medium"].weights.funnel_pressure);
-			expect(PROFILES["balanced-medium"].weights.funnel_pressure)
-				.toBeGreaterThan(PROFILES["defensive-medium"].weights.funnel_pressure);
+			expect(
+				PROFILES["aggressive-medium"].weights.funnel_pressure,
+			).toBeGreaterThan(PROFILES["balanced-medium"].weights.funnel_pressure);
+			expect(
+				PROFILES["balanced-medium"].weights.funnel_pressure,
+			).toBeGreaterThan(PROFILES["defensive-medium"].weights.funnel_pressure);
 
 			// cluster_density: defensive (mutual support) > balanced > aggressive.
-			expect(PROFILES["defensive-medium"].weights.cluster_density)
-				.toBeGreaterThan(PROFILES["balanced-medium"].weights.cluster_density);
-			expect(PROFILES["balanced-medium"].weights.cluster_density)
-				.toBeGreaterThan(PROFILES["aggressive-medium"].weights.cluster_density);
+			expect(
+				PROFILES["defensive-medium"].weights.cluster_density,
+			).toBeGreaterThan(PROFILES["balanced-medium"].weights.cluster_density);
+			expect(
+				PROFILES["balanced-medium"].weights.cluster_density,
+			).toBeGreaterThan(PROFILES["aggressive-medium"].weights.cluster_density);
 		});
 
 		it("defensive favours longest_wall; aggressive does not", () => {
-			expect(PROFILES["defensive-medium"].weights.longest_wall)
-				.toBeGreaterThan(PROFILES["aggressive-medium"].weights.longest_wall);
+			expect(PROFILES["defensive-medium"].weights.longest_wall).toBeGreaterThan(
+				PROFILES["aggressive-medium"].weights.longest_wall,
+			);
 		});
 
 		it("even_trade_count: aggressive > balanced > defensive", () => {
-			expect(PROFILES["aggressive-medium"].weights.even_trade_count)
-				.toBeGreaterThan(PROFILES["balanced-medium"].weights.even_trade_count);
-			expect(PROFILES["balanced-medium"].weights.even_trade_count)
-				.toBeGreaterThan(PROFILES["defensive-medium"].weights.even_trade_count);
+			expect(
+				PROFILES["aggressive-medium"].weights.even_trade_count,
+			).toBeGreaterThan(PROFILES["balanced-medium"].weights.even_trade_count);
+			expect(
+				PROFILES["balanced-medium"].weights.even_trade_count,
+			).toBeGreaterThan(PROFILES["defensive-medium"].weights.even_trade_count);
 		});
 
 		it("mobile_threat_count is positive for every profile (build 2-stacks always good)", () => {
