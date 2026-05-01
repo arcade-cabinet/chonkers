@@ -247,6 +247,17 @@ Added 7 new features (`total_pieces_advancement`, `mobile_threat_count`, `fronti
 
 3-way intransitivity is acceptable alpha-stage signal; balanced dominates both extremes which is rough but expected (it has the most-tuned mix). Beta governor will sample more pairings + run aggressive-vs-aggressive, etc.
 
+### governor-rotation infra (2026-05-01) — NOT a weight change
+
+Two attempted weight tunes against the alpha 100-run data both stalled the broker gate (matches running to 200-ply outliers). The tune attempts were reverted; root cause was insufficient signal:
+
+- The alpha 100-run only samples 3 of 9 ordered pairings (aggressive-easy×balanced-easy, balanced-easy×defensive-easy, defensive-easy×aggressive-easy) at 33 matches each — too small a sample for confident weight-direction inference.
+- The beta governor was running `runs=1000` of a single hardcoded pairing (`balanced-medium vs balanced-medium`, the default in `src/scene/index.ts startNewMatch`). 1000 of one pairing tells you nothing about cross-disposition balance.
+
+**Infra fix**: `startNewMatch` accepts an optional `{ redProfile, whiteProfile }` pair (testHook-exposed), and `e2e/governor.spec.ts` now cycles through all 9 ordered (red, white) pairings on the easy tier. With `runs=1000` each pairing gets ~111 matches — enough power for the directive's 60/40 win-rate gate. Per-pairing stats are accumulated and soft-asserted at the end of the run with a console-logged summary so the full balance picture surfaces even when one pairing is out of band.
+
+No weight values changed. The next entry will record the FIRST data-driven tune once the new rotated 1000-run lands.
+
 ### (next entries appended on each balance tune)
 
 Each entry records:
