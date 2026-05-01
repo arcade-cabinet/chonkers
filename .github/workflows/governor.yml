@@ -1,44 +1,44 @@
 name: Governor
 
-# Long-budget AI-vs-AI in-browser run. PRQ-B6 acceptance gate:
-# 1000 matches finish (or ≤ 1% outliers), no console / page errors,
-# no leaked SVG overlay nodes after each match's quitMatch().
+# PRQ-B6 acceptance gate, in two parts:
+#   1. Node-tier `pnpm test:beta` — 1000 AI-vs-AI matches across 9
+#      rotated disposition pairings; per-pairing 60/40 win-rate band
+#      + ≤ 1% outlier rate. Pure TS, no DOM, ~5min runtime.
+#   2. In-browser `pnpm exec playwright test --grep @governor` — 50
+#      AI-vs-AI matches end-to-end through the visual stack; renders
+#      survive a sustained session, no console errors, no leaks.
+#      Render-survival, not balance.
 #
 # Triggers:
-#   - schedule: weekly Sunday 08:00 UTC (so the freshest result is
-#     available at the start of each week)
-#   - workflow_dispatch: manual run with overridable run count
-#     (default 1000, override with smaller for smoke checks)
+#   - schedule: weekly Sunday 08:00 UTC
+#   - workflow_dispatch: manual run with overridable browser-tier
+#     match count (default 50)
 
 on:
   schedule:
     - cron: "0 8 * * 0"
   workflow_dispatch:
     inputs:
-      runs:
-        description: "GOVERNOR_RUNS — number of AI-vs-AI matches to drive"
+      browser_runs:
+        description: "GOVERNOR_RUNS — in-browser match count (50 is the default render-survival check; bump for ad-hoc longer runs)"
         required: false
-        default: "1000"
+        default: "50"
 
 permissions:
   contents: read
 
 jobs:
   governor:
-    # Serialize governor runs — 5h+ jobs that overlap (schedule firing
-    # while a manual dispatch is mid-run, or two dispatches close in
-    # time) waste runner minutes. `cancel-in-progress: false` keeps
-    # the in-flight run going and queues the new one rather than
-    # killing partial work.
+    # Serialize so a schedule firing while a manual dispatch is in
+    # flight queues rather than races. cancel-in-progress: false
+    # preserves any in-flight work.
     concurrency:
       group: governor-${{ github.workflow }}
       cancel-in-progress: false
     runs-on: ubuntu-latest
-    # 6h ceiling on free-tier ubuntu-latest. At ~13s/match (smoke pace)
-    # 1000 matches ≈ 3.6h with comfortable headroom for setup +
-    # in-browser overhead. If this starts pushing 5h+ regularly, shard
-    # via matrix.
-    timeout-minutes: 350
+    # Node 1000-run ~5min + browser 50-run ~12min + setup ~2min ≈
+    # 20min budget. 60 leaves headroom without wasting a 6h slot.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
@@ -54,19 +54,25 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: 1000-run beta gate (node-tier)
+        # Pure TS, no DOM. Asserts per-pairing 60/40 + ≤ 1% outliers.
+        # Writes `/tmp/chonkers-beta-summary.json` with full per-
+        # pairing breakdown for the artifact upload below.
+        run: pnpm test:beta
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: chonkers-beta-summary
+          path: /tmp/chonkers-beta-summary.json
+          if-no-files-found: ignore
+
       - name: Install Playwright browser
         run: pnpm exec playwright install chromium
 
-      - name: 1000-run governor
+      - name: Render-survival governor (in-browser, 50 matches)
         env:
-          GOVERNOR_RUNS: ${{ github.event.inputs.runs || '1000' }}
-          # playwright.config.ts uses the `"github"` reporter when
-          # CI=true — good for inline annotations but produces no
-          # `playwright-report/` artifact. The workflow appends an
-          # html reporter so upload-artifact has something to package.
-          # Calling `pnpm exec playwright test` directly (rather than
-          # the test:e2e:governor script wrapper) is necessary because
-          # the script is shell-conditional and doesn't forward args.
+          GOVERNOR_RUNS: ${{ github.event.inputs.browser_runs || '50' }}
           PLAYWRIGHT_HTML_REPORT: playwright-report
         run: pnpm exec playwright test --grep @governor --reporter=github,html
 

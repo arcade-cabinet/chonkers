@@ -22,6 +22,12 @@ export default defineConfig({
 						// (`pnpm test:alpha`) so the default Node tier
 						// stays under CI's 3-minute target.
 						"src/**/__tests__/broker-100-runs.test.ts",
+						// Beta-stage gate. Runs in `pnpm test:beta` —
+						// 1000 AI-vs-AI matches across 9 rotated pairings,
+						// ~5min on node. Replaces the in-browser
+						// e2e/governor.spec.ts 1000-run gate which was
+						// taking 4h+ for the same evaluation.
+						"src/**/__tests__/broker-1000-runs.test.ts",
 					],
 				},
 			},
@@ -32,6 +38,15 @@ export default defineConfig({
 					environment: "node",
 					include: ["src/**/__tests__/broker-100-runs.test.ts"],
 					testTimeout: 15 * 60 * 1000,
+				},
+			},
+			{
+				extends: true,
+				test: {
+					name: "beta",
+					environment: "node",
+					include: ["src/**/__tests__/broker-1000-runs.test.ts"],
+					testTimeout: 25 * 60 * 1000,
 				},
 			},
 			{

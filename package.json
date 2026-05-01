@@ -27,6 +27,7 @@
 		"test:node": "vitest run --project node --passWithNoTests",
 		"test:browser": "vitest run --project browser --passWithNoTests",
 		"test:alpha": "vitest run --project alpha --passWithNoTests",
+		"test:beta": "vitest run --project beta --passWithNoTests",
 		"test:watch": "vitest",
 		"test:e2e": "playwright test",
 		"test:e2e:ci": "if [ -d e2e ]; then playwright test --grep-invert '@nightly|@governor|@axe|@pap'; else echo 'no e2e specs yet — skipping'; fi",
