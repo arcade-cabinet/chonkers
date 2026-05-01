@@ -5,6 +5,9 @@ status: current
 domain: context
 ---
 
+<!-- Last update: 2026-04-30 (PRQ-B4 + B5 shipped via PR #11). -->
+
+
 # State
 
 This document describes **what is currently committed in the repo** and **what stage of the validation cadence the project is in**. It is the snapshot a returning contributor reads to orient. It is updated on every PRQ merge.
@@ -41,8 +44,8 @@ Stages reflect *kind of validation completed*, not *version number*. release-ple
 
 ## What has not started
 
-- **alpha gate (re-entry)**: 100-run broker pass against the new scene; 100-run governor pass through the rebuilt UI; first AI-weight tune.
-- **rc gate (PRQ-R1)**: raise BETA_RUNS to 10000 in the e2e governor + add mobile/iPad Playwright projects + Maestro Android smoke on real APK. Lands as a post-beta PR.
+- **beta gate (1000-run governor cycle)**: PRQ-B4 (engine + AI tune) + PRQ-B5 (e2e governor + a11y) shipped via PR #11 on `prd/threejs-shell`. The 100-run alpha governor and 3-run interactive governor both pass green; the 1000-run cycle for the formal beta-gate flip runs separately on a long-budget runner via `GOVERNOR_RUNS=1000 pnpm test:e2e:governor` once PR #11 merges.
+- **rc gate (PRQ-R1)**: raise GOVERNOR_RUNS to 10000 in the e2e governor + Maestro Android smoke on real APK. The mobile/iPad Playwright projects are already wired (chromium + android-pixel + ios-iphone + ipad-landscape) — R1 only needs the higher run count. Lands as a post-beta PR.
 - **store-listing prep (PRQ-R2)**: real iOS + Android screenshots via Maestro, privacy policy + ToS, app icon + splash + adaptive icon, store-listing copy under `docs/store/`. Tag rc-1.0.0. Final pre-release PR.
 
 ## Reference snapshots

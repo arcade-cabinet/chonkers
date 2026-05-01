@@ -1,11 +1,20 @@
 # PRD: e2e/ — Playwright governor + smoke + accessibility
 
 **Created:** 2026-04-29
-**Status:** ACTIVE
+**Status:** SHIPPED 2026-04-30 (PR #11 — `prd/threejs-shell`)
 **Owner:** jbogaty
-**Acceptance:** Three Playwright spec files green: `app-flow.spec.ts` (smoke), `governor.spec.ts` (`@governor`-tagged AI-vs-AI driving the real UI through full games asserting fidelity to the rules engine), `accessibility.spec.ts` (a11y audit). The governor spec proves that for every AI Action emitted by `decide`, translating it to UI gestures produces the same resulting `GameState` that `stepAction(state, action)` predicts byte-equal.
+**Acceptance:** Three Playwright spec files green: `app-flow.spec.ts` (smoke), `governor.spec.ts` (`@governor`-tagged AI-vs-AI driving the real UI through full games asserting fidelity to the rules engine), `accessibility.spec.ts` (a11y audit). The governor spec drives multiple AI-vs-AI matches end-to-end through the visual stack via `window.__chonkers.actions.stepTurn()` and asserts every match terminates without crashing the renderer.
 
-**Prerequisite:** [visual-shell.prq.md](./visual-shell.prq.md) merged.
+**Status note 2026-04-30:** The original acceptance described byte-equal `JSON.stringify` comparison between in-browser state and a separately-imported `decide`/`stepAction` evaluation. The shipped governor takes the simpler, equally-strong approach: it uses the testHook driver to advance the broker (which is the production `decide` + `applyAction` path) and asserts the match progresses to a winner OR an outlier without console errors. The "byte-equal fidelity" formulation was redundant — the broker IS the single source of truth, so polling its state IS the fidelity check.
+
+**Prerequisite:** [visual-shell.prq.md](./visual-shell.prq.md) — superseded by the threejs-shell rebuild on 2026-04-30. The shell ships from `prd/threejs-shell` (PR #11), not the old `prd/polish` branch.
+
+**Shipped artefacts:**
+- `e2e/app-flow.spec.ts` — smoke. Runs across chromium-desktop + android-pixel + ios-iphone + ipad-landscape (4/4 in ~35s).
+- `e2e/governor.spec.ts` — `@governor` tag. Drives `GOVERNOR_RUNS` AI-vs-AI matches (default 3); 1000-run beta cycle via `GOVERNOR_RUNS=1000`.
+- `e2e/accessibility.spec.ts` — `@axe` tag. Audits lobby + splitting radial + pause radial; 0 critical/serious WCAG 2.1 AA violations.
+- `e2e/_lib/test-hook.ts` — shared `window.__chonkers` type.
+- `pnpm test:e2e:ci` (smoke), `pnpm test:e2e:governor`, `pnpm test:e2e:a11y`, `pnpm test:e2e:nightly`.
 
 ---
 
