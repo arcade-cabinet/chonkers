@@ -21,22 +21,24 @@
 
 import { BOARD_COLS, BOARD_ROWS } from "@/engine";
 
-export interface CellProjection {
-	/** Screen-space x in CSS pixels (0 at left edge of viewport). */
+/**
+ * A point in screen-space CSS pixels (0,0 at the top-left of the
+ * viewport), with a flag for "this anchor is currently behind the
+ * camera" so consumers can hide their DOM proxy. Used for both
+ * cell anchors and the bezel corner — the shape is identical.
+ */
+export interface ScreenPoint {
 	readonly x: number;
-	/** Screen-space y in CSS pixels (0 at top edge of viewport). */
 	readonly y: number;
-	/**
-	 * True when the cell's world anchor is currently behind the camera
-	 * (z > 1 in NDC after projection). The Solid component should hide
-	 * gridcells in this state — they aren't legal click targets.
-	 */
 	readonly offscreen: boolean;
 }
 
+/** @deprecated Use `ScreenPoint`. Kept as an alias for clarity at call sites. */
+export type CellProjection = ScreenPoint;
+
 const TOTAL_CELLS = BOARD_COLS * BOARD_ROWS;
 
-function emptyCells(): CellProjection[] {
+function emptyCells(): ScreenPoint[] {
 	return Array.from({ length: TOTAL_CELLS }, () => ({
 		x: 0,
 		y: 0,
@@ -44,22 +46,15 @@ function emptyCells(): CellProjection[] {
 	}));
 }
 
-/**
- * Bezel corner projection — top-right in board-local coords. The scene
- * computes this each frame so the Solid `BezelHamburger` can anchor
- * itself to the corner instead of the viewport edge. Tracks the
- * board through tilts + 180° rotations.
- */
-export interface BezelCornerProjection {
-	readonly x: number;
-	readonly y: number;
-	readonly offscreen: boolean;
-}
-
 export const boardProjection: {
-	cells: CellProjection[];
-	/** Top-right bezel corner in screen-space CSS pixels. */
-	bezelTopRight: BezelCornerProjection;
+	cells: ScreenPoint[];
+	/**
+	 * Top-right bezel corner in screen-space CSS pixels. Tracks the
+	 * board through tilts + 180° rotations so the Solid
+	 * `BezelHamburger` can anchor itself to the corner instead of the
+	 * viewport edge.
+	 */
+	bezelTopRight: ScreenPoint;
 	/** Bumped any time the scene writes a fresh frame. */
 	frame: number;
 	/** True once the scene has written at least one frame. */

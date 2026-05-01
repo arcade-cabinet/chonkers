@@ -582,6 +582,10 @@ const cellHalfZ = (BOARD_ROWS * tokens.board.cellSize) / 2;
 const bezelHalfX = cellHalfX + tokens.bezel.frameThickness;
 const bezelHalfZ = cellHalfZ + tokens.bezel.frameThickness;
 
+// NOT re-entrant — uses a shared `projectionScratch` Vector3. Safe today
+// because callers within a single `updateBoardProjection()` pass only run
+// sequentially and consume the result into their own object before the
+// next call mutates the scratch.
 function projectLocalToScreen(
 	localX: number,
 	localY: number,

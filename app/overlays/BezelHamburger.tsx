@@ -25,10 +25,12 @@ export function BezelHamburger(): JSX.Element {
 
 	let raf = 0;
 	let lastFrame = -1;
-	let lastX = Number.NaN;
-	let lastY = Number.NaN;
-	let lastHidden = true;
+	let disposed = false;
 	const tick = () => {
+		// Bail before doing any work if cleanup ran between the last
+		// rAF schedule and now — otherwise the just-scheduled frame
+		// reads boardProjection + sets a signal on a disposed owner.
+		if (disposed) return;
 		if (boardProjection.ready && boardProjection.frame !== lastFrame) {
 			lastFrame = boardProjection.frame;
 			const c = boardProjection.bezelTopRight;
@@ -38,18 +40,13 @@ export function BezelHamburger(): JSX.Element {
 			// target is 44px so integer rounding is invisible.
 			const nx = Math.round(c.x);
 			const ny = Math.round(c.y);
-			if (nx !== lastX || ny !== lastY || c.offscreen !== lastHidden) {
-				lastX = nx;
-				lastY = ny;
-				lastHidden = c.offscreen;
+			const cur = pos();
+			if (nx !== cur.x || ny !== cur.y || c.offscreen !== cur.hidden) {
 				setPos({ x: nx, y: ny, hidden: c.offscreen });
 			}
 		} else if (!boardProjection.ready && lastFrame !== -1) {
 			lastFrame = -1;
-			lastX = Number.NaN;
-			lastY = Number.NaN;
-			lastHidden = true;
-			setPos(HIDDEN);
+			if (pos() !== HIDDEN) setPos(HIDDEN);
 		}
 		raf = requestAnimationFrame(tick);
 	};
@@ -58,6 +55,7 @@ export function BezelHamburger(): JSX.Element {
 		raf = requestAnimationFrame(tick);
 	});
 	onCleanup(() => {
+		disposed = true;
 		cancelAnimationFrame(raf);
 	});
 
