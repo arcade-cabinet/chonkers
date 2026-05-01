@@ -13,11 +13,11 @@
 import { expect, test } from "@playwright/test";
 import "./_lib/test-hook";
 
-// CI runners boot the bundle ~6× slower than local — a 15s wait that
-// catches regressions locally still flakes on cold-cache CI. Bump
-// boot-related timeouts when CI=true.
-const BOOT_TIMEOUT = process.env.CI ? 30_000 : 15_000;
-const SETTLE_TIMEOUT = process.env.CI ? 20_000 : 10_000;
+// CI runners boot the bundle ~6-10× slower than local — large bundle +
+// cold three.js + headless chromium's software WebGL push CI boot
+// past 30s under load. Bump generously when CI=true.
+const BOOT_TIMEOUT = process.env.CI ? 60_000 : 15_000;
+const SETTLE_TIMEOUT = process.env.CI ? 30_000 : 10_000;
 
 test.describe("smoke — boot + AI-vs-AI match", () => {
 	test("lobby renders + new match starts + game progresses", async ({

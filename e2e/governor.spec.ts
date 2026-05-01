@@ -69,11 +69,12 @@ test.describe("governor — N AI-vs-AI matches drive the full visual stack", {
 		});
 
 		await page.goto("/chonkers/?testHook=1");
-		// CI runners boot ~6× slower than local — bump the testHook
-		// wait so cold-cache + slow-runner boot doesn't mistime before
-		// any of the 1000 matches even starts.
+		// CI runners boot ~6-10× slower than local — large bundle + cold
+		// three.js + headless chromium's software WebGL pushes boot
+		// past 30s under load. Bump generously so the cold start
+		// doesn't time out before match #1.
 		await page.waitForFunction(() => window.__chonkers !== undefined, null, {
-			timeout: process.env.CI ? 30_000 : 15_000,
+			timeout: process.env.CI ? 60_000 : 15_000,
 		});
 
 		for (let matchIdx = 0; matchIdx < GOVERNOR_RUNS; matchIdx += 1) {
