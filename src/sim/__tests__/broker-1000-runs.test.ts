@@ -28,9 +28,52 @@
  */
 
 import { writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { ALL_PROFILE_KEYS, type ProfileKey } from "@/ai";
 import { createMatch, playToCompletion } from "../broker";
+
+const SUMMARY_PATH = join(tmpdir(), "chonkers-beta-summary.json");
+
+interface BetaSummary {
+	runs: number;
+	ply_cap: number;
+	matches_completed: number;
+	timestamp: string;
+	totals: {
+		redWins: number;
+		whiteWins: number;
+		unfinished: number;
+		outliers: number;
+		outlierRate: number;
+		avgPly: number;
+	};
+	pairings: ReadonlyArray<{
+		red: ProfileKey;
+		white: ProfileKey;
+		matches: number;
+		redWins: number;
+		whiteWins: number;
+		unfinished: number;
+		outliers: number;
+		avgPly: number;
+		totalPlies: number;
+		redWinRate: number;
+		whiteWinRate: number;
+	}>;
+}
+
+function writeSummary(summary: BetaSummary): void {
+	try {
+		writeFileSync(SUMMARY_PATH, JSON.stringify(summary, null, 2));
+	} catch {
+		// Filesystem write best-effort — failure shouldn't break the
+		// test (e.g., CI on a read-only filesystem). The artifact upload
+		// step uses if-no-files-found: ignore so a missing file is
+		// non-fatal at the workflow level too.
+	}
+}
 
 interface PairingStats {
 	red: ProfileKey;
@@ -42,6 +85,49 @@ interface PairingStats {
 	outliers: number;
 	avgPly: number;
 	totalPlies: number;
+}
+
+function buildSummary(
+	runs: number,
+	plyCap: number,
+	matchesCompleted: number,
+	totals: {
+		redWins: number;
+		whiteWins: number;
+		unfinished: number;
+		outliers: number;
+	},
+	totalPlies: number[],
+	pairingMap: Map<string, PairingStats>,
+): BetaSummary {
+	for (const stats of pairingMap.values()) {
+		stats.avgPly = stats.totalPlies / Math.max(1, stats.matches);
+	}
+	const denom = Math.max(1, matchesCompleted);
+	const avgPly =
+		totalPlies.reduce((a, b) => a + b, 0) / Math.max(1, totalPlies.length);
+	return {
+		runs,
+		ply_cap: plyCap,
+		matches_completed: matchesCompleted,
+		timestamp: new Date().toISOString(),
+		totals: {
+			...totals,
+			outlierRate: Number((totals.outliers / denom).toFixed(4)),
+			avgPly: Number(avgPly.toFixed(2)),
+		},
+		pairings: [...pairingMap.values()].map((s) => {
+			const finished = s.redWins + s.whiteWins;
+			return {
+				...s,
+				avgPly: Number(s.avgPly.toFixed(2)),
+				redWinRate:
+					finished > 0 ? Number((s.redWins / finished).toFixed(3)) : 0,
+				whiteWinRate:
+					finished > 0 ? Number((s.whiteWins / finished).toFixed(3)) : 0,
+			};
+		}),
+	};
 }
 
 describe("broker — 1000-run beta gate", () => {
@@ -60,11 +146,16 @@ describe("broker — 1000-run beta gate", () => {
 
 			const RUNS = Number.parseInt(process.env.BETA_RUNS ?? "1000", 10);
 			const PLY_CAP = 200;
+			// Flush every N matches so a late-test failure or timeout
+			// still leaves a partial summary on disk for the artifact
+			// upload + diagnosis.
+			const FLUSH_EVERY = Math.max(9, Math.floor(RUNS / 50));
 
 			let outliers = 0;
 			let redWins = 0;
 			let whiteWins = 0;
 			let unfinished = 0;
+			let matchesCompleted = 0;
 			const totalPlies: number[] = [];
 
 			const pairingMap = new Map<string, PairingStats>();
@@ -91,99 +182,97 @@ describe("broker — 1000-run beta gate", () => {
 				return stats;
 			}
 
-			for (let i = 0; i < RUNS; i += 1) {
-				const pairing = pairings[i % pairings.length];
-				if (!pairing) throw new Error("no pairing — should be impossible");
-				const [red, white] = pairing;
-
-				// Per-match deterministic seed derived from the index so the
-				// run is reproducible. 16-hex-char seed matches the broker's
-				// expected coinFlipSeed shape.
-				const seed =
-					`${(i & 0xffffffff).toString(16).padStart(8, "0")}${"00".repeat(4)}`.slice(
-						0,
-						16,
-					);
-
-				const handle = createMatch({
-					redProfile: red,
-					whiteProfile: white,
-					coinFlipSeed: seed,
-					matchId: `beta-${i}`,
-				});
-				const result = await playToCompletion(handle, {
-					mode: "replay",
-					maxPlies: PLY_CAP,
-				});
-				const stats = getOrInitPairing(red, white);
-				stats.matches += 1;
-				stats.totalPlies += result.plies;
-				if (result.outlier) {
-					outliers += 1;
-					stats.outliers += 1;
-				}
-				if (result.winner === "red") {
-					redWins += 1;
-					stats.redWins += 1;
-				} else if (result.winner === "white") {
-					whiteWins += 1;
-					stats.whiteWins += 1;
-				} else {
-					unfinished += 1;
-					stats.unfinished += 1;
-				}
-				expect(handle.actions.length).toBe(result.plies);
-				expect(result.plies).toBeLessThanOrEqual(PLY_CAP);
-				totalPlies.push(result.plies);
-			}
-
-			// Finalise per-pairing avgPly + balance numbers.
-			for (const stats of pairingMap.values()) {
-				stats.avgPly = stats.totalPlies / Math.max(1, stats.matches);
-			}
-
-			const concluded = RUNS - outliers;
-			const avgPly =
-				totalPlies.reduce((a, b) => a + b, 0) / Math.max(1, totalPlies.length);
-			expect(concluded + outliers).toBe(RUNS);
-
-			const summary = {
-				runs: RUNS,
-				ply_cap: PLY_CAP,
-				timestamp: new Date().toISOString(),
-				totals: {
-					redWins,
-					whiteWins,
-					unfinished,
-					outliers,
-					outlierRate: Number((outliers / RUNS).toFixed(4)),
-					avgPly: Number(avgPly.toFixed(2)),
-				},
-				pairings: [...pairingMap.values()].map((s) => {
-					const finished = s.redWins + s.whiteWins;
-					return {
-						...s,
-						avgPly: Number(s.avgPly.toFixed(2)),
-						redWinRate:
-							finished > 0 ? Number((s.redWins / finished).toFixed(3)) : 0,
-						whiteWinRate:
-							finished > 0 ? Number((s.whiteWins / finished).toFixed(3)) : 0,
-					};
-				}),
-			};
+			let summary: BetaSummary = buildSummary(
+				RUNS,
+				PLY_CAP,
+				0,
+				{ redWins: 0, whiteWins: 0, unfinished: 0, outliers: 0 },
+				[],
+				pairingMap,
+			);
 
 			try {
-				writeFileSync(
-					"/tmp/chonkers-beta-summary.json",
-					JSON.stringify(summary, null, 2),
+				for (let i = 0; i < RUNS; i += 1) {
+					const pairing = pairings[i % pairings.length];
+					if (!pairing) throw new Error("no pairing — should be impossible");
+					const [red, white] = pairing;
+
+					// Per-match deterministic seed derived from the index so the
+					// run is reproducible. 16-hex-char seed matches the broker's
+					// expected coinFlipSeed shape.
+					const seed =
+						`${(i & 0xffffffff).toString(16).padStart(8, "0")}${"00".repeat(4)}`.slice(
+							0,
+							16,
+						);
+
+					const handle = createMatch({
+						redProfile: red,
+						whiteProfile: white,
+						coinFlipSeed: seed,
+						matchId: `beta-${i}`,
+					});
+					const result = await playToCompletion(handle, {
+						mode: "replay",
+						maxPlies: PLY_CAP,
+					});
+					const stats = getOrInitPairing(red, white);
+					stats.matches += 1;
+					stats.totalPlies += result.plies;
+					if (result.outlier) {
+						outliers += 1;
+						stats.outliers += 1;
+					}
+					if (result.winner === "red") {
+						redWins += 1;
+						stats.redWins += 1;
+					} else if (result.winner === "white") {
+						whiteWins += 1;
+						stats.whiteWins += 1;
+					} else {
+						unfinished += 1;
+						stats.unfinished += 1;
+					}
+					expect(handle.actions.length).toBe(result.plies);
+					expect(result.plies).toBeLessThanOrEqual(PLY_CAP);
+					totalPlies.push(result.plies);
+					matchesCompleted += 1;
+
+					if (matchesCompleted % FLUSH_EVERY === 0) {
+						summary = buildSummary(
+							RUNS,
+							PLY_CAP,
+							matchesCompleted,
+							{ redWins, whiteWins, unfinished, outliers },
+							totalPlies,
+							pairingMap,
+						);
+						writeSummary(summary);
+					}
+				}
+
+				summary = buildSummary(
+					RUNS,
+					PLY_CAP,
+					matchesCompleted,
+					{ redWins, whiteWins, unfinished, outliers },
+					totalPlies,
+					pairingMap,
 				);
-			} catch {
-				// Filesystem write best-effort — failure shouldn't break
-				// the test (e.g., CI on a read-only filesystem).
+			} finally {
+				// Always flush — even if the test threw / timed out
+				// mid-loop, the artifact survives for diagnosis.
+				writeSummary(summary);
 			}
 
+			expect(matchesCompleted).toBe(RUNS);
+			const concluded = RUNS - outliers;
+			expect(concluded + outliers).toBe(RUNS);
+			const avgPly =
+				totalPlies.reduce((a, b) => a + b, 0) / Math.max(1, totalPlies.length);
+
 			console.log(
-				`beta-${RUNS}: ${redWins} red, ${whiteWins} white, ${unfinished} draw, ${outliers} outliers (rate=${((outliers / RUNS) * 100).toFixed(2)}%, avg ply=${avgPly.toFixed(1)})`,
+				`beta-${RUNS}: ${redWins} red, ${whiteWins} white, ${unfinished} draw, ${outliers} outliers (rate=${((outliers / Math.max(1, RUNS)) * 100).toFixed(2)}%, avg ply=${avgPly.toFixed(1)})`,
 			);
 			for (const p of summary.pairings) {
 				const finished = p.redWins + p.whiteWins;

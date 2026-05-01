@@ -56,8 +56,10 @@ jobs:
 
       - name: 1000-run beta gate (node-tier)
         # Pure TS, no DOM. Asserts per-pairing 60/40 + ≤ 1% outliers.
-        # Writes `/tmp/chonkers-beta-summary.json` with full per-
-        # pairing breakdown for the artifact upload below.
+        # Writes the beta summary to `os.tmpdir()/chonkers-beta-summary.json`
+        # — on ubuntu-latest that's `/tmp/chonkers-beta-summary.json`.
+        # The test flushes the partial summary every ~20 matches so a
+        # late-test failure or timeout still leaves an artifact.
         run: pnpm test:beta
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
