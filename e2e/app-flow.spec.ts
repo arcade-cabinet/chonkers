@@ -11,35 +11,7 @@
  */
 
 import { expect, test } from "@playwright/test";
-
-interface ChonkersTestHook {
-	readonly screen: string | null;
-	readonly matchId: string | null;
-	readonly turn: "red" | "white" | null;
-	readonly winner: "red" | "white" | null;
-	readonly plyCount: number;
-	readonly humanColor: "red" | "white" | null;
-	readonly aiThinking: boolean;
-	readonly actions: {
-		startNewMatch: (humanColor?: "red" | "white" | null) => void;
-		stepTurn: () => void;
-		quitMatch: () => void;
-		setSelection: (
-			cell: { readonly col: number; readonly row: number } | null,
-		) => void;
-	};
-	readonly scene: {
-		openSplitRadialAt: (col: number, row: number, height: number) => boolean;
-		closeSplitRadial: () => void;
-		openPauseRadial: () => void;
-	};
-}
-
-declare global {
-	interface Window {
-		readonly __chonkers?: ChonkersTestHook;
-	}
-}
+import "./_lib/test-hook";
 
 test.describe("smoke — boot + AI-vs-AI match", () => {
 	test("lobby renders + new match starts + game progresses", async ({

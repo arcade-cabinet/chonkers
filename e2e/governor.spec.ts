@@ -33,30 +33,7 @@
  */
 
 import { expect, test } from "@playwright/test";
-
-interface ChonkersTestHook {
-	readonly screen: string | null;
-	readonly matchId: string | null;
-	readonly turn: "red" | "white" | null;
-	readonly winner: "red" | "white" | null;
-	readonly plyCount: number;
-	readonly humanColor: "red" | "white" | null;
-	readonly aiThinking: boolean;
-	readonly actions: {
-		startNewMatch: (humanColor?: "red" | "white" | null) => void;
-		stepTurn: () => void;
-		quitMatch: () => void;
-		setSelection: (
-			cell: { readonly col: number; readonly row: number } | null,
-		) => void;
-	};
-}
-
-declare global {
-	interface Window {
-		readonly __chonkers?: ChonkersTestHook;
-	}
-}
+import "./_lib/test-hook";
 
 // Per-match ply ceiling — matches the alpha 100-run governor's PLY_CAP.
 // Enough headroom for any actual game (longest observed alpha match was
