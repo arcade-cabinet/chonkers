@@ -18,8 +18,14 @@ const isCI = !!process.env.CI;
 
 export default defineConfig({
 	testDir: "./e2e",
-	timeout: 60_000,
-	expect: { timeout: 5_000 },
+	// Per-test timeout. CI runners are 6-10× slower than local (cold
+	// cache + headless chromium's software WebGL); a Continue Game
+	// flow that does cold-boot + match start + ply step + reload +
+	// cold-boot again can take 70-90s on CI. Local-CI=true runs in
+	// 1.8min for the whole suite, so the larger ceiling doesn't slow
+	// dev iteration.
+	timeout: isCI ? 180_000 : 60_000,
+	expect: { timeout: isCI ? 15_000 : 5_000 },
 	forbidOnly: isCI,
 	retries: isCI ? 2 : 0,
 	workers: 1,
