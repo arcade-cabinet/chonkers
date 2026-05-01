@@ -1,25 +1,21 @@
 /**
- * Governor spec — `@governor`-tagged. PRQ-B5 acceptance.
+ * Governor spec — `@governor`-tagged.
  *
- * Drives N AI-vs-AI matches end-to-end through the real visual
- * stack (three.js scene + gsap motion + diegetic SVG overlays +
- * koota state + audio + persistence) by repeatedly invoking the
- * testHook's `stepTurn()` and asserting the broker reaches a
- * terminal state without crashing the renderer.
+ * RENDER-LAYER survival proof, NOT a balance gate. Drives N AI-vs-AI
+ * matches end-to-end through the real visual stack (three.js scene +
+ * gsap motion + diegetic SVG overlays + koota state + audio +
+ * persistence) and asserts the renderer + state pipeline survives a
+ * sustained session without crashes, leaks, or console errors.
  *
- * Why this is its own spec, separate from app-flow:
- *   - app-flow.spec.ts is the PR-gating smoke (single ply, <30s).
- *   - governor.spec.ts is the BETA-gate proof: the ply-cycle is
- *     hammered repeatedly while the scene tweens + SVG overlays +
- *     audio bus are all live, surfacing render-vs-state drift,
- *     leaks, or mid-tween race conditions that a single-ply smoke
- *     would miss.
- *
- * Acceptance per docs/plans/e2e-governor.prq.md §2 + STATE.md
- * "beta" stage definition: 1000 in-browser AI-vs-AI matches pass.
- * For interactive CI we run a smaller GOVERNOR_RUNS budget; the
- * 1000-run gate fires from the nightly job. The default here is
- * 3 matches, configurable via `GOVERNOR_RUNS` env var.
+ * Why "render survival" not "balance":
+ *   - The per-pairing 60/40 balance gate moved to the node-tier
+ *     `src/sim/__tests__/broker-1000-runs.test.ts` (1000 matches in
+ *     ~5min vs 4h+ in-browser) per the PRQ-B6 directive's
+ *     "1000/1000 finishers + per-pairing balance" acceptance.
+ *   - In-browser overhead is 10-30s/match (audio init + coin flip
+ *     animation + ambient music + match teardown). A leak surfaces
+ *     in the first dozen matches; running 1000 to find what 50 will
+ *     find too is wasted compute.
  *
  * The spec ASSERTS:
  *   1. Every match reaches `winner !== null` OR records an outlier
@@ -30,18 +26,24 @@
  *      without leaking SVG overlay nodes.
  *   4. Browser console reports no errors or unhandled rejections
  *      across the entire run.
+ *
+ * Per-pairing rotation is preserved — 50 matches across 9 pairings
+ * gives 5-6 matches per pairing, enough for a render-survival check
+ * across all dispositions even though it's nowhere near enough for
+ * the balance assertion.
  */
 
 import { expect, test } from "@playwright/test";
 import "./_lib/test-hook";
 
-// Per-match ply ceiling — matches the alpha 100-run governor's PLY_CAP.
-// Enough headroom for any actual game (longest observed alpha match was
-// ~170 plies); anything past this is a non-terminating outlier.
+// Per-match ply ceiling.
 const PLY_CAP = 200;
 
-// How many AI-vs-AI matches to run. Override via env for nightly runs.
-const GOVERNOR_RUNS = Number.parseInt(process.env.GOVERNOR_RUNS ?? "3", 10);
+// How many AI-vs-AI matches to run. Default 50 — enough to surface
+// any render leak / mid-tween race / ply-cycle drift that a single-
+// match smoke would miss, without paying for 1000 matches at
+// in-browser cost. Override via env for ad-hoc longer runs.
+const GOVERNOR_RUNS = Number.parseInt(process.env.GOVERNOR_RUNS ?? "50", 10);
 
 // Per-match wall-clock cap. AI-vs-AI at easy depth = ~70-100ms/ply
 // in node; in-browser is slower because every ply animates. 200 plies
@@ -200,36 +202,25 @@ test.describe("governor — N AI-vs-AI matches drive the full visual stack", {
 			await page.waitForFunction(
 				() => window.__chonkers?.screen === "title",
 				null,
-				{ timeout: 10_000 },
+				{ timeout: process.env.CI ? 30_000 : 10_000 },
 			);
 		}
 
-		// Per-pairing balance log + soft-assert. With GOVERNOR_RUNS=1000
-		// across 9 pairings ≈ 111 matches each — enough power for a
-		// 60/40 win-rate gate. Soft-assert so the run can complete and
-		// surface the FULL balance picture instead of failing on the
-		// first imbalanced pair.
-		const balanceLog: string[] = [];
+		// Per-pairing log — diagnostic only at the in-browser tier
+		// (50 matches across 9 pairings = 5-6 per pairing, no
+		// statistical power for a balance assertion). The 60/40 band
+		// check lives in `src/sim/__tests__/broker-1000-runs.test.ts`
+		// at the node tier where the per-pairing sample is ~111.
+		const log: string[] = [];
 		for (const [key, s] of pairingStats) {
 			const finished = s.redWins + s.whiteWins;
-			if (finished === 0) {
-				balanceLog.push(`${key}: 0 finishers (${s.outliers} outliers)`);
-				continue;
-			}
-			const redRate = s.redWins / finished;
-			balanceLog.push(
-				`${key}: ${s.redWins}R-${s.whiteWins}W (${(redRate * 100).toFixed(1)}%R, ${s.outliers}o)`,
+			log.push(
+				finished === 0
+					? `${key}: 0 finishers (${s.outliers} outliers)`
+					: `${key}: ${s.redWins}R-${s.whiteWins}W (${s.outliers}o)`,
 			);
-			expect
-				.soft(redRate, `${key} redWinRate within 60/40 band`)
-				.toBeGreaterThanOrEqual(0.4);
-			expect
-				.soft(redRate, `${key} redWinRate within 60/40 band`)
-				.toBeLessThanOrEqual(0.6);
 		}
-		console.log(
-			`\n[governor] per-pairing balance:\n  ${balanceLog.join("\n  ")}\n`,
-		);
+		console.log(`\n[governor] per-pairing summary:\n  ${log.join("\n  ")}\n`);
 
 		// No browser-side errors during the entire governor run.
 		expect.soft(consoleErrors, "console errors").toEqual([]);

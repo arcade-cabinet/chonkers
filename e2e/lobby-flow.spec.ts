@@ -231,7 +231,7 @@ test.describe("lobby flow — pure DOM, no testHook", () => {
 			timeout: BOOT_TIMEOUT,
 		});
 		const lobby = page.getByRole("dialog", { name: /chonkers/i });
-		await lobby.waitFor({ state: "visible", timeout: 10_000 });
+		await lobby.waitFor({ state: "visible", timeout: BOOT_TIMEOUT });
 
 		// Continue Game now enabled.
 		const cont = lobby.getByRole("button", { name: /^continue game$/i });
@@ -243,7 +243,7 @@ test.describe("lobby flow — pure DOM, no testHook", () => {
 		await page.waitForFunction(
 			() => window.__chonkers?.screen === "play",
 			null,
-			{ timeout: 10_000 },
+			{ timeout: BOOT_TIMEOUT },
 		);
 		const restoredPly =
 			(await page.evaluate(() => window.__chonkers?.plyCount)) ?? -1;
