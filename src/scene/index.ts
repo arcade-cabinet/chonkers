@@ -577,6 +577,26 @@ function tick(): void {
 // to the input layer's selection path. See src/sim/board-projection.ts
 // for the contract; PRQ-C3a for the why.
 const projectionScratch = new THREE.Vector3();
+const cellHalfX = (BOARD_COLS * tokens.board.cellSize) / 2;
+const cellHalfZ = (BOARD_ROWS * tokens.board.cellSize) / 2;
+const bezelHalfX = cellHalfX + tokens.bezel.frameThickness;
+const bezelHalfZ = cellHalfZ + tokens.bezel.frameThickness;
+
+function projectLocalToScreen(
+	localX: number,
+	localY: number,
+	localZ: number,
+	rect: DOMRect,
+): { x: number; y: number; offscreen: boolean } {
+	projectionScratch.set(localX, localY, localZ);
+	board.group.localToWorld(projectionScratch);
+	projectionScratch.project(camera);
+	const offscreen = projectionScratch.z >= 1 || projectionScratch.z <= -1;
+	const x = (projectionScratch.x * 0.5 + 0.5) * rect.width + rect.left;
+	const y = (projectionScratch.y * -0.5 + 0.5) * rect.height + rect.top;
+	return { x, y, offscreen };
+}
+
 function updateBoardProjection(): void {
 	const screen = sim.worldEntity.get(Screen)?.value;
 	if (screen !== "play") {
@@ -587,15 +607,24 @@ function updateBoardProjection(): void {
 	for (let row = 0; row < BOARD_ROWS; row += 1) {
 		for (let col = 0; col < BOARD_COLS; col += 1) {
 			const local = posToVector3({ col, row });
-			projectionScratch.set(local.x, local.y, local.z);
-			board.group.localToWorld(projectionScratch);
-			projectionScratch.project(camera);
-			const offscreen = projectionScratch.z >= 1 || projectionScratch.z <= -1;
-			const x = (projectionScratch.x * 0.5 + 0.5) * rect.width + rect.left;
-			const y = (projectionScratch.y * -0.5 + 0.5) * rect.height + rect.top;
-			boardProjection.cells[cellIndex(col, row)] = { x, y, offscreen };
+			boardProjection.cells[cellIndex(col, row)] = projectLocalToScreen(
+				local.x,
+				local.y,
+				local.z,
+				rect,
+			);
 		}
 	}
+	// Bezel top-right corner in board-local coords: +X = right side
+	// from red's POV, -Z = white's far edge. After 180° rotation
+	// these flip relative to screen — that's exactly the point of
+	// projecting per frame instead of pinning to viewport.
+	boardProjection.bezelTopRight = projectLocalToScreen(
+		bezelHalfX,
+		0,
+		-bezelHalfZ,
+		rect,
+	);
 	boardProjection.frame += 1;
 	boardProjection.ready = true;
 }

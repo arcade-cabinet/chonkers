@@ -44,14 +44,29 @@ function emptyCells(): CellProjection[] {
 	}));
 }
 
+/**
+ * Bezel corner projection — top-right in board-local coords. The scene
+ * computes this each frame so the Solid `BezelHamburger` can anchor
+ * itself to the corner instead of the viewport edge. Tracks the
+ * board through tilts + 180° rotations.
+ */
+export interface BezelCornerProjection {
+	readonly x: number;
+	readonly y: number;
+	readonly offscreen: boolean;
+}
+
 export const boardProjection: {
 	cells: CellProjection[];
+	/** Top-right bezel corner in screen-space CSS pixels. */
+	bezelTopRight: BezelCornerProjection;
 	/** Bumped any time the scene writes a fresh frame. */
 	frame: number;
 	/** True once the scene has written at least one frame. */
 	ready: boolean;
 } = {
 	cells: emptyCells(),
+	bezelTopRight: { x: 0, y: 0, offscreen: true },
 	frame: 0,
 	ready: false,
 };
@@ -64,6 +79,7 @@ export function cellIndex(col: number, row: number): number {
 /** Reset to all-offscreen. Called on match teardown so stale coords don't render. */
 export function clearBoardProjection(): void {
 	boardProjection.cells = emptyCells();
+	boardProjection.bezelTopRight = { x: 0, y: 0, offscreen: true };
 	boardProjection.frame = 0;
 	boardProjection.ready = false;
 }

@@ -197,11 +197,16 @@
 	margin: 0 auto;
 }
 
-/* Bezel hamburger — top-right of the viewport. */
+/* Bezel hamburger — anchored per-frame to the projected top-right
+ * corner of the bezel mesh (PRQ-C5). transform is set inline by the
+ * Solid component's rAF loop; margin-left/top centres the 44×44 hit
+ * target on the projected point. */
 .ck-hamburger {
 	position: fixed;
-	top: 16px;
-	right: 16px;
+	top: 0;
+	left: 0;
+	margin-left: -22px;
+	margin-top: -22px;
 	width: 44px;
 	height: 44px;
 	background: rgba(26, 15, 8, 0.7);
@@ -214,6 +219,7 @@
 	align-items: center;
 	justify-content: center;
 	z-index: 30;
+	will-change: transform;
 }
 
 .ck-hamburger svg {

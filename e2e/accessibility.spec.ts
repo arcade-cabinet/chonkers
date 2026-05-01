@@ -109,8 +109,14 @@ test.describe("accessibility — diegetic UI surfaces", { tag: "@axe" }, () => {
 		);
 
 		// Open the Solid pause overlay via the bezel hamburger button
-		// (the production path; no testHook shortcut).
-		await page.getByRole("button", { name: /menu|pause/i }).click();
+		// (the production path; no testHook shortcut). The button is
+		// anchored to the projected bezel corner per-frame, so it can
+		// drift when the board tip-tween is mid-flight — `force: true`
+		// bypasses Playwright's stability poll which would otherwise
+		// chase the moving target until timeout.
+		await page
+			.getByRole("button", { name: /menu|pause/i })
+			.click({ force: true });
 		await page
 			.getByRole("dialog", { name: /paused|pause/i })
 			.waitFor({ state: "visible", timeout: 5_000 });
