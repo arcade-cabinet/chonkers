@@ -1,28 +1,29 @@
 /**
  * Playwright config for the chonkers e2e suite.
  *
- * - **Smoke** (`pnpm test:e2e:ci`) — boots the dev server, asserts
- *   the title screen renders, starts an AI-vs-AI match, and
- *   confirms the game progresses. Runs in <30s on a single
- *   chromium project. PR-gating.
- * - **Governor** (`@governor` tag, nightly) — drives the AI through
- *   the UI and asserts state-machine fidelity. PRQ-5 follow-up
- *   work; the smoke test gates merges today, governor gates beta.
+ * Tier 1 — chromium desktop. The PR-gating tier; smoke runs here on
+ * every PR via `pnpm test:e2e:ci` (under 30s).
  *
- * Mobile + iPad projects land alongside the governor in the beta
- * cycle. Today: chromium desktop only.
+ * Tier 2 — mobile + iPad projects. The form factors the released app
+ * actually ships to (Capacitor wraps the same web bundle for Android
+ * + iOS). The smoke spec runs on every project; the governor + the
+ * future a11y spec run on chromium desktop only — the mobile/iPad
+ * projects exist to surface viewport / touch / DPR regressions in the
+ * boot path, not to re-run multi-minute AI-vs-AI matches three times.
  */
 
 import { defineConfig, devices } from "@playwright/test";
+
+const isCI = !!process.env.CI;
 
 export default defineConfig({
 	testDir: "./e2e",
 	timeout: 60_000,
 	expect: { timeout: 5_000 },
-	forbidOnly: !!process.env.CI,
-	retries: process.env.CI ? 2 : 0,
+	forbidOnly: isCI,
+	retries: isCI ? 2 : 0,
 	workers: 1,
-	reporter: process.env.CI ? "github" : "list",
+	reporter: isCI ? "github" : "list",
 	use: {
 		baseURL: "http://localhost:5173/chonkers/",
 		trace: "on-first-retry",
@@ -33,11 +34,32 @@ export default defineConfig({
 			name: "chromium",
 			use: { ...devices["Desktop Chrome"] },
 		},
+		{
+			// Pixel-class Android. Smoke only; governor would 3× the
+			// already-9min runtime to no signal — touch input is exercised
+			// by the smoke spec's testHook gestures.
+			name: "android-pixel",
+			use: { ...devices["Pixel 7"] },
+			grep: /smoke/,
+		},
+		{
+			// iPhone 14 — primary iOS target for v1.
+			name: "ios-iphone",
+			use: { ...devices["iPhone 14"] },
+			grep: /smoke/,
+		},
+		{
+			// iPad — landscape-only is the canonical orientation per
+			// DESIGN.md (the board is wider than tall).
+			name: "ipad-landscape",
+			use: { ...devices["iPad Pro 11 landscape"] },
+			grep: /smoke/,
+		},
 	],
 	webServer: {
 		command: "pnpm dev",
 		url: "http://localhost:5173",
-		reuseExistingServer: !process.env.CI,
+		reuseExistingServer: !isCI,
 		timeout: 120_000,
 		stdout: "pipe",
 		stderr: "pipe",
