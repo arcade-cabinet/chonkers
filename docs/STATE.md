@@ -1,11 +1,11 @@
 ---
 title: State
-updated: 2026-04-30
+updated: 2026-05-01
 status: current
 domain: context
 ---
 
-<!-- Last update: 2026-04-30 (PRQ-B4 + B5 shipped via PR #11). -->
+<!-- Last update: 2026-05-01 (PRQ-C1..C5 + pieces.dispose fix shipped on prd/threejs-shell; PRQ-B6 governor moved to dedicated CI workflow via PR #12). -->
 
 
 # State
@@ -40,12 +40,12 @@ Stages reflect *kind of validation completed*, not *version number*. release-ple
 
 ## What is in flight
 
-- **`prd/threejs-shell` (PR #11)** — render-layer rebuild SHIPPED 2026-04-30. Vanilla three.js + gsap + diegetic SVG overlay; KV-only persistence; PRQ-T0..T9 + B4 + B5 landed.
-- **PRQ-C* (this branch)** — branded centered overlays + Pass-and-Play. Reintroduces `app/` at root for Solid TSX overlays (lobby title, new-game config with difficulty + PaP picker, settings, pause, end-game). Diegetic SVG keeps the splitting radial; menus move to centered modals. Pass-and-Play hotseat ships: both sides human, broker never auto-dispatches, pivot-drag turn-end rotates board+frame 180° so next player sees their orientation upright. PRD: [docs/plans/lobby-overlay-pap.prq.md](./plans/lobby-overlay-pap.prq.md). Flows: [UI_FLOWS.md](./UI_FLOWS.md). Tasks: C1 docs (this commit), C2 e2e specs, C3 Solid + broker + scene rotation.
+- **`prd/threejs-shell` (PR #11)** — render-layer rebuild + PRQ-C* arc + reviewer fixes. Vanilla three.js + gsap + diegetic SVG splitting radial; Solid TSX branded overlays at `app/` for Lobby / NewGame / Settings / Pause / EndGame; bezel hamburger anchored per-frame to projected bezel corner; Pass-and-Play hotseat with 180° handoff; Continue Game (KV-only persistence). PRQ-T0..T9 + B4 + B5 + C1..C5 landed; ~50 coderabbit reviewer findings absorbed across 5 forward-fix commits. Awaiting beta gate (PRQ-B6) before merge.
+- **`ci/governor-workflow` (PR #12)** — 1-file PR adding `.github/workflows/governor.yml` to main so PRQ-B6 (1000-run AI-vs-AI in-browser governor) can be dispatched against `prd/threejs-shell`. Local-shell runs proved fragile; CI is the right primitive. Schedule: weekly Sun 08:00 UTC + manual `workflow_dispatch` with overridable run count.
 
 ## What has not started
 
-- **beta gate (1000-run governor cycle)**: PRQ-B4 (engine + AI tune) + PRQ-B5 (e2e governor + a11y) shipped via PR #11 on `prd/threejs-shell`. The 100-run alpha governor and 3-run interactive governor both pass green; the 1000-run cycle for the formal beta-gate flip runs separately on a long-budget runner via `GOVERNOR_RUNS=1000 pnpm test:e2e:governor` once PR #11 merges.
+- **beta gate (1000-run governor cycle)**: PRQ-B4 (engine + AI tune) + PRQ-B5 (e2e governor + a11y) shipped on `prd/threejs-shell`. The 100-run alpha governor and 3-run interactive governor both pass green; the 1000-run cycle dispatches via the new `.github/workflows/governor.yml` (PR #12) — `gh workflow run governor.yml --ref prd/threejs-shell -f runs=1000` once PR #12 merges, then beta gate flips and PR #11 can squash-merge.
 - **rc gate (PRQ-R1)**: raise GOVERNOR_RUNS to 10000 in the e2e governor + Maestro Android smoke on real APK. The mobile/iPad Playwright projects are already wired (chromium + android-pixel + ios-iphone + ipad-landscape) — R1 only needs the higher run count. Lands as a post-beta PR.
 - **store-listing prep (PRQ-R2)**: real iOS + Android screenshots via Maestro, privacy policy + ToS, app icon + splash + adaptive icon, store-listing copy under `docs/store/`. Tag rc-1.0.0. Final pre-release PR.
 
