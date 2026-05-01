@@ -36,9 +36,13 @@ jobs:
       group: governor-${{ github.workflow }}
       cancel-in-progress: false
     runs-on: ubuntu-latest
-    # Node 1000-run ~5min + browser 50-run ~12min + setup ~2min ≈
-    # 20min budget. 60 leaves headroom without wasting a 6h slot.
-    timeout-minutes: 60
+    # Node 1000-run measured ~11s/match on CI = ~3h. Browser 50-run
+    # ~12min. Total ~3.5h with setup. Workflow ceiling is 6h on
+    # free-tier ubuntu-latest; 240min leaves comfortable headroom
+    # while still capping a runaway run. (First attempt at 60min
+    # was too tight — partial 320-match summary surfaced the real
+    # per-match cost.)
+    timeout-minutes: 240
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
