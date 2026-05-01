@@ -27,6 +27,7 @@ import { decideFirstPlayer } from "./coinFlip";
 import {
 	AiThinking,
 	HoldProgress,
+	type HumanColor,
 	Match,
 	piecesFromBoard,
 	Screen,
@@ -107,8 +108,23 @@ function upsert<T>(
 	}
 }
 
+/**
+ * Pick the post-terminal Screen based on humanColor + winner:
+ *   - "red"/"white" (vs AI): "win" if the human won, "lose" otherwise.
+ *   - "both" (PaP): "spectator-result" — both players sat at the
+ *     table; the end-game overlay shows "Red wins" / "White wins"
+ *     generically without picking a sad face for either of them.
+ *   - null (sim mode): "spectator-result" — no human to address.
+ */
+function terminalScreen(humanColor: HumanColor, winner: Color): ScreenKind {
+	if (humanColor === "red" || humanColor === "white") {
+		return winner === humanColor ? "win" : "lose";
+	}
+	return "spectator-result";
+}
+
 interface SyncMatchTraitsContext {
-	readonly humanColor: Color | null;
+	readonly humanColor: HumanColor;
 	readonly plyCount: number;
 }
 
@@ -142,7 +158,7 @@ function syncMatchTraits(sim: SimWorld, ctx: SyncMatchTraitsContext): void {
 
 export interface NewMatchInput
 	extends Pick<CreateMatchOptions, "redProfile" | "whiteProfile"> {
-	readonly humanColor: Color | null;
+	readonly humanColor: HumanColor;
 	readonly coinFlipSeed?: string;
 }
 
@@ -212,20 +228,16 @@ export function buildSimActions(sim: SimWorld) {
 				const newPly = result.persistedMove ? priorPly + 1 : priorPly;
 				syncMatchTraits(sim, { humanColor, plyCount: newPly });
 				if (result.terminal && handle.game.winner) {
-					if (humanColor === null) {
-						sim.worldEntity.set(Screen, { value: "spectator-result" });
-					} else {
-						sim.worldEntity.set(Screen, {
-							value: handle.game.winner === humanColor ? "win" : "lose",
-						});
-					}
+					sim.worldEntity.set(Screen, {
+						value: terminalScreen(humanColor, handle.game.winner),
+					});
 				}
 			} finally {
 				sim.worldEntity.set(AiThinking, { value: false });
 			}
 		},
 
-		syncTraits(ctx: { humanColor: Color | null; plyCount: number }): void {
+		syncTraits(ctx: { humanColor: HumanColor; plyCount: number }): void {
 			syncMatchTraits(sim, ctx);
 		},
 
@@ -247,13 +259,9 @@ export function buildSimActions(sim: SimWorld) {
 			syncMatchTraits(sim, { humanColor, plyCount: newPly });
 			sim.worldEntity.set(Selection, { cell: null });
 			if (result.terminal && handle.game.winner) {
-				if (humanColor === null) {
-					sim.worldEntity.set(Screen, { value: "spectator-result" });
-				} else {
-					sim.worldEntity.set(Screen, {
-						value: handle.game.winner === humanColor ? "win" : "lose",
-					});
-				}
+				sim.worldEntity.set(Screen, {
+					value: terminalScreen(humanColor, handle.game.winner),
+				});
 			}
 		},
 
@@ -264,9 +272,10 @@ export function buildSimActions(sim: SimWorld) {
 			const prior = sim.worldEntity.get(Match);
 			const humanColor = prior?.humanColor ?? null;
 			const mover = handle.game.turn;
+			const newWinner: Color = mover === "red" ? "white" : "red";
 			handle.game = {
 				...handle.game,
-				winner: mover === "red" ? "white" : "red",
+				winner: newWinner,
 			};
 			if (sim.onMatchEnd) await sim.onMatchEnd(handle);
 			if (sim.epoch !== epoch || sim.handle !== handle) return;
@@ -274,13 +283,9 @@ export function buildSimActions(sim: SimWorld) {
 				humanColor,
 				plyCount: prior?.plyCount ?? 0,
 			});
-			if (humanColor === null) {
-				sim.worldEntity.set(Screen, { value: "spectator-result" });
-			} else {
-				sim.worldEntity.set(Screen, {
-					value: humanColor === mover ? "lose" : "win",
-				});
-			}
+			sim.worldEntity.set(Screen, {
+				value: terminalScreen(humanColor, newWinner),
+			});
 		},
 
 		previewFirstPlayer(seed: string): Color {

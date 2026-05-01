@@ -1,0 +1,233 @@
+/*
+ * Branded centered overlay styling. The look is deliberately
+ * restrained at this stage — typography, soft wood-toned cards,
+ * generous spacing. Visual brand polish lands in a follow-up R-stage
+ * tune.
+ */
+
+:root {
+	--ck-overlay-bg: rgba(26, 15, 8, 0.92);
+	--ck-card-bg: #2a1d11;
+	--ck-card-border: #4a3520;
+	--ck-text: #f5ebd8;
+	--ck-text-dim: #a89880;
+	--ck-accent: #e2b67a;
+	--ck-accent-hover: #f0c98c;
+	--ck-radius: 12px;
+}
+
+.ck-modal {
+	background: var(--ck-card-bg);
+	color: var(--ck-text);
+	border: 1px solid var(--ck-card-border);
+	border-radius: var(--ck-radius);
+	padding: 32px;
+	max-width: 640px;
+	width: calc(100vw - 48px);
+	max-height: 80vh;
+	overflow-y: auto;
+	box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+	font-family: "Lato", system-ui, sans-serif;
+}
+
+.ck-modal::backdrop {
+	background: var(--ck-overlay-bg);
+}
+
+.ck-btn {
+	font: inherit;
+	font-weight: 600;
+	font-size: 16px;
+	padding: 12px 24px;
+	border-radius: 8px;
+	border: 1px solid var(--ck-card-border);
+	background: transparent;
+	color: var(--ck-text);
+	cursor: pointer;
+	transition:
+		background 120ms,
+		color 120ms,
+		border-color 120ms;
+}
+
+.ck-btn--primary {
+	background: var(--ck-accent);
+	color: #1a0f08;
+	border-color: var(--ck-accent);
+}
+
+.ck-btn--primary:hover:not(:disabled) {
+	background: var(--ck-accent-hover);
+}
+
+.ck-btn--secondary:hover:not(:disabled) {
+	background: rgba(226, 182, 122, 0.12);
+}
+
+.ck-btn--tertiary {
+	color: var(--ck-text-dim);
+	border-color: transparent;
+}
+
+.ck-btn:disabled {
+	opacity: 0.4;
+	cursor: not-allowed;
+}
+
+.ck-btn:focus-visible {
+	outline: 2px solid var(--ck-accent);
+	outline-offset: 2px;
+}
+
+/* Lobby */
+.ck-lobby {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 24px;
+}
+
+.ck-lobby__title {
+	font-family: "Abril Fatface", "Lato", serif;
+	font-size: 56px;
+	font-weight: 400;
+	margin: 0;
+	color: var(--ck-accent);
+}
+
+.ck-lobby__buttons {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	width: 280px;
+}
+
+/* New game config */
+.ck-new-game__title,
+.ck-settings__title,
+.ck-pause__title,
+.ck-endgame__title {
+	font-family: "Abril Fatface", "Lato", serif;
+	font-size: 32px;
+	font-weight: 400;
+	margin: 0 0 24px 0;
+	color: var(--ck-accent);
+	text-align: center;
+}
+
+.ck-new-game__grid {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 16px;
+}
+
+@media (max-width: 480px) {
+	.ck-new-game__grid {
+		grid-template-columns: 1fr;
+	}
+}
+
+.ck-card {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	padding: 20px;
+	background: rgba(74, 53, 32, 0.4);
+	border: 1px solid var(--ck-card-border);
+	border-radius: var(--ck-radius);
+	color: var(--ck-text);
+	cursor: pointer;
+	text-align: left;
+	font: inherit;
+	min-height: 120px;
+	transition:
+		background 120ms,
+		border-color 120ms;
+}
+
+.ck-card:hover,
+.ck-card:focus-visible {
+	background: rgba(226, 182, 122, 0.16);
+	border-color: var(--ck-accent);
+	outline: none;
+}
+
+.ck-card__title {
+	font-family: "Abril Fatface", "Lato", serif;
+	font-size: 24px;
+	color: var(--ck-accent);
+}
+
+.ck-card__descriptor {
+	font-size: 14px;
+	color: var(--ck-text-dim);
+	line-height: 1.4;
+}
+
+/* Settings */
+.ck-settings__row {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 12px 0;
+	border-bottom: 1px solid var(--ck-card-border);
+}
+
+.ck-settings fieldset {
+	border: none;
+	margin: 0;
+	padding: 12px 0;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.ck-settings legend {
+	color: var(--ck-text-dim);
+	font-size: 14px;
+}
+
+/* Pause + EndGame */
+.ck-pause__buttons,
+.ck-endgame__buttons {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	width: 240px;
+	margin: 0 auto;
+}
+
+/* Bezel hamburger — top-right of the viewport. */
+.ck-hamburger {
+	position: fixed;
+	top: 16px;
+	right: 16px;
+	width: 44px;
+	height: 44px;
+	background: rgba(26, 15, 8, 0.7);
+	border: 1px solid var(--ck-card-border);
+	border-radius: 8px;
+	color: var(--ck-text);
+	cursor: pointer;
+	padding: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	z-index: 30;
+}
+
+.ck-hamburger svg {
+	width: 24px;
+	height: 24px;
+	fill: currentColor;
+}
+
+.ck-hamburger:hover {
+	background: rgba(26, 15, 8, 0.9);
+	border-color: var(--ck-accent);
+}
+
+.ck-hamburger:focus-visible {
+	outline: 2px solid var(--ck-accent);
+	outline-offset: 2px;
+}

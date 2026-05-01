@@ -34,11 +34,22 @@
 				pointer-events: none;
 				z-index: 10;
 			}
+			#ui-root {
+				position: fixed;
+				inset: 0;
+				pointer-events: none;
+				z-index: 20;
+			}
+			#ui-root > * {
+				pointer-events: auto;
+			}
 		</style>
 	</head>
 	<body>
 		<canvas id="scene-canvas"></canvas>
 		<div id="overlay"></div>
+		<div id="ui-root"></div>
 		<script type="module" src="/src/scene/index.ts"></script>
+		<script type="module" src="/app/main.tsx"></script>
 	</body>
 </html>

@@ -25,8 +25,9 @@ import {
 	loadAiState,
 	type ProfileKey,
 } from "@/ai";
-import type { Action, Color } from "@/engine";
+import type { Action } from "@/engine";
 import type { MatchHandle } from "@/sim/broker";
+import type { HumanColor } from "@/sim/traits";
 import { kv } from "./kv";
 
 const NAMESPACE = "match";
@@ -36,7 +37,7 @@ export interface ActiveMatchSnapshot {
 	readonly matchId: string;
 	readonly redProfile: ProfileKey;
 	readonly whiteProfile: ProfileKey;
-	readonly humanColor: Color | null;
+	readonly humanColor: HumanColor;
 	readonly coinFlipSeed: string;
 	readonly actions: ReadonlyArray<Action>;
 	/** Base64 of `dumpAiState(handle.ai.red)`. */
@@ -77,7 +78,7 @@ function base64ToBytes(b64: string): Uint8Array {
  */
 export function snapshotFromHandle(
 	handle: MatchHandle,
-	humanColor: Color | null,
+	humanColor: HumanColor,
 	startedAt: number,
 ): ActiveMatchSnapshot {
 	return {

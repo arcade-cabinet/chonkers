@@ -19,9 +19,7 @@
 
 import { expect, test } from "@playwright/test";
 
-test.describe("lobby flow — pure DOM, no testHook", {
-	tag: "@c3-pending",
-}, () => {
+test.describe("lobby flow — pure DOM, no testHook", () => {
 	test.beforeEach(async ({ page }) => {
 		// We deliberately do NOT pass ?testHook=1 — these tests prove
 		// the production overlay path works without dev-only surfaces.

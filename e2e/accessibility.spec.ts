@@ -33,13 +33,11 @@ test.describe("accessibility — diegetic UI surfaces", { tag: "@axe" }, () => {
 		});
 	});
 
-	test("lobby surface — Play + Resume affordances", async ({ page }) => {
-		// Wait for the lobby to fully mount.
-		await page.waitForFunction(
-			() => document.querySelectorAll(".ck-lobby-affordance").length >= 2,
-			null,
-			{ timeout: 10_000 },
-		);
+	test("lobby surface — branded centered overlay", async ({ page }) => {
+		// Wait for the Solid lobby <dialog> to mount.
+		await page
+			.getByRole("dialog", { name: /chonkers/i })
+			.waitFor({ state: "visible", timeout: 10_000 });
 
 		const results = await new AxeBuilder({ page })
 			.withTags(["wcag2a", "wcag2aa", "wcag21aa"])

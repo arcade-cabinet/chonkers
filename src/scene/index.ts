@@ -32,23 +32,21 @@ import {
 	type GameState,
 } from "@/engine";
 import {
-	type ActiveMatchSnapshot,
 	clearActiveMatch,
-	loadActiveMatch,
 	saveActiveMatch,
 	snapshotFromHandle,
 } from "@/persistence";
-import { decideFirstPlayer } from "@/sim";
+import { decideFirstPlayer, getSimSingleton } from "@/sim";
 import {
 	AiThinking,
+	type HumanColor,
 	Match,
 	type PiecePlacement,
 	Screen,
 	Selection,
 	type SelectionSnapshot,
 } from "@/sim/traits";
-import { buildSimActions, createSimWorld, type SimWorld } from "@/sim/world";
-import { tweenBoardTip } from "./animations";
+import { tweenBoardHandoff180, tweenBoardTip } from "./animations";
 import { buildBoard } from "./board";
 import { buildCamera, resizeCamera } from "./camera";
 import { buildCoinFlip, type CoinFlipHandle } from "./coinFlip";
@@ -59,7 +57,7 @@ import {
 	buildLobbyAffordances,
 	type LobbyAffordanceHandle,
 } from "./overlay/lobbyAffordances";
-import { type MenuRadialHandle, openMenuRadial } from "./overlay/menuRadial";
+import type { MenuRadialHandle } from "./overlay/menuRadial";
 import { buildSplitRadial } from "./overlay/splitRadial";
 import { buildPieces, loadPieceMaterials } from "./pieces";
 
@@ -131,9 +129,9 @@ resizeCamera(camera, canvas);
 
 // === Sim world bootstrap (no auto-newMatch — lobby first) ===
 const matchStartedAt = { current: Date.now() };
-const humanColorForSnapshot: { current: Color | null } = { current: "red" };
+const humanColorForSnapshot: { current: HumanColor } = { current: null };
 
-const sim: SimWorld = createSimWorld({
+const { sim, actions } = getSimSingleton({
 	onPlyCommit: async (handle) => {
 		try {
 			await saveActiveMatch(
@@ -155,8 +153,6 @@ const sim: SimWorld = createSimWorld({
 		}
 	},
 });
-
-const actions = buildSimActions(sim)(sim.world);
 
 // Audio bus — lazy init on first user interaction.
 let audioReady = false;
@@ -222,15 +218,19 @@ const inputCtx: InputHandles = installInput({
 		if (!m || m.humanColor === null) return false;
 		const thinking = sim.worldEntity.get(AiThinking)?.value ?? false;
 		const screen = sim.worldEntity.get(Screen)?.value;
-		return (
-			screen === "play" &&
-			m.turn === m.humanColor &&
-			!thinking &&
-			m.winner === null
-		);
+		if (screen !== "play" || m.winner !== null || thinking) return false;
+		// PaP: every turn is a human turn (the on-turn colour decides).
+		if (m.humanColor === "both") return true;
+		return m.turn === m.humanColor;
 	},
-	humanColor: (): Color | null =>
-		sim.worldEntity.get(Match)?.humanColor ?? null,
+	humanColor: (): Color | null => {
+		const m = sim.worldEntity.get(Match);
+		if (!m) return null;
+		// PaP: the "human colour" for input purposes is whoever's on
+		// turn (both players are human, just one holds the device).
+		if (m.humanColor === "both") return m.turn;
+		return m.humanColor;
+	},
 	setSelection: (cell): void => {
 		actions.setSelection(cell);
 		if (cell !== null) {
@@ -241,18 +241,44 @@ const inputCtx: InputHandles = installInput({
 		void commitHumanAction(action);
 	},
 	endHumanTurn: (): void => {
-		// The pivot-drag gesture. Clears the await-pivot flag, then
-		// dispatches the AI. The board-tip animation runs from the
-		// drag itself; tick()'s turn-change branch will see priorTurn
-		// === match.turn (already updated by us during the human's
-		// commit) and skip the redundant tween.
+		// Pivot-drag turn-end gesture.
 		const wasAwaiting = humanAwaitingPivot;
 		humanAwaitingPivot = false;
+		const m = sim.worldEntity.get(Match);
+		const isPap = m?.humanColor === "both";
 		if (wasAwaiting) {
+			if (isPap) {
+				// Pass-and-Play: full 180° handoff so the next player
+				// sees their orientation upright. No AI to dispatch.
+				const tipDir: 1 | -1 = m?.turn === "red" ? -1 : 1;
+				tweenBoardHandoff180({
+					boardGroup: board.group,
+					tipDirection: tipDir,
+					onComplete: () => {
+						// Mark the bezel's data-orientation so the e2e
+						// spec can assert the rotation completed. The
+						// scene exposes the bezel mesh via a DOM stand-
+						// in (`.ck-bezel-anchor`) — see updateBezelDom().
+						const turnNow = sim.worldEntity.get(Match)?.turn;
+						if (turnNow) {
+							document
+								.querySelectorAll<HTMLElement>(".ck-bezel-anchor")
+								.forEach((el) => {
+									el.dataset.orientation = turnNow;
+								});
+						}
+					},
+				});
+				return;
+			}
+			// vs-AI: short tip toward the new on-turn side.
 			const facing = sim.handle?.game.turn === "red" ? -1 : 1;
 			tweenBoardTip({ boardGroup: board.group, direction: facing });
 		}
-		void actions.stepTurn();
+		// vs-AI flow: dispatch the AI. PaP never calls stepTurn (no AI).
+		if (!isPap) {
+			void actions.stepTurn();
+		}
 	},
 });
 
@@ -393,7 +419,7 @@ const lobby: LobbyAffordanceHandle = buildLobbyAffordances({
 	canvas,
 });
 
-async function startNewMatch(humanColor: Color | null = "red"): Promise<void> {
+async function startNewMatch(humanColor: HumanColor = "red"): Promise<void> {
 	await ensureAudio();
 	humanColorForSnapshot.current = humanColor;
 	matchStartedAt.current = Date.now();
@@ -420,128 +446,39 @@ async function startNewMatch(humanColor: Color | null = "red"): Promise<void> {
 	})();
 }
 
-async function resumeFromSnapshot(
-	snapshot: ActiveMatchSnapshot,
-): Promise<void> {
-	await ensureAudio();
-	humanColorForSnapshot.current = snapshot.humanColor;
-	matchStartedAt.current = snapshot.startedAt;
-	actions.newMatch({
-		redProfile: snapshot.redProfile,
-		whiteProfile: snapshot.whiteProfile,
-		humanColor: snapshot.humanColor,
-		coinFlipSeed: snapshot.coinFlipSeed,
-	});
-	const handle = sim.handle;
-	if (!handle) return;
-	for (const action of snapshot.actions) {
-		handle.game = applyEngineAction(handle.game, action);
-	}
-	// Sync match traits with the new ply count + state.
-	actions.syncTraits({
-		humanColor: snapshot.humanColor,
-		plyCount: snapshot.actions.length,
-	});
-}
-
-let resumeAvailable = false;
-void (async () => {
-	const saved = await loadActiveMatch();
-	resumeAvailable = saved !== null;
-	refreshLobby();
-})();
+// PRQ-C3: resume hydration moved to a follow-up task (C3a). The
+// Solid Lobby.tsx greys the Continue button when no snapshot exists;
+// invoking it is currently a stub. The hydration code path here is
+// removed pending a clean broker-actions wrapper.
 
 function refreshLobby(): void {
+	// PRQ-C3: the lobby surface moved out of the diegetic SVG layer
+	// into the Solid branded overlay (`app/overlays/Lobby.tsx`). The
+	// scene still owns the demo-puck visuals (decorative), but the
+	// lobbyAffordances SVG is no longer wired — Solid handles New /
+	// Continue / Settings entirely. lobby.hide() is a no-op when the
+	// overlay was never shown.
 	const screen = sim.worldEntity.get(Screen)?.value;
-	if (screen === "title") {
-		demoPucks.group.visible = true;
-		lobby.show({
-			playTarget: demoPucks.redPuck,
-			resumeTarget: demoPucks.whitePuck,
-			resumeEnabled: resumeAvailable,
-			onPlay: () => {
-				lobby.hide();
-				demoPucks.group.visible = false;
-				void startNewMatch("red");
-			},
-			onResume: () => {
-				lobby.hide();
-				demoPucks.group.visible = false;
-				void (async () => {
-					const saved = await loadActiveMatch();
-					if (saved) await resumeFromSnapshot(saved);
-				})();
-			},
-		});
-	} else {
-		demoPucks.group.visible = false;
-		lobby.hide();
-	}
+	demoPucks.group.visible = screen === "title";
+	lobby.hide();
 }
 
 refreshLobby();
 
 // === End-game radial ===
-let endGameRadial: MenuRadialHandle | null = null;
-function openEndGameRadial(winner: Color, humanColor: Color | null): void {
-	if (endGameRadial) return;
-	// Anchor on a winning home-row piece if possible; fall back to
-	// board centre.
-	const winnerHomeRow = winner === "red" ? 10 : 0; // opponent's home
-	const match = sim.worldEntity.get(Match);
-	let target: THREE.Object3D | null = null;
-	if (match) {
-		for (const p of match.pieces) {
-			if (p.row === winnerHomeRow && p.color === winner) {
-				const top = pieces.topPuckAt(p.col, p.row);
-				if (top) {
-					target = top;
-					break;
-				}
-			}
-		}
-	}
-	if (!target) {
-		// Fallback: board centre. Spawn an invisible anchor.
-		const anchor = new THREE.Object3D();
-		anchor.position.set(0, 0.6, 0);
-		board.group.add(anchor);
-		target = anchor;
-	}
-
-	const heading =
-		humanColor === null
-			? `${winner === "red" ? "Red" : "White"} wins`
-			: humanColor === winner
-				? "You win"
-				: "You lose";
-
-	endGameRadial = openMenuRadial({
-		host: overlay,
-		camera,
-		canvas,
-		target,
-		slices: [
-			{
-				label: "Play again",
-				onSelect: () => {
-					endGameRadial = null;
-					actions.quitMatch();
-				},
-			},
-			{
-				label: heading,
-				onSelect: () => {
-					endGameRadial = null;
-					actions.quitMatch();
-				},
-			},
-		],
-	});
+// PRQ-C3: end-game surface moved out of the diegetic SVG layer
+// into the Solid branded overlay (`app/overlays/EndGame.tsx`). The
+// scene's role is now just to play the win/loss audio sting; the
+// overlay opens automatically when the Screen trait flips to "win" /
+// "lose" / "spectator-result". The function below is a no-op stub
+// retained so existing call sites in tick() compile.
+function openEndGameRadial(_winner: Color, _humanColor: HumanColor): void {
+	// no-op
 }
 
 // === Pause radial (bezel triple-tap detector) ===
-let pauseRadial: MenuRadialHandle | null = null;
+// PRQ-C3: pause radial moved to Solid (`app/overlays/Pause.tsx`).
+const pauseRadial = null as MenuRadialHandle | null;
 const knockTimes: number[] = [];
 function registerKnock(): void {
 	const now = performance.now();
@@ -559,44 +496,12 @@ function registerKnock(): void {
 }
 
 function openPauseRadial(): void {
-	if (pauseRadial) return;
-	const screen = sim.worldEntity.get(Screen)?.value;
-	if (screen !== "play") return;
-	const anchor = new THREE.Object3D();
-	anchor.position.set(0, 0.6, 0);
-	board.group.add(anchor);
-	pauseRadial = openMenuRadial({
-		host: overlay,
-		camera,
-		canvas,
-		target: anchor,
-		slices: [
-			{
-				label: "Resume",
-				onSelect: () => {
-					pauseRadial = null;
-					board.group.remove(anchor);
-				},
-			},
-			{
-				label: "Forfeit",
-				onSelect: () => {
-					pauseRadial = null;
-					board.group.remove(anchor);
-					void actions.forfeit();
-				},
-			},
-			{
-				label: "Quit",
-				onSelect: () => {
-					pauseRadial = null;
-					board.group.remove(anchor);
-					void clearActiveMatch();
-					actions.quitMatch();
-				},
-			},
-		],
-	});
+	// PRQ-C3: the pause surface moved out of the diegetic SVG layer
+	// into the Solid branded overlay (`app/overlays/Pause.tsx`).
+	// The Solid layer subscribes to its own `modal` signal and opens
+	// the pause overlay directly when the bezel hamburger fires.
+	// This stub remains as a no-op so the testHook and the legacy
+	// triple-tap detector can call it without errors.
 }
 
 // Triple-tap detector on bezel: any pointer-down outside the board
@@ -652,22 +557,24 @@ function tick(): void {
 			// tips on every turn-flip and the broker auto-dispatches
 			// the next ply. No human gesture in the loop.
 			//
-			// Player-vs-AI matches: the auto-tip + auto-dispatch are
-			// gated behind the pivot-drag. While humanAwaitingPivot is
-			// true, the engine has already flipped state.turn (so the
-			// AI is "logically" on turn) but the SCENE waits for the
-			// player to physically tip the board before tipping the
-			// view + dispatching the AI. `endHumanTurn` clears the
-			// flag and runs both the tween + dispatch.
-			//
-			// AI-side turn-end (after AI's commit) DOES auto-tip +
-			// auto-dispatch — the AI has no hands to gesture with.
-			const isInteractive = match.humanColor !== null;
-			const isAiSideTurnEnd = isInteractive && match.turn === match.humanColor;
-			if (!isInteractive || isAiSideTurnEnd) {
+			// Three modes of turn-flip handling:
+			//   - AI-vs-AI sim (humanColor === null): auto-tip every
+			//     turn-flip, auto-dispatch next ply.
+			//   - vs-AI (humanColor === "red" | "white"): auto-tip +
+			//     auto-dispatch only when the AI just finished (turn
+			//     flipped TO the human's colour). Human-side turn-end
+			//     fires from endHumanTurn after the pivot gesture.
+			//   - Pass-and-Play (humanColor === "both"): NEVER auto-tip
+			//     here. The 180° handoff fires from endHumanTurn after
+			//     the player's pivot gesture. No AI dispatch.
+			const hc = match.humanColor;
+			const isPap = hc === "both";
+			const isSim = hc === null;
+			const isAiSideTurnEnd = !isPap && !isSim && match.turn === hc;
+			if (isSim || isAiSideTurnEnd) {
 				const facing = match.turn === "red" ? -1 : 1;
 				tweenBoardTip({ boardGroup: board.group, direction: facing });
-				if (isInteractive === false && !aiThinking && match.winner === null) {
+				if (isSim && !aiThinking && match.winner === null) {
 					void actions.stepTurn();
 				}
 			}
@@ -711,7 +618,6 @@ function tick(): void {
 	splitRadial.update();
 	lobby.update();
 	pauseRadial?.update();
-	endGameRadial?.update();
 
 	renderer.render(scene, camera);
 }
@@ -748,7 +654,7 @@ if (typeof window !== "undefined" && import.meta.env.DEV) {
 			get winner(): "red" | "white" | null {
 				return sim.worldEntity.get(Match)?.winner ?? null;
 			},
-			get humanColor(): "red" | "white" | null {
+			get humanColor(): HumanColor {
 				return sim.worldEntity.get(Match)?.humanColor ?? null;
 			},
 			get aiThinking(): boolean {
@@ -758,7 +664,7 @@ if (typeof window !== "undefined" && import.meta.env.DEV) {
 				return sim.worldEntity.get(Match)?.pieces ?? [];
 			},
 			actions: {
-				startNewMatch: (humanColor: Color | null = "red") =>
+				startNewMatch: (humanColor: HumanColor = "red") =>
 					void startNewMatch(humanColor),
 				stepTurn: () => void actions.stepTurn(),
 				quitMatch: () => actions.quitMatch(),
@@ -789,7 +695,6 @@ if (import.meta.hot) {
 		splitRadial.dispose();
 		lobby.dispose();
 		pauseRadial?.close();
-		endGameRadial?.close();
 		renderer.dispose();
 	});
 }

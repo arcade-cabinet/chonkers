@@ -29,7 +29,7 @@
 		"test:alpha": "vitest run --project alpha --passWithNoTests",
 		"test:watch": "vitest",
 		"test:e2e": "playwright test",
-		"test:e2e:ci": "test -d e2e && playwright test --grep-invert '@nightly|@governor|@axe|@pap|@c3-pending' || echo 'no e2e specs yet — skipping'",
+		"test:e2e:ci": "test -d e2e && playwright test --grep-invert '@nightly|@governor|@axe|@pap' || echo 'no e2e specs yet — skipping'",
 		"test:e2e:nightly": "test -d e2e && playwright test --grep @nightly || echo 'no e2e specs yet — skipping'",
 		"test:e2e:governor": "test -d e2e && playwright test --grep @governor || echo 'no e2e specs yet — skipping'",
 		"test:e2e:a11y": "test -d e2e && playwright test --grep @axe --project chromium || echo 'no e2e specs yet — skipping'",
@@ -52,6 +52,7 @@
 		"gsap": "^3.15.0",
 		"howler": "^2.2.4",
 		"koota": "^0.6.6",
+		"solid-js": "^1.9.12",
 		"three": "^0.184.0",
 		"yuka": "^0.7.8"
 	},
@@ -70,6 +71,7 @@
 		"playwright": "^1.59.1",
 		"typescript": "^6.0.3",
 		"vite": "^8.0.10",
+		"vite-plugin-solid": "^2.11.12",
 		"vitest": "^4.1.5"
 	},
 	"author": "arcade-cabinet",

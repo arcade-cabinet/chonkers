@@ -158,6 +158,63 @@ export function tweenBoardTip(opts: BoardTipOptions): gsap.core.Tween {
 	});
 }
 
+const BOARD_HANDOFF_S = 0.7;
+
+export interface BoardHandoffOptions {
+	readonly boardGroup: THREE.Object3D;
+	/** Direction of the tip phase (matches existing tweenBoardTip). */
+	readonly tipDirection: 1 | -1;
+	/** Called when the rotation completes. */
+	readonly onComplete?: () => void;
+}
+
+/**
+ * Pass-and-Play handoff: extends the tip animation into a full 180°
+ * end-over-end flip around the world Y axis. The first half is the
+ * normal tip toward the opponent; the second half continues into the
+ * Y-axis rotation so the next player sees their orientation upright.
+ *
+ * Total duration ~700ms. Reduced-motion variant snaps to the final
+ * Y rotation without the tip overshoot.
+ */
+export function tweenBoardHandoff180(
+	opts: BoardHandoffOptions,
+): gsap.core.Timeline {
+	const { boardGroup, tipDirection, onComplete } = opts;
+	const tl = gsap.timeline({
+		onComplete: () => {
+			// After the rotation, the board's Y rotation has advanced
+			// by π. Normalise to [0, 2π) to keep the value bounded
+			// across many handoffs.
+			boardGroup.rotation.y = boardGroup.rotation.y % (2 * Math.PI);
+			onComplete?.();
+		},
+	});
+	if (reducedMotion()) {
+		boardGroup.rotation.y += Math.PI;
+		boardGroup.rotation.x = 0;
+		tl.to({}, { duration: 0.001 });
+		return tl;
+	}
+	const tipTarget = tipDirection * tokens.scene.baseTiltMagnitude;
+	tl.to(boardGroup.rotation, {
+		duration: BOARD_HANDOFF_S * 0.35,
+		x: tipTarget,
+		ease: "power2.inOut",
+	});
+	tl.to(
+		boardGroup.rotation,
+		{
+			duration: BOARD_HANDOFF_S * 0.65,
+			y: boardGroup.rotation.y + Math.PI,
+			x: 0,
+			ease: "power2.inOut",
+		},
+		">",
+	);
+	return tl;
+}
+
 export interface CoinSpinOptions {
 	readonly coin: THREE.Object3D;
 	readonly faceUp: "red" | "white";

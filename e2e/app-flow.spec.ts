@@ -32,13 +32,11 @@ test.describe("smoke — boot + AI-vs-AI match", () => {
 		expect(initial.screen).toBe("title");
 		expect(initial.matchId).toBeNull();
 
-		// The lobby Play + Resume affordances mount as two divs
-		// (.ck-lobby-affordance) under <div id="overlay">. Each
-		// contains the affordance SVG; assert both containers exist.
-		const lobbyContainerCount = await page.evaluate(
-			() => document.querySelectorAll(".ck-lobby-affordance").length,
-		);
-		expect(lobbyContainerCount).toBeGreaterThanOrEqual(2);
+		// The lobby is a Solid <dialog name="Chonkers"> mounted into
+		// <div id="ui-root">. Wait for it to appear.
+		await page
+			.getByRole("dialog", { name: /chonkers/i })
+			.waitFor({ state: "visible", timeout: 10_000 });
 
 		// Trigger newMatch via the testHook (avoids flakiness from
 		// raycaster-precise coordinate math against an animated lobby).
@@ -92,12 +90,9 @@ test.describe("smoke — boot + AI-vs-AI match", () => {
 			{ timeout: 30_000 },
 		);
 
-		// Wait for the lobby fade-out + dispose to complete (the gsap
-		// close tween runs over `tokens.motion.uiCloseMs` = 140ms).
-		await page.waitForFunction(
-			() => document.querySelectorAll(".ck-lobby-affordance").length === 0,
-			null,
-			{ timeout: 5_000 },
-		);
+		// The lobby <dialog> closes when Screen flips to "play".
+		await expect(
+			page.getByRole("dialog", { name: /chonkers/i }),
+		).not.toBeVisible({ timeout: 5_000 });
 	});
 });
