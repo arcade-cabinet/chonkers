@@ -182,9 +182,10 @@ export function buildPieces(materials: PieceMaterials): PiecesHandles {
 	}
 
 	function dispose(): void {
+		// Only the geometry is owned by this module. Materials are
+		// passed in (also shared with demoPucks + coinFlip) — their
+		// owner is `loadPieceMaterials()` in `scene/index.ts`.
 		puckGeom.dispose();
-		materials.red.dispose();
-		materials.white.dispose();
 		for (const stack of stacks.values()) {
 			group.remove(stack);
 		}
