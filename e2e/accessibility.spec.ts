@@ -25,11 +25,17 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import "./_lib/test-hook";
 
+// CI runners boot ~6-10× slower than local — large bundle + cold
+// three.js + headless chromium's software WebGL. Bump generously when
+// CI=true so cold-cache boot doesn't time out.
+const BOOT_TIMEOUT = process.env.CI ? 60_000 : 15_000;
+const SETTLE_TIMEOUT = process.env.CI ? 20_000 : 10_000;
+
 test.describe("accessibility — diegetic UI surfaces", { tag: "@axe" }, () => {
 	test.beforeEach(async ({ page }) => {
 		await page.goto("/chonkers/?testHook=1");
 		await page.waitForFunction(() => window.__chonkers !== undefined, null, {
-			timeout: 15_000,
+			timeout: BOOT_TIMEOUT,
 		});
 	});
 
@@ -37,7 +43,7 @@ test.describe("accessibility — diegetic UI surfaces", { tag: "@axe" }, () => {
 		// Wait for the Solid lobby <dialog> to mount.
 		await page
 			.getByRole("dialog", { name: /chonkers/i })
-			.waitFor({ state: "visible", timeout: 10_000 });
+			.waitFor({ state: "visible", timeout: SETTLE_TIMEOUT });
 
 		const results = await new AxeBuilder({ page })
 			.withTags(["wcag2a", "wcag2aa", "wcag21aa"])
@@ -76,7 +82,7 @@ test.describe("accessibility — diegetic UI surfaces", { tag: "@axe" }, () => {
 		// Wait for the SVG overlay to render.
 		await page
 			.waitForSelector(".ck-split-radial, [data-overlay='split']", {
-				timeout: 5_000,
+				timeout: SETTLE_TIMEOUT,
 			})
 			.catch(() => {
 				// Fallback: just wait a tick for any overlay to mount.
@@ -119,7 +125,7 @@ test.describe("accessibility — diegetic UI surfaces", { tag: "@axe" }, () => {
 			.click({ force: true });
 		await page
 			.getByRole("dialog", { name: /paused|pause/i })
-			.waitFor({ state: "visible", timeout: 5_000 });
+			.waitFor({ state: "visible", timeout: SETTLE_TIMEOUT });
 
 		const results = await new AxeBuilder({ page })
 			.withTags(["wcag2a", "wcag2aa", "wcag21aa"])

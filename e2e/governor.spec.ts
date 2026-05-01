@@ -202,7 +202,7 @@ test.describe("governor — N AI-vs-AI matches drive the full visual stack", {
 			await page.waitForFunction(
 				() => window.__chonkers?.screen === "title",
 				null,
-				{ timeout: 10_000 },
+				{ timeout: process.env.CI ? 30_000 : 10_000 },
 			);
 		}
 
