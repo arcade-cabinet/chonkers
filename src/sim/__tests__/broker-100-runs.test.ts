@@ -7,18 +7,30 @@
  * per docs/AI.md. Each match has a unique deterministic seed so
  * outliers can be re-played by recording (seed, profiles).
  *
- * The test does NOT assert balance ratios or win-rate distributions
- * — those are tuned per docs/AI.md "Tuning history" after this test
- * passes. The 100-run gate is a CONTRACT test: it asserts only that
- * the entire pipeline runs end-to-end and either finds a winner or
- * records an outlier for every run. Balance + analytics aggregates
- * happen at the governor level (1000-run beta, 10000-run rc) which
- * write per-match artifacts to disk for offline analysis.
+ * Contract assertions: every match produces a result; plyCount stays
+ * within bounds; persisted action log matches the result.plies count.
+ *
+ * Balance diagnostic: per-pairing wins are aggregated and written to
+ * `/tmp/chonkers-alpha-summary.json` so a tuning pass can read the
+ * shape without re-running the gate.
  */
 
+import { writeFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { ALL_PROFILE_KEYS } from "@/ai";
+import { ALL_PROFILE_KEYS, type ProfileKey } from "@/ai";
 import { createMatch, playToCompletion } from "../broker";
+
+interface PairingStats {
+	red: ProfileKey;
+	white: ProfileKey;
+	matches: number;
+	redWins: number;
+	whiteWins: number;
+	unfinished: number;
+	outliers: number;
+	avgPly: number;
+	totalPlies: number;
+}
 
 describe("broker — 100-run alpha gate", () => {
 	it(
@@ -26,13 +38,37 @@ describe("broker — 100-run alpha gate", () => {
 		async () => {
 			const easyKeys = ALL_PROFILE_KEYS.filter((k) => k.endsWith("-easy"));
 			const RUNS = 100;
-			const PLY_CAP = 40;
+			const PLY_CAP = 200;
 
 			let outliers = 0;
 			let redWins = 0;
 			let whiteWins = 0;
 			let unfinished = 0;
 			const totalPlies: number[] = [];
+
+			const pairingMap = new Map<string, PairingStats>();
+			function getOrInitPairing(
+				red: ProfileKey,
+				white: ProfileKey,
+			): PairingStats {
+				const key = `${red}|${white}`;
+				let stats = pairingMap.get(key);
+				if (!stats) {
+					stats = {
+						red,
+						white,
+						matches: 0,
+						redWins: 0,
+						whiteWins: 0,
+						unfinished: 0,
+						outliers: 0,
+						avgPly: 0,
+						totalPlies: 0,
+					};
+					pairingMap.set(key, stats);
+				}
+				return stats;
+			}
 
 			for (let i = 0; i < RUNS; i += 1) {
 				const red = easyKeys[i % easyKeys.length];
@@ -55,14 +91,32 @@ describe("broker — 100-run alpha gate", () => {
 					mode: "replay",
 					maxPlies: PLY_CAP,
 				});
-				if (result.outlier) outliers += 1;
-				if (result.winner === "red") redWins += 1;
-				else if (result.winner === "white") whiteWins += 1;
-				else unfinished += 1;
+				const stats = getOrInitPairing(red, white);
+				stats.matches += 1;
+				stats.totalPlies += result.plies;
+				if (result.outlier) {
+					outliers += 1;
+					stats.outliers += 1;
+				}
+				if (result.winner === "red") {
+					redWins += 1;
+					stats.redWins += 1;
+				} else if (result.winner === "white") {
+					whiteWins += 1;
+					stats.whiteWins += 1;
+				} else {
+					unfinished += 1;
+					stats.unfinished += 1;
+				}
 				expect(handle.actions.length).toBe(result.plies);
 				expect(result.plies).toBeLessThanOrEqual(PLY_CAP);
 				expect(result.plies).toBeGreaterThanOrEqual(0);
 				totalPlies.push(result.plies);
+			}
+
+			// Finalise per-pairing avgPly.
+			for (const stats of pairingMap.values()) {
+				stats.avgPly = stats.totalPlies / Math.max(1, stats.matches);
 			}
 
 			const concluded = RUNS - outliers;
@@ -70,9 +124,45 @@ describe("broker — 100-run alpha gate", () => {
 				totalPlies.reduce((a, b) => a + b, 0) / Math.max(1, totalPlies.length);
 			expect(concluded + outliers).toBe(RUNS);
 
+			const summary = {
+				runs: RUNS,
+				ply_cap: PLY_CAP,
+				timestamp: new Date().toISOString(),
+				totals: {
+					redWins,
+					whiteWins,
+					unfinished,
+					outliers,
+					avgPly: Number(avgPly.toFixed(2)),
+				},
+				pairings: [...pairingMap.values()].map((s) => ({
+					...s,
+					avgPly: Number(s.avgPly.toFixed(2)),
+					redWinRate:
+						s.matches > 0 ? Number((s.redWins / s.matches).toFixed(3)) : 0,
+					whiteWinRate:
+						s.matches > 0 ? Number((s.whiteWins / s.matches).toFixed(3)) : 0,
+				})),
+			};
+
+			try {
+				writeFileSync(
+					"/tmp/chonkers-alpha-summary.json",
+					JSON.stringify(summary, null, 2),
+				);
+			} catch {
+				// Filesystem write best-effort — failure shouldn't break
+				// the test (e.g., CI on a read-only filesystem).
+			}
+
 			console.log(
 				`alpha-100: ${redWins} red wins, ${whiteWins} white wins, ${unfinished} unfinished, ${outliers} outliers (cap=${PLY_CAP}, avg ply=${avgPly.toFixed(1)})`,
 			);
+			for (const p of summary.pairings) {
+				console.log(
+					`  ${p.red} vs ${p.white}: ${p.redWins}-${p.whiteWins}-${p.unfinished} (${p.matches} games, redWin=${(p.redWinRate * 100).toFixed(0)}%, avg ply=${p.avgPly})`,
+				);
+			}
 		},
 		15 * 60 * 1000,
 	);
