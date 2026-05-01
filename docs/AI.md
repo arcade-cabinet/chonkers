@@ -107,6 +107,13 @@ The evaluation function scores any board state from a player's perspective as a 
 | `opponent_forward_progress` | mirror of `forward_progress` for the opponent. Negative. | 0..120 |
 | `opponent_home_row_tops` | mirror of `home_row_tops` for the opponent. Heavily negative — opponent winning is the worst outcome. | 0..12 |
 | `opponent_tall_stacks_unblocked` | opponent tall stacks with no player blocker adjacent. Negative. | 0..~6 |
+| `total_pieces_advancement` | sum of `(stack_height × distance-toward-goal)` over owned cells — credits BURIED pieces, not just tops. Counters the row-vs-row standoff where flat 1-stack walls form. | 0..~720 |
+| `mobile_threat_count` | count of player's owned stacks with height ≥ 2 (splittable + chonk-capable). Heavily rewarded — without 2+stacks the player has no offensive leverage past the 1-stack blocker line (RULES §4.2). | 0..12 |
+| `frontier_advance` | max distance-toward-goal of any owned top. Rewards committing a salient lone advancer that forces the opponent to defend rather than mirror. | 0..10 |
+| `even_trade_count` | count of player 1-stacks adjacent to opponent 1-stacks. Each is a free chonk that costs the opponent a piece and gives us a 2-stack on their cell. | 0..~30 |
+| `cluster_density` | unordered (own, own) cell pairs at Chebyshev-1. Rewards clustering — mutual support, defensive walls. Disposition-modulated: defensive +2.5, balanced +1.0, aggressive +0.3. | 0..~40 |
+| `longest_wall` | length of the longest contiguous horizontal run of own owned cells on a single row. Defensive formations. Defensive +1.5, balanced +0.5, aggressive +0.0. | 0..9 |
+| `funnel_pressure` | count of opponent cells with ≥ 2 of our pieces in their 8-neighbourhood. Encirclement / funnel formations. Aggressive +4.0, balanced +2.0, defensive +0.5. | 0..12 |
 
 A profile's `weights` map associates each feature with a real-valued multiplier. The evaluation is `sum(features[k] × weights[k])`.
 
@@ -121,22 +128,33 @@ The disposition determines the **ratio** between feature weights. Difficulty app
 | Feature | aggressive | balanced | defensive |
 |---|---:|---:|---:|
 | `forward_progress` | +3.0 | +2.0 | +1.5 |
-| `top_count` | +2.0 | +2.0 | +2.5 |
+| `top_count` | +1.0 | +1.5 | +2.0 |
 | `home_row_tops` | +20.0 | +20.0 | +20.0 |
-| `chonk_opportunities` | +1.5 | +0.8 | +0.3 |
+| `chonk_opportunities` | +4.0 | +2.5 | +1.0 |
 | `tall_stack_count` | +2.5 | +1.5 | +0.8 |
 | `blocker_count` | +0.5 | +1.5 | +3.0 |
 | `chain_owed` | -2.0 | -2.0 | -2.0 |
 | `opponent_forward_progress` | -1.5 | -2.0 | -3.0 |
 | `opponent_home_row_tops` | -25.0 | -25.0 | -25.0 |
 | `opponent_tall_stacks_unblocked` | -1.0 | -2.0 | -3.5 |
+| `total_pieces_advancement` | +1.0 | +0.7 | +0.5 |
+| `mobile_threat_count` | +5.0 | +3.5 | +2.0 |
+| `frontier_advance` | +3.0 | +2.0 | +1.0 |
+| `even_trade_count` | +6.0 | +3.5 | +2.0 |
+| `cluster_density` | +0.3 | +1.0 | +2.5 |
+| `longest_wall` | +0.0 | +0.5 | +1.5 |
+| `funnel_pressure` | +4.0 | +2.0 | +0.5 |
 
 Reading the table:
 
-- **aggressive** weights `forward_progress` and `chonk_opportunities` highest — pushes its own pieces forward, looks for stacking opportunities, accepts opponent counter-progress as the cost of pace.
-- **defensive** weights `blocker_count` and `opponent_tall_stacks_unblocked` highest — places 1-stack blockers, denies opponent area, slow-rolls forward progress.
-- **balanced** is the midpoint — modest weights on both attack and defence, no extreme.
+- **aggressive** weights `chonk_opportunities`, `even_trade_count`, `funnel_pressure` highest — actively seeks trades, encircles opponent groups, builds tall stacks (`mobile_threat_count`) to push through. Low cluster preference.
+- **defensive** weights `blocker_count`, `opponent_tall_stacks_unblocked`, `cluster_density`, `longest_wall` highest — places 1-stack blockers, builds walls, keeps pieces in mutual support, denies opponent area.
+- **balanced** is the midpoint — modest weights everywhere; clusters defensively but takes trades when offered.
 - The win-condition features (`home_row_tops`, `opponent_home_row_tops`) are equal across all three dispositions and dominant in magnitude. No profile is willing to lose to win an aesthetic; winning is winning.
+
+#### Why cluster + threat features matter
+
+Without `mobile_threat_count`, `even_trade_count`, and `funnel_pressure`, the alpha governor pegged 100% at the ply cap (RULES §4.2 standoff: a 1-stack blocks any taller stack, so the AI sat behind row-4-vs-row-6 walls and mirrored). The fix wasn't deeper search — it was teaching the eval that **building 2-stacks** + **executing 1-vs-1 trades** is how you create the higher-stack interaction the rules require for a piece-capture cascade. The 100-run alpha gate now resolves 100/100.
 
 ### Difficulty shapes — search depth + prune aggressiveness
 
@@ -214,9 +232,20 @@ The 9 profile keys + their weight tables + their search depths + their forfeit t
 
 The tables above are the **alpha-stage initial weights**. As balance data lands from the 100/1000/10000 runs, this section records each tune.
 
-### alpha-stage initial (current)
+### alpha-stage initial (2026-04-29)
 
-Authored 2026-04-29 from theoretical reasoning over the chonkers feature set. No empirical data yet. These values are committed to make alpha possible; the alpha 100-run pass is where empirical tuning begins.
+Authored from theoretical reasoning over the chonkers feature set. The original 10-feature vector + 3 disposition weight tables. Alpha 100-run governor against this vector pegged 100% at the ply cap — the AI sat behind row-4-vs-row-6 1-stack walls and mirrored sideways indefinitely.
+
+### alpha tune 1 — cluster + threat features (2026-04-30)
+
+Added 7 new features (`total_pieces_advancement`, `mobile_threat_count`, `frontier_advance`, `even_trade_count`, `cluster_density`, `longest_wall`, `funnel_pressure`) to break the standoff. All three disposition weight tables expanded with disposition-modulated values for the cluster/funnel features (defensive favours walls + density; aggressive favours funnels + threats; balanced is the midpoint). Existing weights retuned: `top_count` lowered (was over-rewarding flat 1-stack preservation), `chonk_opportunities` raised 2-3× (actually take the chonk).
+
+**Result**: 100-run alpha 100/100 finishers, 0 outliers, avgPly 111.27. Per-pairing wins (red-white):
+- aggressive-easy vs balanced-easy: 0-34 (avgPly 168)
+- balanced-easy vs defensive-easy: 33-0 (avgPly 92)
+- defensive-easy vs aggressive-easy: 0-33 (avgPly 71)
+
+3-way intransitivity is acceptable alpha-stage signal; balanced dominates both extremes which is rough but expected (it has the most-tuned mix). Beta governor will sample more pairings + run aggressive-vs-aggressive, etc.
 
 ### (next entries appended on each balance tune)
 

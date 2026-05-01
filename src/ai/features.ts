@@ -21,7 +21,7 @@ import {
 	opponentHomeRow,
 } from "@/engine";
 
-/** All ten feature values per docs/AI.md. */
+/** Feature vector per docs/AI.md "Feature vector". */
 export interface FeatureValues {
 	readonly forward_progress: number;
 	readonly top_count: number;
@@ -33,6 +33,58 @@ export interface FeatureValues {
 	readonly opponent_forward_progress: number;
 	readonly opponent_home_row_tops: number;
 	readonly opponent_tall_stacks_unblocked: number;
+	/**
+	 * Sum over owned cells of `stack_height × distance_toward_goal`.
+	 * Credits BURIED pieces, not just tops, so building 2-stacks and
+	 * pushing them forward is rewarded — counters the row-N standoff
+	 * where every side stays on 1-stacks because top_count + forward
+	 * locally maximise but the wall never breaks.
+	 */
+	readonly total_pieces_advancement: number;
+	/**
+	 * Count of owned stacks with height ≥ 2 (i.e. mobile splittable
+	 * threats). A 2-stack can chonk a 2-stack, an N-stack can chonk
+	 * an N-or-taller; without these the player has no offensive
+	 * piece-capture leverage. Heavily rewarded so the AI builds
+	 * tall stacks instead of staying flat.
+	 */
+	readonly mobile_threat_count: number;
+	/**
+	 * Maximum distance-toward-goal of any owned top. Pushes the AI
+	 * to commit at least one piece across the centre line — a
+	 * salient lone advancer creates threats the opponent must
+	 * answer instead of mirroring.
+	 */
+	readonly frontier_advance: number;
+	/**
+	 * Count of opponent's owned 1-stacks adjacent to one of OUR
+	 * 1-stacks. Each such pair is a free even trade (1-stack onto
+	 * 1-stack chonk is legal, lifts a 2-stack with our colour on
+	 * top). Strongly rewarded so the AI executes those trades
+	 * instead of mirroring sideways.
+	 */
+	readonly even_trade_count: number;
+	/**
+	 * Count of unordered (own, own) cell pairs within Chebyshev-1.
+	 * Rewards keeping pieces clustered — defensive walls, mutual
+	 * support — instead of scattered. Defensive disposition values
+	 * this most. (We count each pair once: only when adj's key
+	 * sorts greater than self's key, halving the iteration.)
+	 */
+	readonly cluster_density: number;
+	/**
+	 * Length of the longest contiguous horizontal run of own owned
+	 * cells on a single row. Wall formations restrict opponent's
+	 * advance lanes. Rewarded for defensive postures.
+	 */
+	readonly longest_wall: number;
+	/**
+	 * Count of opponent's owned cells with ≥ 2 of our pieces in the
+	 * Chebyshev-1 neighbourhood. These are funnel/encirclement
+	 * targets — pieces being pushed where we want them. Rewarded
+	 * for aggressive postures.
+	 */
+	readonly funnel_pressure: number;
 }
 
 /**
@@ -118,23 +170,115 @@ export function computeFeatures(
 	let opponent_home_row_tops = 0;
 	let opponent_tall_stacks_unblocked = 0;
 	let chonk_opportunities = 0;
+	let total_pieces_advancement = 0;
+	let mobile_threat_count = 0;
+	let frontier_advance = 0;
 
 	const playerCells: Cell[] = [];
 	const opponentTallCells: Array<{ cell: Cell; height: number }> = [];
+	const playerOnesByCell = new Set<string>();
+	const opponentOnesByCell = new Set<string>();
 
 	for (const s of summary) {
 		if (s.topColor === player) {
 			playerCells.push(s.cell);
-			// Forward progress = how far this top has advanced toward goal.
-			forward_progress += distanceToward(s.cell, goal);
+			const adv = distanceToward(s.cell, goal);
+			forward_progress += adv;
+			total_pieces_advancement += s.height * adv;
+			if (adv > frontier_advance) frontier_advance = adv;
 			top_count += 1;
 			if (s.cell.row === goal) home_row_tops += 1;
 			if (s.height >= TALL_STACK_THRESHOLD) tall_stack_count += 1;
+			if (s.height >= 2) mobile_threat_count += 1;
+			if (s.height === 1) {
+				playerOnesByCell.add(`${s.cell.col}:${s.cell.row}`);
+			}
 		} else if (s.topColor === opponent) {
 			opponent_forward_progress += distanceToward(s.cell, oppGoal);
 			if (s.cell.row === oppGoal) opponent_home_row_tops += 1;
 			if (s.height >= TALL_STACK_THRESHOLD) {
 				opponentTallCells.push({ cell: s.cell, height: s.height });
+			}
+			if (s.height === 1) {
+				opponentOnesByCell.add(`${s.cell.col}:${s.cell.row}`);
+			}
+		}
+	}
+
+	// Build owned-cell sets for adjacency-aware features.
+	const playerOwnedSet = new Set(
+		playerCells.map((c) => `${c.col}:${c.row}`),
+	);
+	const opponentOwnedCells: Cell[] = [];
+	for (const s of summary) {
+		if (s.topColor === opponent) opponentOwnedCells.push(s.cell);
+	}
+
+	// Even trade count: every adjacency of a player 1-stack to an
+	// opponent 1-stack is a free chonk (1-stack onto 1-stack legal,
+	// produces a player-owned 2-stack on the opponent's prior cell).
+	// We count UNORDERED pairs (each adjacency from the player side).
+	let even_trade_count = 0;
+	for (const cellKey of playerOnesByCell) {
+		const [c, r] = cellKey.split(":").map(Number);
+		const cell: Cell = { col: c as number, row: r as number };
+		for (const adj of adjacentCells(cell)) {
+			if (opponentOnesByCell.has(`${adj.col}:${adj.row}`)) {
+				even_trade_count += 1;
+			}
+		}
+	}
+
+	// Cluster density: unordered own-own adjacency pairs. Iterate
+	// playerCells; for each, count adjacents that are also player-
+	// owned AND have a strictly-greater (col, row) lexicographic key
+	// to halve double-counting.
+	let cluster_density = 0;
+	for (const cell of playerCells) {
+		const myKey = `${cell.col}:${cell.row}`;
+		for (const adj of adjacentCells(cell)) {
+			const adjKey = `${adj.col}:${adj.row}`;
+			if (playerOwnedSet.has(adjKey) && adjKey > myKey) {
+				cluster_density += 1;
+			}
+		}
+	}
+
+	// Longest horizontal wall: per-row, find max contiguous owned
+	// columns.
+	let longest_wall = 0;
+	const cellsByRow = new Map<number, number[]>();
+	for (const cell of playerCells) {
+		const arr = cellsByRow.get(cell.row);
+		if (arr) arr.push(cell.col);
+		else cellsByRow.set(cell.row, [cell.col]);
+	}
+	for (const cols of cellsByRow.values()) {
+		cols.sort((a, b) => a - b);
+		let run = 1;
+		let best = 1;
+		for (let i = 1; i < cols.length; i += 1) {
+			if (cols[i] === (cols[i - 1] as number) + 1) {
+				run += 1;
+				if (run > best) best = run;
+			} else {
+				run = 1;
+			}
+		}
+		if (best > longest_wall) longest_wall = best;
+	}
+
+	// Funnel pressure: opponent cells with ≥ 2 player neighbours.
+	let funnel_pressure = 0;
+	for (const oppCell of opponentOwnedCells) {
+		let neighbourCount = 0;
+		for (const adj of adjacentCells(oppCell)) {
+			if (playerOwnedSet.has(`${adj.col}:${adj.row}`)) {
+				neighbourCount += 1;
+				if (neighbourCount >= 2) {
+					funnel_pressure += 1;
+					break;
+				}
 			}
 		}
 	}
@@ -184,6 +328,13 @@ export function computeFeatures(
 		opponent_forward_progress,
 		opponent_home_row_tops,
 		opponent_tall_stacks_unblocked,
+		total_pieces_advancement,
+		mobile_threat_count,
+		frontier_advance,
+		even_trade_count,
+		cluster_density,
+		longest_wall,
+		funnel_pressure,
 	};
 }
 
