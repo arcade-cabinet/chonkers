@@ -16,7 +16,13 @@ export interface ChonkersTestHook {
 	readonly humanColor: "red" | "white" | null;
 	readonly aiThinking: boolean;
 	readonly actions: {
-		startNewMatch: (humanColor?: "red" | "white" | null) => void;
+		startNewMatch: (
+			humanColor?: "red" | "white" | null,
+			profiles?: {
+				readonly redProfile?: string;
+				readonly whiteProfile?: string;
+			},
+		) => void;
 		stepTurn: () => void;
 		quitMatch: () => void;
 		setSelection: (

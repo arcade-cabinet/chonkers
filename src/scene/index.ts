@@ -22,6 +22,7 @@
  */
 
 import * as THREE from "three";
+import type { ProfileKey } from "@/ai";
 import { getAudioBus } from "@/audio";
 import { tokens } from "@/design";
 import type { Action, Color, GameState } from "@/engine";
@@ -463,12 +464,15 @@ function countStackHeight(
 	return h;
 }
 
-async function startNewMatch(humanColor: HumanColor = "red"): Promise<void> {
+async function startNewMatch(
+	humanColor: HumanColor = "red",
+	profiles?: { redProfile?: ProfileKey; whiteProfile?: ProfileKey },
+): Promise<void> {
 	await ensureAudio();
 	humanAwaitingPivot = false;
 	actions.newMatch({
-		redProfile: "balanced-medium",
-		whiteProfile: "balanced-medium",
+		redProfile: profiles?.redProfile ?? "balanced-medium",
+		whiteProfile: profiles?.whiteProfile ?? "balanced-medium",
 		humanColor,
 	});
 	const handle = sim.handle;
@@ -715,8 +719,10 @@ if (typeof window !== "undefined" && import.meta.env.DEV) {
 				return sim.worldEntity.get(Match)?.pieces ?? [];
 			},
 			actions: {
-				startNewMatch: (humanColor: HumanColor = "red") =>
-					void startNewMatch(humanColor),
+				startNewMatch: (
+					humanColor: HumanColor = "red",
+					profiles?: { redProfile?: ProfileKey; whiteProfile?: ProfileKey },
+				) => void startNewMatch(humanColor, profiles),
 				stepTurn: () => void actions.stepTurn(),
 				quitMatch: () => actions.quitMatch(),
 				setSelection: (cell: { col: number; row: number } | null) =>

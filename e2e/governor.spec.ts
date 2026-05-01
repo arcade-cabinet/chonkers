@@ -77,11 +77,46 @@ test.describe("governor — N AI-vs-AI matches drive the full visual stack", {
 			timeout: process.env.CI ? 60_000 : 15_000,
 		});
 
+		// Disposition rotation — sample all 9 ordered pairings of
+		// (aggressive, balanced, defensive) × (aggressive, balanced,
+		// defensive) on the EASY tier so per-pairing balance can be
+		// measured. Easy is the alpha gate's reference tier; medium /
+		// hard get their own validation pass post-beta.
+		const dispositions = ["aggressive", "balanced", "defensive"] as const;
+		const pairings = dispositions.flatMap((red) =>
+			dispositions.map((white) => [red, white] as const),
+		);
+		// Per-pairing match counts (initialised to 0; updated per match
+		// based on `before.winner` to feed the post-run balance assert).
+		const pairingStats = new Map<
+			string,
+			{ matches: number; redWins: number; whiteWins: number; outliers: number }
+		>();
+
 		for (let matchIdx = 0; matchIdx < GOVERNOR_RUNS; matchIdx += 1) {
+			const pairing = pairings[matchIdx % pairings.length];
+			if (!pairing) throw new Error("no pairing — should be impossible");
+			const [redDisp, whiteDisp] = pairing;
+			const redProfile = `${redDisp}-easy`;
+			const whiteProfile = `${whiteDisp}-easy`;
+			const pairKey = `${redProfile}|${whiteProfile}`;
+			let stats = pairingStats.get(pairKey);
+			if (!stats) {
+				stats = { matches: 0, redWins: 0, whiteWins: 0, outliers: 0 };
+				pairingStats.set(pairKey, stats);
+			}
+			stats.matches += 1;
+
 			// Start a fresh AI-vs-AI match. humanColor=null = both AI.
-			await page.evaluate(() => {
-				window.__chonkers?.actions.startNewMatch(null);
-			});
+			await page.evaluate(
+				(args) => {
+					window.__chonkers?.actions.startNewMatch(null, {
+						redProfile: args.redProfile,
+						whiteProfile: args.whiteProfile,
+					});
+				},
+				{ redProfile, whiteProfile },
+			);
 
 			// Wait for the screen to flip to "play" (gates on the coin
 			// flip animation finishing).
@@ -151,6 +186,13 @@ test.describe("governor — N AI-vs-AI matches drive the full visual stack", {
 			const isWin = matchEnd.winner !== null;
 			expect(isOutlier || isWin).toBe(true);
 
+			// Update per-pairing stats — fed to the post-run balance
+			// summary so 60/40 acceptance can be checked across all 9
+			// disposition pairings rather than the aggregate.
+			if (matchEnd.winner === "red") stats.redWins += 1;
+			else if (matchEnd.winner === "white") stats.whiteWins += 1;
+			else stats.outliers += 1;
+
 			// Return to lobby for the next match.
 			await page.evaluate(() => {
 				window.__chonkers?.actions.quitMatch();
@@ -161,6 +203,33 @@ test.describe("governor — N AI-vs-AI matches drive the full visual stack", {
 				{ timeout: 10_000 },
 			);
 		}
+
+		// Per-pairing balance log + soft-assert. With GOVERNOR_RUNS=1000
+		// across 9 pairings ≈ 111 matches each — enough power for a
+		// 60/40 win-rate gate. Soft-assert so the run can complete and
+		// surface the FULL balance picture instead of failing on the
+		// first imbalanced pair.
+		const balanceLog: string[] = [];
+		for (const [key, s] of pairingStats) {
+			const finished = s.redWins + s.whiteWins;
+			if (finished === 0) {
+				balanceLog.push(`${key}: 0 finishers (${s.outliers} outliers)`);
+				continue;
+			}
+			const redRate = s.redWins / finished;
+			balanceLog.push(
+				`${key}: ${s.redWins}R-${s.whiteWins}W (${(redRate * 100).toFixed(1)}%R, ${s.outliers}o)`,
+			);
+			expect
+				.soft(redRate, `${key} redWinRate within 60/40 band`)
+				.toBeGreaterThanOrEqual(0.4);
+			expect
+				.soft(redRate, `${key} redWinRate within 60/40 band`)
+				.toBeLessThanOrEqual(0.6);
+		}
+		console.log(
+			`\n[governor] per-pairing balance:\n  ${balanceLog.join("\n  ")}\n`,
+		);
 
 		// No browser-side errors during the entire governor run.
 		expect.soft(consoleErrors, "console errors").toEqual([]);
