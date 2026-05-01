@@ -248,10 +248,15 @@
 	position: absolute;
 	top: 0;
 	left: 0;
-	width: 56px;
-	height: 56px;
-	margin-left: -28px;
-	margin-top: -28px;
+	/* 32×32 hit target — small enough that adjacent cells (which can
+	 * project as close as ~35px apart at the back of the board in
+	 * perspective) don't overlap and steal each other's clicks. Big
+	 * enough for fat-finger taps on a phone. The visual piece sits
+	 * inside this — the cell is invisible regardless. */
+	width: 32px;
+	height: 32px;
+	margin-left: -16px;
+	margin-top: -16px;
 	background: transparent;
 	border: 0;
 	padding: 0;

@@ -80,41 +80,17 @@ export function BoardA11yGrid() {
 		tapCell({ col, row });
 	};
 
-	/**
-	 * Forward a real pointer event onto the canvas at the same coords
-	 * so the canvas's drag detector picks up the gesture in flight.
-	 * The cell's own click event still fires on pointer-up if the
-	 * gesture stayed a tap (no significant move), so the singleton's
-	 * tapCell handler runs as expected. If the gesture is a drag, the
-	 * cell loses pointer because the move took it elsewhere — its
-	 * click never fires, and the canvas's drag handler resolves the
-	 * pivot-drag turn-end.
-	 */
-	const forwardPointerDownToCanvas = (ev: PointerEvent) => {
-		if (ev.pointerType === undefined && ev.pointerId === -1) return; // synthetic
-		const canvas = document.getElementById(
-			"scene-canvas",
-		) as HTMLCanvasElement | null;
-		if (!canvas) return;
-		const dispatched = new PointerEvent("pointerdown", {
-			pointerId: ev.pointerId,
-			pointerType: ev.pointerType,
-			clientX: ev.clientX,
-			clientY: ev.clientY,
-			button: ev.button,
-			buttons: ev.buttons,
-			bubbles: true,
-			cancelable: true,
-		});
-		canvas.dispatchEvent(dispatched);
-	};
+	// Note: pivot-drag turn-end uses the canvas (drags from outside
+	// any cell — the bezel area / corners). Cells handle taps only.
+	// Forwarding pointerdown to the canvas was tried and broken click
+	// dispatch in test environments; the diegetic gesture works fine
+	// from non-cell areas which is what the user naturally grabs to
+	// pivot.
 
-	const cells: { col: number; row: number }[] = [];
-	for (let row = 0; row < BOARD_ROWS; row += 1) {
-		for (let col = 0; col < BOARD_COLS; col += 1) {
-			cells.push({ col, row });
-		}
-	}
+	const rows: number[] = [];
+	for (let row = 0; row < BOARD_ROWS; row += 1) rows.push(row);
+	const cols: number[] = [];
+	for (let col = 0; col < BOARD_COLS; col += 1) cols.push(col);
 
 	return (
 		<Show when={uiState.screen() === "play"}>
@@ -128,36 +104,42 @@ export function BoardA11yGrid() {
 				aria-rowcount={BOARD_ROWS}
 				aria-colcount={BOARD_COLS}
 			>
-				<For each={cells}>
-					{(c) => {
-						const pos = () =>
-							positions()[cellIndex(c.col, c.row)] ?? HIDDEN_POS;
-						return (
-							// biome-ignore lint/a11y/useSemanticElements: WAI-ARIA grid pattern requires role=gridcell inside role=grid.
-							<button
-								type="button"
-								class="ck-board-grid__cell"
-								role="gridcell"
-								aria-label={cellLabel(c.col, c.row)}
-								aria-rowindex={c.row + 1}
-								aria-colindex={c.col + 1}
-								data-col={c.col}
-								data-row={c.row}
-								style={{
-									transform: `translate(${pos().x}px, ${pos().y}px)`,
-									visibility: pos().hidden ? "hidden" : "visible",
+				<For each={rows}>
+					{(row) => (
+						// biome-ignore lint/a11y/useSemanticElements: WAI-ARIA grid pattern.
+						// biome-ignore lint/a11y/useFocusableInteractive: row is a structural container, not focusable; gridcells inside are the interactive elements.
+						<div role="row" aria-rowindex={row + 1}>
+							<For each={cols}>
+								{(col) => {
+									const pos = () =>
+										positions()[cellIndex(col, row)] ?? HIDDEN_POS;
+									return (
+										// biome-ignore lint/a11y/useSemanticElements: WAI-ARIA grid pattern requires role=gridcell inside role=row inside role=grid.
+										<button
+											type="button"
+											class="ck-board-grid__cell"
+											role="gridcell"
+											aria-label={cellLabel(col, row)}
+											aria-colindex={col + 1}
+											data-col={col}
+											data-row={row}
+											style={{
+												transform: `translate(${pos().x}px, ${pos().y}px)`,
+												visibility: pos().hidden ? "hidden" : "visible",
+											}}
+											onClick={() => onCellActivate(col, row)}
+											onKeyDown={(ev) => {
+												if (ev.key === "Enter" || ev.key === " ") {
+													ev.preventDefault();
+													onCellActivate(col, row);
+												}
+											}}
+										/>
+									);
 								}}
-								onPointerDown={forwardPointerDownToCanvas}
-								onClick={() => onCellActivate(c.col, c.row)}
-								onKeyDown={(ev) => {
-									if (ev.key === "Enter" || ev.key === " ") {
-										ev.preventDefault();
-										onCellActivate(c.col, c.row);
-									}
-								}}
-							/>
-						);
-					}}
+							</For>
+						</div>
+					)}
 				</For>
 			</div>
 		</Show>

@@ -26,7 +26,6 @@ import { getAudioBus } from "@/audio";
 import { tokens } from "@/design";
 import {
 	type Action,
-	applyAction as applyEngineAction,
 	BOARD_COLS,
 	BOARD_ROWS,
 	type Color,
@@ -234,9 +233,20 @@ const inputCtx: InputHandles = installInput({
 	humanColor: (): Color | null => {
 		const m = sim.worldEntity.get(Match);
 		if (!m) return null;
-		// PaP: the "human colour" for input purposes is whoever's on
-		// turn (both players are human, just one holds the device).
+		// PaP: ownership = whoever's on turn (both players are human,
+		// just one holds the device).
 		if (m.humanColor === "both") return m.turn;
+		return m.humanColor;
+	},
+	humanFacingColor: (): Color | null => {
+		const m = sim.worldEntity.get(Match);
+		if (!m) return null;
+		// PaP: in hotseat, BOTH humans push the board "away from
+		// themselves" with the same UP-on-screen gesture — the device
+		// has been physically picked up and re-oriented after each
+		// 180° handoff. The screen-relative drag direction is constant.
+		// Pin to red so input.ts's humanFacingDirection is consistent.
+		if (m.humanColor === "both") return "red";
 		return m.humanColor;
 	},
 	setSelection: (cell): void => {
@@ -316,21 +326,22 @@ async function playChonkHaptic(): Promise<void> {
 async function commitHumanAction(action: Action): Promise<void> {
 	const handle = sim.handle;
 	if (!handle) return;
-	// Detect chonk: the destination cell already has pieces before
-	// applyAction lands.
+	// Detect chonk pre-commit (destination has pieces before apply).
 	const dest = action.runs[0]?.to;
 	const wasChonk = dest
 		? handle.game.board.has((BigInt(dest.col) << 16n) | BigInt(dest.row))
 		: false;
-	handle.game = applyEngineAction(handle.game, action);
-	actions.setSelection(null);
+	// Route through the broker so traits sync + persistence + screen
+	// transitions all run uniformly. Bypassing with a local
+	// applyAction left the koota Match trait stale → UI didn't update,
+	// next turn's input picked the wrong piece, etc.
+	await actions.commitHumanAction(action);
 	if (wasChonk) void playChonkHaptic();
 	// Per the diegetic-UI rule: the player does NOT auto-end their
 	// turn. The engine has flipped state.turn (so the AI is on
-	// "logical" turn), but the scene gates AI dispatch + board tip
-	// behind the pivot-drag gesture. The flag is read by the tick()
-	// loop's turn-change branch and by `endHumanTurn`. AI-vs-AI
-	// matches don't set this flag (humanColor === null path).
+	// "logical" turn) but the scene gates AI dispatch + board tip
+	// behind the pivot-drag gesture. AI-vs-AI matches don't set this
+	// flag (humanColor === null path).
 	if (handle.game.winner === null) {
 		humanAwaitingPivot = true;
 	}

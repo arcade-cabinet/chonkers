@@ -38,6 +38,14 @@ export interface InputContext {
 	readonly getSelection: () => SelectionSnapshot;
 	readonly isHumanTurn: () => boolean;
 	readonly humanColor: () => "red" | "white" | null;
+	/**
+	 * Color whose facing-direction drives the pivot-drag. Same as
+	 * `humanColor` in vs-AI. In Pass-and-Play this is hard-coded to
+	 * "red" so the screen-relative drag direction is constant
+	 * regardless of which side is on turn (the device is physically
+	 * re-oriented between turns via the 180° handoff).
+	 */
+	readonly humanFacingColor: () => "red" | "white" | null;
 	readonly setSelection: (cell: { col: number; row: number } | null) => void;
 	readonly commitAction: (action: Action) => void;
 	readonly endHumanTurn: () => void;
@@ -222,7 +230,7 @@ export function installInput(ctx: InputContext): InputHandles {
 		// Diegetic turn-end gesture is "push the board away from
 		// yourself" — drag UPWARD on screen for red (whose pieces are
 		// at the back, looking toward white), drag DOWNWARD for white.
-		return ctx.humanColor() === "red" ? -1 : 1;
+		return ctx.humanFacingColor() === "red" ? -1 : 1;
 	}
 
 	function onPointerMove(e: PointerEvent): void {
