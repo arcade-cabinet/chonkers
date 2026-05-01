@@ -149,7 +149,8 @@ export async function playTurn(
 	}
 
 	if (decision.kind === "stalled") {
-		// Per RULES.md §5.4 a stalled chain just flips control.
+		// Per RULES.md §5.4.1: a chain whose retry has no legal
+		// destination dies — clear the chain and flip control.
 		handle.game = {
 			...handle.game,
 			turn: mover === "red" ? "white" : "red",

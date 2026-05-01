@@ -70,7 +70,7 @@ Turns alternate strictly. Red moves first. A turn consists of **exactly one move
 3. The win check runs.
 4. If no win, control flips to the opponent.
 
-A player may not pass voluntarily. The only exception is a **forced split chain** (§5.4): if a previous turn started a split that left undischarged sub-stacks, those sub-stacks must continue resolving on subsequent turns until exhausted.
+A player may not pass voluntarily. The only situation in which a turn does not consist of a freely chosen action is a **stalled forced-split chain** (§5.4.1): if the player's previous chain stalled because a queued run had no legal destination, their entire next turn is the chain retry — they have no other legal actions until the chain resolves or dies.
 
 ---
 
@@ -151,16 +151,26 @@ While armed (still holding), the player drags off the stack. The first `pointerm
 
 ### 5.4 Forced split chain
 
-If the player selected `K` slices that are non-contiguous (e.g. slice 0 and slice 2 of a 3-stack), the split commits **one piece at a time** in selection order. The player must:
+When the player selects `K` slices that partition into multiple contiguous runs (e.g. slices `{0, 2}` of a 3-stack → two runs `[0]` and `[2]`), the split commits **one run at a time** in top-down selection order. **All runs commit during the SAME turn**; control does not flip between detachments. The player drags each detachment in turn:
 
-1. Drag the first detachment off and place it.
-2. The player's turn ends — control flips.
-3. On the player's **next turn**, the only legal move is to continue the chain — the next piece must come off the residual stack and be placed.
-4. The chain continues until all `K` selected slices have been placed.
+1. Drag the first run off and drop it on a legal destination cell.
+2. The source stack compacts; queued run indices rebase against the residual.
+3. The next run's drag overlay opens automatically. Drag and drop on a legal destination.
+4. Repeat until all `K` slices have been placed. Win check runs after the final detachment lands; only then does control flip.
 
 If the chain has any selected pair of contiguous slices, those move together as a single sub-stack of that contiguous run — i.e. selecting slices 0 and 1 of a 3-stack moves a 2-stack in one drag, not two 1-stacks.
 
-If at any point a queued chain step has **no legal destination**, the chain ends and control flips. The remaining unplaced pieces stay on the source stack as if the split never occurred for them.
+#### 5.4.1 Chain stall (the only multi-turn case)
+
+If at the moment a queued run is about to commit, that run has **no legal destination** (per §4.2 against the current board), the player **cannot** complete the chain on this turn. The chain freezes:
+
+- The runs already committed this turn stay committed.
+- The blocked run plus every queued tail run remain pending in `state.chain`.
+- Control flips to the opponent. The opponent plays a normal turn.
+- On the chain owner's **next turn**, the chain head retries: the opponent's intervening move may have opened (or closed) the destination. The chain owner has **no other legal move** until the chain resolves or dies — the chain is the only action they may take.
+- If the chain head still has no legal destination on retry, the chain **dies**: pending pieces stay on the source stack as if the split never occurred for them, the chain is consumed, and control flips.
+
+This is the **only** condition under which a single split spans multiple turns. A chain whose every queued run has a legal destination always resolves in one turn.
 
 ### 5.5 Split-and-chonk
 

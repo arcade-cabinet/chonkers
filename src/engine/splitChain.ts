@@ -29,9 +29,9 @@ export function chainNextDetachment(
 
 /**
  * True iff at least one legal destination exists for the chain's
- * head detachment. Per RULES.md §5.4, when no legal destination
- * exists the chain ends and control flips with the remaining slices
- * still on the source.
+ * head detachment. Per RULES.md §5.4.1, when the chain owner's retry
+ * has no legal destination the chain dies — the residual stays put,
+ * the chain field clears, control flips.
  */
 export function chainHasLegalContinuation(state: GameState): boolean {
 	if (!state.chain) return false;
