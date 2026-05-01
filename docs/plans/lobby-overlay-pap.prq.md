@@ -60,7 +60,7 @@ Out of scope (explicit):
 
 ### Directory layout
 
-```
+```text
 app/                              # Solid TSX overlays. Mounted into <div id="ui-root">.
 ├── main.tsx                      # Solid render root. Subscribes to sim state.
 ├── overlays/

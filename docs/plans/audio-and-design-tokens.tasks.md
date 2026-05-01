@@ -8,7 +8,7 @@
 
 1. [P1] **Update docs/DESIGN.md** — Reconcile tokens table, motion variant references, audio role table.
 2. [P1] **Author src/audio/README.md** — Quick-start + role table.
-3. [P1] **Author src/design/README.md** — Tokens / theme / motion at a glance.
+3. [P1] **Author src/design/README.md** — Tokens-only barrel — palette, typography, motion durations. (theme + motion modules were retired 2026-04-30; see tasks 13-14.)
 4. [P2] **Install Howler** — `pnpm add howler @types/howler`.
 5. [P3] **Author src/audio/__tests__/_setup.ts** — Browser-tier setup, bus singleton reset, kv settings clear.
 6. [P3] **Write src/audio/__tests__/audioBus.test.ts** — Init preloads, play triggers, setVolume clamps + persists, setMuted stops + persists, idempotent.

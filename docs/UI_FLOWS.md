@@ -213,7 +213,7 @@ A small (~32px square) `<button>` element positioned in the top-right corner of 
 stateDiagram-v2
     [*] --> Visible: screen === "play" AND no other overlay open
     Visible --> Pause: tap
-    Visible --> Hidden: another overlay opens (Pause / Settings / EndGame / EndGameConfig)
+    Visible --> Hidden: another overlay opens (Pause / Settings / EndGame)
     Hidden --> Visible: overlay closes back to play
 ```
 
