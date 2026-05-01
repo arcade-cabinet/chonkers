@@ -60,11 +60,6 @@ import { buildCoinFlip, type CoinFlipHandle } from "./coinFlip";
 import { buildDemoPucks, type DemoPucksHandle } from "./demoPucks";
 import { type InputHandles, installInput } from "./input";
 import { installLighting } from "./lighting";
-import {
-	buildLobbyAffordances,
-	type LobbyAffordanceHandle,
-} from "./overlay/lobbyAffordances";
-import type { MenuRadialHandle } from "./overlay/menuRadial";
 import { buildSplitRadial } from "./overlay/splitRadial";
 import { buildPieces, loadPieceMaterials } from "./pieces";
 
@@ -446,13 +441,6 @@ function countStackHeight(
 	return h;
 }
 
-// === Lobby affordances ===
-const lobby: LobbyAffordanceHandle = buildLobbyAffordances({
-	host: overlay,
-	camera,
-	canvas,
-});
-
 async function startNewMatch(humanColor: HumanColor = "red"): Promise<void> {
 	await ensureAudio();
 	humanAwaitingPivot = false;
@@ -478,89 +466,17 @@ async function startNewMatch(humanColor: HumanColor = "red"): Promise<void> {
 	})();
 }
 
-// PRQ-C3: resume hydration moved to a follow-up task (C3a). The
-// Solid Lobby.tsx greys the Continue button when no snapshot exists;
-// invoking it is currently a stub. The hydration code path here is
-// removed pending a clean broker-actions wrapper.
-
+// PRQ-C3 + PRQ-C4: the lobby / pause / end-game surfaces moved out of
+// the diegetic SVG layer entirely into the Solid branded overlays
+// (app/overlays/{Lobby,Pause,EndGame}.tsx). The scene retains the
+// demo-puck mesh visibility (decorative idle pucks while Screen ===
+// "title") and dispatches the win/loss audio sting on Match.winner
+// change. Everything else lives in app/.
 function refreshLobby(): void {
-	// PRQ-C3: the lobby surface moved out of the diegetic SVG layer
-	// into the Solid branded overlay (`app/overlays/Lobby.tsx`). The
-	// scene still owns the demo-puck visuals (decorative), but the
-	// lobbyAffordances SVG is no longer wired — Solid handles New /
-	// Continue / Settings entirely. lobby.hide() is a no-op when the
-	// overlay was never shown.
 	const screen = sim.worldEntity.get(Screen)?.value;
 	demoPucks.group.visible = screen === "title";
-	lobby.hide();
 }
-
 refreshLobby();
-
-// === End-game radial ===
-// PRQ-C3: end-game surface moved out of the diegetic SVG layer
-// into the Solid branded overlay (`app/overlays/EndGame.tsx`). The
-// scene's role is now just to play the win/loss audio sting; the
-// overlay opens automatically when the Screen trait flips to "win" /
-// "lose" / "spectator-result". The function below is a no-op stub
-// retained so existing call sites in tick() compile.
-function openEndGameRadial(_winner: Color, _humanColor: HumanColor): void {
-	// no-op
-}
-
-// === Pause radial (bezel triple-tap detector) ===
-// PRQ-C3: pause radial moved to Solid (`app/overlays/Pause.tsx`).
-const pauseRadial = null as MenuRadialHandle | null;
-const knockTimes: number[] = [];
-function registerKnock(): void {
-	const now = performance.now();
-	knockTimes.push(now);
-	while (knockTimes.length > 0) {
-		const first = knockTimes[0];
-		if (first === undefined) break;
-		if (now - first > tokens.motion.knockWindowMs) knockTimes.shift();
-		else break;
-	}
-	if (knockTimes.length >= 3) {
-		knockTimes.length = 0;
-		openPauseRadial();
-	}
-}
-
-function openPauseRadial(): void {
-	// PRQ-C3: the pause surface moved out of the diegetic SVG layer
-	// into the Solid branded overlay (`app/overlays/Pause.tsx`).
-	// The Solid layer subscribes to its own `modal` signal and opens
-	// the pause overlay directly when the bezel hamburger fires.
-	// This stub remains as a no-op so the testHook and the legacy
-	// triple-tap detector can call it without errors.
-}
-
-// Triple-tap detector on bezel: any pointer-down outside the board
-// raycast hit area counts as a "knock". The simplest implementation:
-// when the input pipeline's onPointerDown fires but cellAtPointer
-// returns null AND no selection is active, register a knock. Doing
-// this here in the scene index keeps the input pipeline pure.
-canvas.addEventListener(
-	"pointerdown",
-	(e) => {
-		// Only react when no selection is active and the click is
-		// well outside the board area. Use the canvas bounding rect
-		// to roughly detect "outside the inner playfield" — anywhere
-		// in the corner ~120px from any edge counts as bezel.
-		const sel = sim.worldEntity.get(Selection)?.cell;
-		if (sel !== null && sel !== undefined) return;
-		const rect = canvas.getBoundingClientRect();
-		const inset = Math.min(rect.width, rect.height) * 0.18;
-		const isCorner =
-			e.clientX < rect.left + inset ||
-			e.clientX > rect.right - inset ||
-			e.clientY < rect.top + inset ||
-			e.clientY > rect.bottom - inset;
-		if (isCorner) registerKnock();
-	},
-	true, // capture so we see it before input.ts's handler
-);
 
 let rafId = 0;
 function tick(): void {
@@ -625,10 +541,11 @@ function tick(): void {
 			if (match.winner !== null && priorWinner !== undefined) {
 				void playSfx("sting");
 				const humanColor = match.humanColor;
-				if (humanColor !== null) {
+				if (humanColor === "red" || humanColor === "white") {
 					void playSfx(humanColor === match.winner ? "win" : "lose");
 				}
-				openEndGameRadial(match.winner, humanColor);
+				// End-game overlay opens automatically from app/ when
+				// Screen flips to "win" / "lose" / "spectator-result".
 			}
 			priorWinner = match.winner;
 		}
@@ -648,8 +565,6 @@ function tick(): void {
 	}
 
 	splitRadial.update();
-	lobby.update();
-	pauseRadial?.update();
 
 	updateBoardProjection();
 
@@ -742,7 +657,6 @@ if (typeof window !== "undefined" && import.meta.env.DEV) {
 					return true;
 				},
 				closeSplitRadial: () => splitRadial.close(),
-				openPauseRadial,
 			},
 		};
 	}
@@ -756,8 +670,6 @@ if (import.meta.hot) {
 		demoPucks.dispose();
 		coin.dispose();
 		splitRadial.dispose();
-		lobby.dispose();
-		pauseRadial?.close();
 		renderer.dispose();
 	});
 }

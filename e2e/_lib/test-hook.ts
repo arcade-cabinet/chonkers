@@ -26,7 +26,6 @@ export interface ChonkersTestHook {
 	readonly scene: {
 		openSplitRadialAt: (col: number, row: number, height: number) => boolean;
 		closeSplitRadial: () => void;
-		openPauseRadial: () => void;
 	};
 }
 

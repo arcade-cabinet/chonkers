@@ -98,7 +98,7 @@ test.describe("accessibility — diegetic UI surfaces", { tag: "@axe" }, () => {
 			.toEqual([]);
 	});
 
-	test("pause radial surface", async ({ page }) => {
+	test("pause overlay surface", async ({ page }) => {
 		await page.evaluate(() => {
 			window.__chonkers?.actions.startNewMatch(null);
 		});
@@ -108,11 +108,12 @@ test.describe("accessibility — diegetic UI surfaces", { tag: "@axe" }, () => {
 			{ timeout: 30_000 },
 		);
 
-		await page.evaluate(() => {
-			window.__chonkers?.scene.openPauseRadial();
-		});
-		// Allow the radial to mount.
-		await page.waitForTimeout(500);
+		// Open the Solid pause overlay via the bezel hamburger button
+		// (the production path; no testHook shortcut).
+		await page.getByRole("button", { name: /menu|pause/i }).click();
+		await page
+			.getByRole("dialog", { name: /paused|pause/i })
+			.waitFor({ state: "visible", timeout: 5_000 });
 
 		const results = await new AxeBuilder({ page })
 			.withTags(["wcag2a", "wcag2aa", "wcag21aa"])
