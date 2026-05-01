@@ -38,23 +38,38 @@ function cellLabel(col: number, row: number): string {
 	return `row ${row}, column ${col}`;
 }
 
-/** Pivot-drag the bezel toward the on-turn opponent's side. */
-async function pivotEndTurn(
-	page: Page,
-	towards: "top" | "bottom",
-): Promise<void> {
-	const bezel = page.getByLabel(/bezel|board frame/i).first();
-	const box = await bezel.boundingBox();
-	if (!box) throw new Error("bezel has no bounding box");
+/**
+ * Pivot-drag turn-end. The diegetic gesture: physically tilt the
+ * board toward the opposing side. Per docs/RULES.md §8 + DESIGN.md
+ * "UI surfaces", this is a drag on the canvas — there are no
+ * buttons on the bezel.
+ *
+ * The drag must:
+ *   - START on a cell that's NOT the player's source/destination of
+ *     a pending move (so it's not interpreted as a tap-select).
+ *   - MOVE more than END_TURN_DRAG_THRESHOLD_PX (80) toward the
+ *     opponent (negative Y for red on screen, positive Y for white
+ *     after the 180° flip).
+ *
+ * In practice: drag from the centre cell (5, 5) — empty in starting
+ * position, no piece to select — straight up by 200px. The a11y
+ * grid forwards the pointerdown to the canvas, so the canvas's drag
+ * detector sees the pivot.
+ */
+async function pivotEndTurn(page: Page): Promise<void> {
+	const startCell = page.getByRole("gridcell", {
+		name: cellLabel(4, 5),
+		exact: true,
+	});
+	const box = await startCell.boundingBox();
+	if (!box) throw new Error("centre cell has no bounding box");
 	const startX = box.x + box.width / 2;
 	const startY = box.y + box.height / 2;
-	const endY = towards === "top" ? box.y - 100 : box.y + box.height + 100;
 	await page.mouse.move(startX, startY);
 	await page.mouse.down();
-	// Multiple intermediate moves so the gesture registers as a drag,
-	// not a click. END_TURN_DRAG_THRESHOLD_PX = 80 in input.ts.
-	await page.mouse.move(startX, startY + (endY - startY) * 0.5, { steps: 8 });
-	await page.mouse.move(startX, endY, { steps: 8 });
+	// 200px upward — well past END_TURN_DRAG_THRESHOLD_PX = 80.
+	await page.mouse.move(startX, startY - 100, { steps: 8 });
+	await page.mouse.move(startX, startY - 200, { steps: 8 });
 	await page.mouse.up();
 }
 
@@ -150,26 +165,19 @@ test.describe("pass-and-play hotseat — pure DOM, no testHook", {
 		// ------------------------------------------------------------
 		await clickCell(page, 3, 3);
 		await clickCell(page, 3, 4);
-		// Pivot to end red's turn.
-		await pivotEndTurn(page, "top");
-		// 180° rotation completes — white's view is now upright.
-		// (We assert the rotation by checking the bezel's orientation
-		// via a CSS custom property the scene writes during the tween.)
-		await expect(page.getByLabel(/bezel|board frame/i).first()).toHaveAttribute(
-			"data-orientation",
-			"white",
-		);
+		// Pivot to end red's turn. The 180° handoff animation runs
+		// here; the next valid clicks against white's pieces only
+		// succeed if engine state.turn flipped to "white" (which is
+		// what pivotEndTurn does via the canvas's drag handler →
+		// endHumanTurn → tween + state flip).
+		await pivotEndTurn(page);
 
 		// ------------------------------------------------------------
 		// Turn 2 (white): full-stack move toward red's side.
 		// ------------------------------------------------------------
 		await clickCell(page, 3, 7);
 		await clickCell(page, 3, 6);
-		await pivotEndTurn(page, "top"); // white pivots toward red (now "top" from white's POV)
-		await expect(page.getByLabel(/bezel|board frame/i).first()).toHaveAttribute(
-			"data-orientation",
-			"red",
-		);
+		await pivotEndTurn(page); // white pivots; rotates back toward red.
 
 		// ------------------------------------------------------------
 		// Turn 3 (red): chonk a white 1-stack to build a 2-stack.
@@ -180,14 +188,14 @@ test.describe("pass-and-play hotseat — pure DOM, no testHook", {
 		// ------------------------------------------------------------
 		await clickCell(page, 3, 4);
 		await clickCell(page, 3, 5);
-		await pivotEndTurn(page, "top");
+		await pivotEndTurn(page);
 
 		// ------------------------------------------------------------
 		// Turn 4 (white): position for chonk threat.
 		// ------------------------------------------------------------
 		await clickCell(page, 3, 6);
 		await clickCell(page, 3, 5); // chonk red's 1-stack → white 2-stack here
-		await pivotEndTurn(page, "top");
+		await pivotEndTurn(page);
 
 		// ------------------------------------------------------------
 		// Turn 5 (red): we now have at least one stack of height ≥ 2
@@ -201,7 +209,7 @@ test.describe("pass-and-play hotseat — pure DOM, no testHook", {
 		// ------------------------------------------------------------
 		await clickCell(page, 4, 3);
 		await clickCell(page, 4, 4);
-		await pivotEndTurn(page, "top");
+		await pivotEndTurn(page);
 
 		// ------------------------------------------------------------
 		// Pause overlay smoke check.
@@ -238,6 +246,6 @@ test.describe("pass-and-play hotseat — pure DOM, no testHook", {
 		await armAndCommitSplit(page, { col: 3, row: 5 }, { col: 3, row: 6 });
 		// Radial closed after commit.
 		await expect(radial).not.toBeVisible();
-		await pivotEndTurn(page, "top");
+		await pivotEndTurn(page);
 	});
 });

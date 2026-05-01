@@ -157,6 +157,13 @@ export function buildSlicedRadialSvg(opts: {
 	readonly idleFill: string;
 	readonly idleStroke: string;
 	readonly innerRadiusFraction?: number;
+	/**
+	 * Optional accessible name for the radial. When provided, the SVG
+	 * carries `role="menu"` + `aria-label`, and each slice path is a
+	 * `role="menuitem"` with `aria-label="slice N"`. Required for the
+	 * splitting radial — keyboard / screen-reader / Playwright access.
+	 */
+	readonly ariaLabel?: string;
 }): SVGSVGElement {
 	const NS = "http://www.w3.org/2000/svg";
 	const r = opts.diameterPx / 2;
@@ -168,6 +175,10 @@ export function buildSlicedRadialSvg(opts: {
 		"viewBox",
 		`${-r} ${-r} ${opts.diameterPx} ${opts.diameterPx}`,
 	);
+	if (opts.ariaLabel) {
+		svg.setAttribute("role", "menu");
+		svg.setAttribute("aria-label", opts.ariaLabel);
+	}
 	svg.style.filter = "drop-shadow(0 4px 6px rgba(0,0,0,0.55))";
 	svg.style.touchAction = "none";
 
@@ -181,6 +192,11 @@ export function buildSlicedRadialSvg(opts: {
 		path.setAttribute("stroke", opts.idleStroke);
 		path.setAttribute("stroke-width", "2");
 		path.setAttribute("data-slice-index", String(i));
+		if (opts.ariaLabel) {
+			path.setAttribute("role", "menuitem");
+			path.setAttribute("aria-label", `slice ${i}`);
+			path.setAttribute("tabindex", "0");
+		}
 		path.style.cursor = "pointer";
 		path.style.transition = "fill 0.18s ease-out, stroke 0.18s ease-out";
 		svg.appendChild(path);

@@ -25,13 +25,18 @@ export default defineConfig({
 		assetsInlineLimit: 0,
 		sourcemap: true,
 	},
+	// Chonkers runs on a non-default port so it doesn't collide with
+	// sibling arcade-cabinet projects (each runs its own dev server on
+	// 5173 by default). 5273 was unclaimed at PRQ time.
 	server: {
 		host: true,
-		port: 5173,
+		port: 5273,
+		strictPort: true,
 	},
 	preview: {
 		host: true,
-		port: 4173,
+		port: 4273,
+		strictPort: true,
 	},
 	assetsInclude: ["**/*.exr", "**/*.hdr", "**/*.ttf"],
 });

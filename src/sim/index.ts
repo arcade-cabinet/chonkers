@@ -40,7 +40,12 @@ export {
 	playTurn,
 } from "./broker";
 export { decideFirstPlayer, freshCoinFlipSeed } from "./coinFlip";
-export { getSimSingleton, resetSimSingleton } from "./singleton";
+export {
+	getSimSingleton,
+	resetSimSingleton,
+	type SceneCellTap,
+	setSceneTapCell,
+} from "./singleton";
 export {
 	AiThinking,
 	FALLBACK_PIECES,

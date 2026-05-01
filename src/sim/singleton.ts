@@ -28,22 +28,51 @@ import {
 	type SimWorld,
 } from "./world";
 
+/**
+ * Bridge: scene installs a tapCell handler via `setSceneTapCell`; the
+ * Solid `BoardA11yGrid` calls singleton.tapCell when a gridcell is
+ * activated by mouse click, Enter, or Space. Same code path the
+ * canvas pointer-up takes — selection toggle / commit / clear.
+ * PRQ-C3a.
+ *
+ * Drag gestures (pivot-drag turn-end, split-radial hold-to-arm) are
+ * NOT routed through this bridge. Those stay on the canvas pointer
+ * handlers — the a11y grid forwards pointer events to the canvas on
+ * pointer-move so a drag that starts on a cell still drives the
+ * canvas's drag detector.
+ */
+export type SceneCellTap = (cell: { col: number; row: number }) => void;
+
 interface SimSingleton {
 	readonly sim: SimWorld;
 	readonly actions: SimActions;
+	tapCell(cell: { col: number; row: number }): void;
 }
 
 let cached: SimSingleton | null = null;
+let sceneTapCell: SceneCellTap | null = null;
 
 export function getSimSingleton(options?: CreateSimWorldOptions): SimSingleton {
 	if (cached) return cached;
 	const sim = createSimWorld(options ?? {});
 	const actions = buildSimActions(sim)(sim.world);
-	cached = { sim, actions };
+	cached = {
+		sim,
+		actions,
+		tapCell(cell) {
+			if (sceneTapCell) sceneTapCell(cell);
+		},
+	};
 	return cached;
+}
+
+/** Scene-only: install the tapCell handler the input layer wraps. */
+export function setSceneTapCell(handler: SceneCellTap | null): void {
+	sceneTapCell = handler;
 }
 
 /** Test-only: clear the cached instance so a fresh world is built. */
 export function resetSimSingleton(): void {
 	cached = null;
+	sceneTapCell = null;
 }

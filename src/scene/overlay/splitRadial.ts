@@ -73,6 +73,7 @@ export function buildSplitRadial(opts: SplitRadialOptions): SplitRadialHandle {
 			sliceCount: stackHeight,
 			idleFill: tokens.splitRadial.idleFill,
 			idleStroke: tokens.splitRadial.idleStroke,
+			ariaLabel: "Split radial",
 		});
 
 		const overlay = mountOverlay({

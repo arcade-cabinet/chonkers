@@ -50,6 +50,14 @@ export interface InputHandles {
 	 * subscription whenever Selection or Match changes.
 	 */
 	refreshSelectionVisuals(): void;
+	/**
+	 * Programmatic cell tap. Same logic as a pointer-up on the board
+	 * at the cell's screen coordinates (select own piece / commit move
+	 * / clear selection). Used by the a11y board grid (PRQ-C3a) so
+	 * keyboard + screen-reader users can drive the game without
+	 * needing pixel-precise pointer aim.
+	 */
+	tapCell(cell: { col: number; row: number }): void;
 	dispose(): void;
 }
 
@@ -264,13 +272,23 @@ export function installInput(ctx: InputContext): InputHandles {
 		}
 
 		const cell = cellAtPointer(e);
-		const sel = ctx.getSelection();
-		const game = ctx.getGameState();
-
 		if (!cell) {
 			ctx.setSelection(null);
 			return;
 		}
+		tapCell(cell);
+	}
+
+	/**
+	 * Same logic as a pointer-up on a board cell — selection toggle +
+	 * commit. Called by both the canvas pointer handler (with a cell
+	 * derived from the raycast) and the a11y board grid (with a cell
+	 * derived from the gridcell's aria-label).
+	 */
+	function tapCell(cell: { col: number; row: number }): void {
+		if (!ctx.isHumanTurn()) return;
+		const sel = ctx.getSelection();
+		const game = ctx.getGameState();
 
 		if (sel.cell === null) {
 			if (!game) return;
@@ -318,7 +336,7 @@ export function installInput(ctx: InputContext): InputHandles {
 		void scene;
 	}
 
-	return { refreshSelectionVisuals, dispose };
+	return { refreshSelectionVisuals, tapCell, dispose };
 }
 
 function topOf(

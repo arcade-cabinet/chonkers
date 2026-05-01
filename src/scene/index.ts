@@ -27,16 +27,24 @@ import { tokens } from "@/design";
 import {
 	type Action,
 	applyAction as applyEngineAction,
+	BOARD_COLS,
+	BOARD_ROWS,
 	type Color,
 	enumerateLegalActions,
 	type GameState,
+	posToVector3,
 } from "@/engine";
 import {
 	clearActiveMatch,
 	saveActiveMatch,
 	snapshotFromHandle,
 } from "@/persistence";
-import { decideFirstPlayer, getSimSingleton } from "@/sim";
+import { decideFirstPlayer, getSimSingleton, setSceneTapCell } from "@/sim";
+import {
+	boardProjection,
+	cellIndex,
+	clearBoardProjection,
+} from "@/sim/board-projection";
 import {
 	AiThinking,
 	type HumanColor,
@@ -281,6 +289,11 @@ const inputCtx: InputHandles = installInput({
 		}
 	},
 });
+
+// Bridge: the Solid BoardA11yGrid calls singleton.tapCell which is
+// wired to the input layer's tapCell. Same logic as a canvas
+// pointer-up at the cell's screen coords (selection toggle / commit).
+setSceneTapCell((cell) => inputCtx.tapCell(cell));
 
 async function playSelectionHaptic(): Promise<void> {
 	try {
@@ -619,7 +632,38 @@ function tick(): void {
 	lobby.update();
 	pauseRadial?.update();
 
+	updateBoardProjection();
+
 	renderer.render(scene, camera);
+}
+
+// Per-frame projection of every board cell's anchor into screen-space CSS
+// pixels. Read by the Solid `BoardA11yGrid` component to position the
+// invisible <button role="gridcell"> overlay that delegates clicks back
+// to the input layer's selection path. See src/sim/board-projection.ts
+// for the contract; PRQ-C3a for the why.
+const projectionScratch = new THREE.Vector3();
+function updateBoardProjection(): void {
+	const screen = sim.worldEntity.get(Screen)?.value;
+	if (screen !== "play") {
+		if (boardProjection.ready) clearBoardProjection();
+		return;
+	}
+	const rect = canvas.getBoundingClientRect();
+	for (let row = 0; row < BOARD_ROWS; row += 1) {
+		for (let col = 0; col < BOARD_COLS; col += 1) {
+			const local = posToVector3({ col, row });
+			projectionScratch.set(local.x, local.y, local.z);
+			board.group.localToWorld(projectionScratch);
+			projectionScratch.project(camera);
+			const offscreen = projectionScratch.z >= 1 || projectionScratch.z <= -1;
+			const x = (projectionScratch.x * 0.5 + 0.5) * rect.width + rect.left;
+			const y = (projectionScratch.y * -0.5 + 0.5) * rect.height + rect.top;
+			boardProjection.cells[cellIndex(col, row)] = { x, y, offscreen };
+		}
+	}
+	boardProjection.frame += 1;
+	boardProjection.ready = true;
 }
 
 tick();

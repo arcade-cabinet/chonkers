@@ -25,7 +25,7 @@ export default defineConfig({
 	workers: 1,
 	reporter: isCI ? "github" : "list",
 	use: {
-		baseURL: "http://localhost:5173/chonkers/",
+		baseURL: "http://localhost:5273/chonkers/",
 		trace: "on-first-retry",
 		screenshot: "only-on-failure",
 	},
@@ -58,7 +58,7 @@ export default defineConfig({
 	],
 	webServer: {
 		command: "pnpm dev",
-		url: "http://localhost:5173",
+		url: "http://localhost:5273",
 		reuseExistingServer: !isCI,
 		timeout: 120_000,
 		stdout: "pipe",

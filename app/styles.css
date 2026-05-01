@@ -231,3 +231,42 @@
 	outline: 2px solid var(--ck-accent);
 	outline-offset: 2px;
 }
+
+/* Board a11y grid — invisible cells positioned per-frame at their
+ * projected screen-space coords. Pointer-events: auto so clicks reach
+ * the gridcell BEFORE the canvas underneath (the canvas pointer
+ * handler is still active for drag gestures, which the grid doesn't
+ * intercept because pointermove leaks through). */
+.ck-board-grid {
+	position: fixed;
+	inset: 0;
+	pointer-events: none;
+	z-index: 15; /* below modals (20) + hamburger (30); above canvas */
+}
+
+.ck-board-grid__cell {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 56px;
+	height: 56px;
+	margin-left: -28px;
+	margin-top: -28px;
+	background: transparent;
+	border: 0;
+	padding: 0;
+	cursor: pointer;
+	pointer-events: auto;
+	font: inherit;
+	color: transparent;
+	-webkit-tap-highlight-color: transparent;
+}
+
+/* Visible focus ring for keyboard navigation. Subtle in the visual
+ * scene (the cell is over a 3D piece); high-contrast for screen-
+ * readers' indicator. */
+.ck-board-grid__cell:focus-visible {
+	outline: 2px solid var(--ck-accent);
+	outline-offset: -2px;
+	border-radius: 50%;
+}

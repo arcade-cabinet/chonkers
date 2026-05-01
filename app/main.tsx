@@ -14,6 +14,7 @@
 import { Show } from "solid-js";
 import { render } from "solid-js/web";
 import { BezelHamburger } from "./overlays/BezelHamburger";
+import { BoardA11yGrid } from "./overlays/BoardA11yGrid";
 import { EndGame } from "./overlays/EndGame";
 import { Lobby } from "./overlays/Lobby";
 import { NewGameConfig } from "./overlays/NewGameConfig";
@@ -32,6 +33,8 @@ function App() {
 			<Show when={uiState.screen() === "play"}>
 				<BezelHamburger />
 			</Show>
+			<BoardA11yGrid />
+
 			<Show when={uiState.modal() === "new-game"}>
 				<NewGameConfig />
 			</Show>
