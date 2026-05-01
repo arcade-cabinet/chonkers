@@ -29,8 +29,9 @@
 		"test:alpha": "vitest run --project alpha --passWithNoTests",
 		"test:watch": "vitest",
 		"test:e2e": "playwright test",
-		"test:e2e:ci": "test -d e2e && playwright test --grep-invert @nightly || echo 'no e2e specs yet — skipping'",
+		"test:e2e:ci": "test -d e2e && playwright test --grep-invert '@nightly|@governor' || echo 'no e2e specs yet — skipping'",
 		"test:e2e:nightly": "test -d e2e && playwright test --grep @nightly || echo 'no e2e specs yet — skipping'",
+		"test:e2e:governor": "test -d e2e && playwright test --grep @governor || echo 'no e2e specs yet — skipping'",
 		"cap:sync": "pnpm build:native && cap sync",
 		"native:android:debug": "pnpm build:native && cap sync android && cd android && ./gradlew assembleDebug",
 		"native:ios:build": "pnpm build:native && cap sync ios && xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug -sdk iphonesimulator -destination 'platform=iOS Simulator,name=iPhone 16'"

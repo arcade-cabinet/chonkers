@@ -94,21 +94,29 @@ test.describe("smoke — boot + AI-vs-AI match", () => {
 		}));
 		expect(afterStart.humanColor).toBe("red");
 		expect(afterStart.turn === "red" || afterStart.turn === "white").toBe(true);
-		expect(afterStart.plyCount).toBe(0);
+		// plyCount may be 0 (we caught the state before any AI ply fired)
+		// or >= 1 (the broker's auto-step kicked in for whichever side
+		// won the coin flip). Both mean the match is alive.
+		expect(afterStart.plyCount).toBeGreaterThanOrEqual(0);
 
 		// Drive a turn manually via stepTurn (works regardless of which
 		// color is on turn first — the broker invokes the on-turn AI's
 		// chooseAction either way). After it lands, plyCount is bumped.
-		// We poll plyCount instead of turn flip because turn might have
-		// already flipped once (coin flip → AI dispatch → human turn)
-		// before we read it.
+		// We poll plyCount > startPly instead of turn flip because turn
+		// might have already flipped once (coin flip → AI dispatch →
+		// human turn) before we read it.
+		const startPly = afterStart.plyCount ?? 0;
 		await page.evaluate(() => window.__chonkers?.actions.stepTurn());
 		await page.waitForFunction(
-			() => {
+			(args) => {
 				const h = window.__chonkers;
-				return h !== undefined && h.aiThinking === false && h.plyCount >= 1;
+				return (
+					h !== undefined &&
+					h.aiThinking === false &&
+					h.plyCount > args.startPly
+				);
 			},
-			null,
+			{ startPly },
 			{ timeout: 30_000 },
 		);
 
