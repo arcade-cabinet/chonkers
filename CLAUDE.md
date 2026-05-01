@@ -98,7 +98,7 @@ docs/plans/                        # PRDs + execution runbooks
 - **No SQLite, drizzle, or relational database.** Persistence is KV-only via `@capacitor/preferences`.
 - **`src/engine/*`** never imports `src/ai/*`, `src/sim/*`, or `src/scene/*`.
 - **`src/ai/*`** imports only from `src/engine/*` (one-way).
-- **`src/persistence/preferences/*`** is a leaf — imports `@capacitor/preferences` and the type-only AI/engine/sim shapes it needs to type the active-match snapshot.
+- **`src/persistence/preferences/*`** is the KV layer — imports `@capacitor/preferences` for storage; type-only from `src/{engine,sim}/*`. Runtime imports from `src/ai/*` are confined to `dumpAiState` / `loadAiState` for AI-brain (de)serialization (a typed-only contract is impossible because the AI brain must round-trip through base64). `snapshotFromHandle` builds the persistable shape; `restoreAiPair` rebuilds the runtime brain pair.
 - **`src/sim/*`** is the broker — imports from `src/{engine,ai}/*`. Only place that calls `crypto.getRandomValues()` (for the per-match `coinFlipSeed`).
 - **`src/scene/*`** is the render layer — imports from `src/{sim,audio,design,persistence,utils}/*` only; type-only from `src/{engine,ai}/*`. Uses `three` + `gsap` + DOM SVG APIs. Wires `onPlyCommit` / `onMatchEnd` to `saveActiveMatch` / `clearActiveMatch`.
 - **No `Math.random()`** in `src/{engine,ai,sim}/`. Banned by `.claude/gates.json`. The sim broker's coin-flip is the only entropy source.

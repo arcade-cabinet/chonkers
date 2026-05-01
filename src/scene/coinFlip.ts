@@ -69,7 +69,11 @@ export function buildCoinFlip(materials: PieceMaterials): CoinFlipHandle {
 
 	function dispose(): void {
 		geom.dispose();
-		// Don't dispose materials — they're shared with pieces.
+		// `mats[0]` is the side material — created inline above and
+		// owned by this module, so it must be disposed here.
+		// `mats[1]` (red) and `mats[2]` (white) are shared with the
+		// pieces module and freed there.
+		mats[0]?.dispose();
 		group.remove(coin);
 	}
 

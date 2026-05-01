@@ -198,8 +198,8 @@ The motion vocabulary lives in `src/design/tokens.ts` (durations) and `src/scene
 
 | Factory | Where it's used | Duration token |
 |---|---|---|
-| `tweenRadialOpen(svgEl)` | Splitting / pause / lobby / end-game radials open | `tokens.motion.uiOpenMs` |
-| `tweenRadialClose(svgEl)` | Same radials close | `tokens.motion.uiCloseMs` |
+| `tweenRadialOpen(svgEl)` | Splitting radial open (the only remaining diegetic SVG; lobby / pause / end-game are now centered Solid `<dialog>` modals — see app/overlays/) | `tokens.motion.uiOpenMs` |
+| `tweenRadialClose(svgEl)` | Splitting radial close | `tokens.motion.uiCloseMs` |
 | `tweenSliceSelect(sliceEl)` | Slice idle → hovered → selected (80ms ease-out) | hardcoded (one-off) |
 | `tweenHoldFlash(sliceEls)` | Selected slices pulse while the hold-arm timer runs | `tokens.motion.uiFlashMs` |
 | `tweenPieceMove(meshes, fromXZ, toXZ)` | Lift / arc / settle for a 1-stack or full-stack move | 420ms split across phases |

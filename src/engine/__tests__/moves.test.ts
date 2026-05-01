@@ -185,34 +185,12 @@ describe("applyAction — splits", () => {
 		// here we test the in-action stall: the queued run's
 		// destination has no legal landing because of a chonk
 		// performed by the EARLIER run in this same action.
+		// To produce a stalled chain: 5-stack at (4,4), run #1 = [0],
+		// run #2 = [2, 3]. After run #1 the source compacts and the
+		// queued [2,3] rebases to [1,2] — run #2's 2-piece sub-stack
+		// lands on a cell currently holding a 1-stack, which STALLS
+		// (a 2-piece chonk needs dest height ≥ 2).
 		let b = emptyBoard();
-		// 3-stack red at (4,4) — slices 0 (top), 1, 2 (bottom).
-		for (let h = 0; h < 3; h += 1) {
-			b = setPiece(b, { col: 4, row: 4, height: h, color: "red" });
-		}
-		// 1-stack white at (4,5) — first run will chonk onto it,
-		// making it height 2.
-		b = setPiece(b, { col: 4, row: 5, height: 0, color: "white" });
-		// 1-stack white at (5,4) — queued run [2] (rebased to [1])
-		// will be 1 piece, which CAN chonk a 1-stack. So that doesn't
-		// stall. Use a different recipe:
-		//
-		// 4-stack red at (4,4); selection {0,1, 3} → [[0,1],[3]]
-		// First run = 2 pieces. Second run = 1 piece.
-		// First run's destination must support a 2-piece chonk: dest
-		// height ≥ 2. Second run's destination must STALL, i.e. dest
-		// height = 1 after the first run committed. Set it up so the
-		// dest of run #2 is currently height 0 BUT becomes height >0
-		// after run #1's chonk... that's not possible since run #2's
-		// dest is a different cell.
-		//
-		// Right — to STALL we need run #2's destination to be height 1
-		// at commit time AND run #2's sub-stack to be height ≥ 2. So
-		// adjust selection: 5-stack, run #1 = [0], run #2 = [2, 3].
-		// After run #1, source compacts; queued [2,3] rebases to [1,2].
-		// Run #2 sub-stack is 2 pieces. Aim at a cell currently
-		// holding a 1-stack → STALL.
-		b = emptyBoard();
 		for (let h = 0; h < 5; h += 1) {
 			b = setPiece(b, { col: 4, row: 4, height: h, color: "red" });
 		}

@@ -152,13 +152,24 @@ board.group.add(demoPucks.group);
 const coin: CoinFlipHandle = buildCoinFlip(pieceMaterials);
 board.group.add(coin.group);
 
-window.addEventListener("resize", () => {
+const onWindowResize = () => {
 	fitCanvas(canvas);
 	renderer.setSize(canvas.clientWidth, canvas.clientHeight, false);
 	resizeCamera(camera, canvas);
-});
+};
+window.addEventListener("resize", onWindowResize);
 fitCanvas(canvas);
 resizeCamera(camera, canvas);
+
+// HMR teardown — Vite re-imports the module on edit; without this
+// hook the prior resize listener (and the rAF loop scheduled below)
+// stack on top of the new ones, leaking 60fps work per reload.
+if (import.meta.hot) {
+	import.meta.hot.dispose(() => {
+		window.removeEventListener("resize", onWindowResize);
+		cancelAnimationFrame(rafId);
+	});
+}
 
 // === Sim world bootstrap (no auto-newMatch — lobby first) ===
 // Persistence hooks are registered by app/main.tsx (which initialises
@@ -379,8 +390,13 @@ async function commitSplitFromSlices(
 	const sel = sim.worldEntity.get(Selection)?.cell;
 	const handle = sim.handle;
 	if (!sel || !handle) return;
-	// Find a legal action whose `from` matches selection AND whose
-	// total `runs.flatMap(r => r.indices)` matches `selectedSlices`.
+	// KNOWN LIMITATION (tracked for follow-up beta UI work): when the
+	// chosen slice set has multiple legal destinations, this picks
+	// the FIRST legal action that matches the indices instead of the
+	// drop target the player dragged toward. The split radial does
+	// not currently expose a release-cell to its onCommit callback
+	// — fixing this needs the radial to track pointer-up location
+	// against the rendered cell grid. Filed in `.agent-state/`.
 	const all = enumerateLegalActions(handle.game);
 	for (const action of all) {
 		if (action.from.col !== sel.col || action.from.row !== sel.row) continue;

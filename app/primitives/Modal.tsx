@@ -18,10 +18,9 @@ interface ModalProps {
 }
 
 export function Modal(props: ModalProps): JSX.Element {
-	let dialogRef: HTMLDialogElement | undefined;
+	let dlg: HTMLDialogElement | undefined;
 
 	onMount(() => {
-		const dlg = dialogRef;
 		if (!dlg) return;
 		dlg.showModal();
 		// Initial focus: the first focusable button inside the dialog.
@@ -43,13 +42,20 @@ export function Modal(props: ModalProps): JSX.Element {
 		};
 		dlg.addEventListener("cancel", onCancel);
 		onCleanup(() => {
+			if (!dlg) return;
 			dlg.removeEventListener("cancel", onCancel);
 			if (dlg.open) dlg.close();
 		});
 	});
 
 	return (
-		<dialog ref={dialogRef} class="ck-modal" aria-label={props.label}>
+		<dialog
+			ref={(el) => {
+				dlg = el;
+			}}
+			class="ck-modal"
+			aria-label={props.label}
+		>
 			{props.children}
 		</dialog>
 	);

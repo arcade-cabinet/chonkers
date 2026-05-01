@@ -10,15 +10,13 @@ domain: technical
 ## Top-level boundaries
 
 ```
-Input (raycaster on board plane + pieces; SVG overlay pointer events for diegetic affordances)
+Input (raycaster on board plane + pieces; SVG overlay pointer events for diegetic affordances; Solid overlays in app/ for centered branded modals)
     │
     ▼
-Sim broker (src/sim/) ──── coordinates engine + ai + store + persistence
+Sim broker (src/sim/) ──── coordinates engine + ai + persistence
     │
     ├─► Engine    (src/engine/)   pure rules, deterministic, no IO
     ├─► AI        (src/ai/)       Yuka Graph + alpha-beta minimax, deterministic, no PRNG
-    ├─► Store     (src/store/)    typed CRUD over db tables
-    ├─► Analytics (src/analytics/) materialised aggregate queries
     │
     ├─► Scene    (src/scene/)     three.js scene + gsap tweens + diegetic SVG overlays — subscribes to koota
     │
@@ -33,11 +31,11 @@ There is no SQLite, no relational database, no migration pipeline. See
 `docs/PERSISTENCE.md` for the full contract.
 ```
 
-State flows through the sim broker. The scene subscribes to koota traits; it never mutates state directly. The broker is the only module that imports from both the logic side (engine/ai/store) and the IO side (persistence/db/audio).
+State flows through the sim broker. The scene subscribes to koota traits; it never mutates state directly. The broker imports from both the logic side (engine/ai) and the IO side (persistence/audio).
 
-## Everything is `src/`
+## src/ + app/
 
-There is **no `app/` directory**. There is no React, no JSX, no R3F, no Radix, no framer-motion in the application. The full stack is:
+`src/` is the canvas universe (vanilla three.js + gsap, pure TS, no JSX). `app/` is the Solid menu-overlay universe — centered branded dialogs (Lobby, NewGame, Settings, Pause, EndGame) and the per-frame projected board a11y grid + bezel hamburger. There is no React, no JSX, no R3F, no Radix, no framer-motion in the application. The full stack is:
 
 | Concern | Library | Why |
 |---|---|---|
@@ -103,7 +101,7 @@ Persistence is *not* in koota. The koota world is rebuilt on app boot (or on mat
 
 The scene graph at runtime:
 
-```
+```text
 THREE.Scene
 ├─ HDRI environment (image-based lighting from background.exr)
 ├─ THREE.DirectionalLight × 3  // key, fill, rim — shadow-casting on key
@@ -125,16 +123,19 @@ THREE.Scene
 
 A parallel DOM tree, NOT inside the canvas:
 
-```
-<div id="overlay">                           // pointer-events: none by default
-  <svg class="split-radial" data-piece-id>   // pointer-events: auto on slices; positioned by camera.project()
-  <svg class="lobby-affordance" data-puck>   // Play / Resume sit on the demo pieces in the lobby
-  <svg class="pause-radial">                 // appears on the centre cell when the player pauses
-  <svg class="endgame-radial">               // Play Again / Quit on the winning stack
+```html
+<div id="overlay">                           <!-- pointer-events: none by default -->
+  <svg class="split-radial" data-piece-id>   <!-- pointer-events: auto on slices; positioned by camera.project() -->
+</div>
+<!-- Solid-rendered overlays (centered branded modals + per-frame projected board grid + bezel hamburger) -->
+<div data-solid-root>
+  <dialog class="ck-modal" aria-label="Chonkers">…</dialog>      <!-- Lobby / NewGame / Settings / Pause / EndGame -->
+  <div role="grid" class="ck-board-grid">…</div>                 <!-- 9×11 a11y gridcells, transform set per rAF -->
+  <button class="ck-hamburger">…</button>                        <!-- anchored to projected bezel corner -->
 </div>
 ```
 
-Each SVG's `transform: translate(...)` is updated in the rAF loop from `camera.project(piece.getWorldPosition())`. There is no React reconciler, no JSX subtree walked by R3F — the SVG elements are appended to the DOM via `document.createElementNS` / direct DOM ops once, then their transforms are mutated each frame.
+The split radial's `transform: translate(...)` is updated in the rAF loop from `camera.project(piece.getWorldPosition())`. The board a11y grid + bezel hamburger are positioned per-frame via the shared `boardProjection` mutable module (see `src/sim/board-projection.ts`). There is no React reconciler, no JSX subtree walked by R3F — the diegetic SVG is appended via `document.createElementNS` and the Solid tree is rendered once into the overlay root.
 
 ## Asset loading
 

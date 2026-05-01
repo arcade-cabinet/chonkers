@@ -96,7 +96,7 @@ The deterministic engine + deterministic AI mean replay produces a byte-identica
 | `reducedMotion` | `boolean` | `false` (overrides `prefers-reduced-motion`) |
 | `haptics` | `boolean` | `true` |
 | `defaultDifficulty` | `'easy' \| 'medium' \| 'hard'` | `'medium'` |
-| `defaultDisposition` | `'aggressive' \| 'balanced' \| 'cautious'` | `'balanced'` |
+| `defaultDisposition` | `'aggressive' \| 'balanced' \| 'defensive'` | `'balanced'` |
 
 ## Encoding
 

@@ -121,6 +121,18 @@ export function buildSingleSliceSvg(opts: {
 	);
 	svg.setAttribute("role", "button");
 	svg.setAttribute("aria-label", opts.ariaLabel);
+	svg.setAttribute("tabindex", opts.disabled ? "-1" : "0");
+	if (opts.disabled) svg.setAttribute("aria-disabled", "true");
+	// Native click fires on Enter for focusable elements; Space scrolls
+	// by default — intercept it and re-dispatch as a click so the
+	// SVG behaves as a button for keyboard users too.
+	svg.addEventListener("keydown", (e) => {
+		if (opts.disabled) return;
+		if (e.key === " " || e.key === "Enter") {
+			e.preventDefault();
+			svg.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+		}
+	});
 	svg.style.cursor = opts.disabled ? "not-allowed" : "pointer";
 	svg.style.opacity = opts.disabled ? "0.45" : "1";
 	svg.style.filter = "drop-shadow(0 4px 6px rgba(0,0,0,0.55))";
@@ -196,6 +208,16 @@ export function buildSlicedRadialSvg(opts: {
 			path.setAttribute("role", "menuitem");
 			path.setAttribute("aria-label", `slice ${i}`);
 			path.setAttribute("tabindex", "0");
+			// Keyboard activation — Enter / Space dispatch a synthetic
+			// pointerdown/pointerup pair on the slice so the radial's
+			// existing pointer handlers (drag-paint + hold-to-arm)
+			// react identically to keyboard activation.
+			path.addEventListener("keydown", (e) => {
+				if (e.key === " " || e.key === "Enter") {
+					e.preventDefault();
+					path.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+				}
+			});
 		}
 		path.style.cursor = "pointer";
 		path.style.transition = "fill 0.18s ease-out, stroke 0.18s ease-out";

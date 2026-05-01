@@ -1,5 +1,5 @@
 {
-	"$comment": "Per-repo commit-gate rules for chonkers. Aligned with the current architecture: src/{persistence,engine,ai,sim,audio,design,scene,utils} as pure-TS packages. There is no app/, no React, no SQLite. Tests co-located in __tests__/ within each package. See docs/ARCHITECTURE.md for the full picture. Many rules below are PREVENTIVE — they fire only when a future commit introduces a violation.",
+	"$comment": "Per-repo commit-gate rules for chonkers. Aligned with the current architecture: src/{persistence,engine,ai,sim,audio,design,scene,utils} as pure-TS packages plus app/ for the Solid menu-overlay layer. No React, no R3F, no Radix, no framer-motion. No SQLite, no drizzle. Tests are co-located in __tests__/ within each package, plus e2e/ for browser specs. See docs/ARCHITECTURE.md for the full picture. Many rules below are PREVENTIVE — they fire only when a future commit introduces a violation.",
 	"coverage_rules": [
 		{
 			"when_changed": ["src/engine/**"],
