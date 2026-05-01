@@ -258,6 +258,37 @@ Two attempted weight tunes against the alpha 100-run data both stalled the broke
 
 No weight values changed. The next entry will record the FIRST data-driven tune once the new rotated 1000-run lands.
 
+### beta tune 1 — defensive lift + aggressive cluster (2026-05-01)
+
+Partial 320/1000 governor (run 25227640953, hit the 60min CI timeout I had set; lifted to 240min in the same commit) gave the first real per-pairing balance numbers. Result was a strict transitive order with NO rock-paper-scissors: **balanced > aggressive > defensive**, every cross-pairing landing 100/0 (35-36 matches each).
+
+Same-disposition pairings (agg vs agg, bal vs bal, def vs def) all stalled to ply-cap as deterministic deadlocks — expected, the gate excludes them.
+
+**Defensive lift** (was losing 100% to BOTH aggressive and balanced — refusing to push):
+
+| Feature | Before | After | Why |
+|---|---|---|---|
+| `forward_progress` | +1.5 | +2.5 | Was lowest of the 3 dispositions; defensive sat behind walls instead of advancing |
+| `chonk_opportunities` | +1.0 | +2.5 | Was 1/4 of aggressive's; defensive refused to chonk even when free |
+| `total_pieces_advancement` | +0.5 | +1.0 | Match balanced's mid-game push value |
+| `tall_stack_count` | +0.8 | +1.2 | Defensive should value tall-stack defenders too |
+| `mobile_threat_count` | +2.0 | +2.5 | Slightly more reactive to threats |
+| `frontier_advance` | +1.0 | +2.0 | Match balanced; defensive walls only matter if the wall ADVANCES |
+| `even_trade_count` | +2.0 | +2.5 | Take the trade when it's even |
+
+Cluster + wall + blocker + funnel preserved at their identity-defining values (cluster +2.5, wall +1.5, blocker +3.0, funnel +0.5).
+
+**Aggressive nudges** (was losing 100% to balanced — getting trampled when spread out):
+
+| Feature | Before | After | Why |
+|---|---|---|---|
+| `mobile_threat_count` | +5.0 | +6.0 | Convert more threats per tempo |
+| `cluster_density` | +0.3 | +0.6 | Slightly less spread so balanced can't gang up; identity-preserving (still well below balanced's +1.0 and defensive's +2.5) |
+
+**Balanced untouched** — already the baseline; if the tune over-corrects, balanced's balance shows up first.
+
+**Sample signature**: governor run 25227640953 (cancelled at 320/1000, ~35 matches per pairing), 6 cross-pairings × 35-36 matches = 213 cross matches; per-pairing `redWinRate` 0% or 100% in every cell. Workflow timeout lifted 60→240min in the same commit so the next run completes.
+
 ### (next entries appended on each balance tune)
 
 Each entry records:
