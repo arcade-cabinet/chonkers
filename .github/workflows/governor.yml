@@ -25,6 +25,14 @@ permissions:
 
 jobs:
   governor:
+    # Serialize governor runs — 5h+ jobs that overlap (schedule firing
+    # while a manual dispatch is mid-run, or two dispatches close in
+    # time) waste runner minutes. `cancel-in-progress: false` keeps
+    # the in-flight run going and queues the new one rather than
+    # killing partial work.
+    concurrency:
+      group: governor-${{ github.workflow }}
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     # 6h ceiling on free-tier ubuntu-latest. At ~13s/match (smoke pace)
     # 1000 matches ≈ 3.6h with comfortable headroom for setup +
@@ -52,7 +60,15 @@ jobs:
       - name: 1000-run governor
         env:
           GOVERNOR_RUNS: ${{ github.event.inputs.runs || '1000' }}
-        run: pnpm run test:e2e:governor
+          # playwright.config.ts uses the `"github"` reporter when
+          # CI=true — good for inline annotations but produces no
+          # `playwright-report/` artifact. The workflow appends an
+          # html reporter so upload-artifact has something to package.
+          # Calling `pnpm exec playwright test` directly (rather than
+          # the test:e2e:governor script wrapper) is necessary because
+          # the script is shell-conditional and doesn't forward args.
+          PLAYWRIGHT_HTML_REPORT: playwright-report
+        run: pnpm exec playwright test --grep @governor --reporter=github,html
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
