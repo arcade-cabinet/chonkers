@@ -24,7 +24,7 @@ export default defineConfig({
 	workers: 1,
 	reporter: process.env.CI ? "github" : "list",
 	use: {
-		baseURL: "http://localhost:5173",
+		baseURL: "http://localhost:5173/chonkers/",
 		trace: "on-first-retry",
 		screenshot: "only-on-failure",
 	},

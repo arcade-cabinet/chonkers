@@ -184,7 +184,7 @@ let priorSelectionSig = "";
 let priorTurn: "red" | "white" | null = null;
 let priorScreen: string | null = null;
 let priorPlyCount = -1;
-let priorWinner: Color | null | undefined = undefined;
+let priorWinner: Color | null | undefined;
 
 function piecesSignature(pcs: ReadonlyArray<PiecePlacement>): string {
 	return pcs
@@ -673,22 +673,65 @@ function tick(): void {
 
 tick();
 
-// Dev-only debug surface — gated by import.meta.env.DEV (production
-// strips this branch entirely via tree-shake; verified in PRQ-T6
-// commit message). PRQ-T9 will replace with the formal
-// ?testHook=1-gated window.__chonkers surface.
+// Dev-only debug + test-hook surface. Gated by import.meta.env.DEV
+// AND ?testHook=1 query param so production builds strip this entire
+// branch via tree-shake (verified in dist: 0 occurrences of
+// __chonkers / __debug after `pnpm build`). The smoke + golden specs
+// load `/chonkers/?testHook=1` and read window.__chonkers to
+// introspect sim state.
 if (typeof window !== "undefined" && import.meta.env.DEV) {
-	(window as unknown as { __debug: object }).__debug = {
-		openRadialAt: (col: number, row: number, height: number): boolean => {
-			const top = pieces.topPuckAt(col, row);
-			if (!top) return false;
-			splitRadial.open(top, height);
-			return true;
-		},
-		closeRadial: (): void => splitRadial.close(),
-		openPauseRadial,
-		startNewMatch: () => void startNewMatch("red"),
-	};
+	const hasTestHookFlag = new URLSearchParams(window.location.search).has(
+		"testHook",
+	);
+	if (hasTestHookFlag) {
+		(window as unknown as { __chonkers: object }).__chonkers = {
+			get screen(): string | null {
+				return sim.worldEntity.get(Screen)?.value ?? null;
+			},
+			get matchId(): string | null {
+				return sim.handle?.matchId ?? null;
+			},
+			get state(): GameState | null {
+				return sim.handle?.game ?? null;
+			},
+			get plyCount(): number {
+				return sim.worldEntity.get(Match)?.plyCount ?? -1;
+			},
+			get turn(): "red" | "white" | null {
+				return sim.worldEntity.get(Match)?.turn ?? null;
+			},
+			get winner(): "red" | "white" | null {
+				return sim.worldEntity.get(Match)?.winner ?? null;
+			},
+			get humanColor(): "red" | "white" | null {
+				return sim.worldEntity.get(Match)?.humanColor ?? null;
+			},
+			get aiThinking(): boolean {
+				return sim.worldEntity.get(AiThinking)?.value ?? false;
+			},
+			get pieces(): ReadonlyArray<PiecePlacement> {
+				return sim.worldEntity.get(Match)?.pieces ?? [];
+			},
+			actions: {
+				startNewMatch: (humanColor: Color | null = "red") =>
+					void startNewMatch(humanColor),
+				stepTurn: () => void actions.stepTurn(),
+				quitMatch: () => actions.quitMatch(),
+				setSelection: (cell: { col: number; row: number } | null) =>
+					actions.setSelection(cell),
+			},
+			scene: {
+				openSplitRadialAt: (col: number, row: number, height: number) => {
+					const top = pieces.topPuckAt(col, row);
+					if (!top) return false;
+					splitRadial.open(top, height);
+					return true;
+				},
+				closeSplitRadial: () => splitRadial.close(),
+				openPauseRadial,
+			},
+		};
+	}
 }
 
 if (import.meta.hot) {
