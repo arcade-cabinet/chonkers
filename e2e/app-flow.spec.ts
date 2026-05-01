@@ -13,6 +13,12 @@
 import { expect, test } from "@playwright/test";
 import "./_lib/test-hook";
 
+// CI runners boot the bundle ~6× slower than local — a 15s wait that
+// catches regressions locally still flakes on cold-cache CI. Bump
+// boot-related timeouts when CI=true.
+const BOOT_TIMEOUT = process.env.CI ? 30_000 : 15_000;
+const SETTLE_TIMEOUT = process.env.CI ? 20_000 : 10_000;
+
 test.describe("smoke — boot + AI-vs-AI match", () => {
 	test("lobby renders + new match starts + game progresses", async ({
 		page,
@@ -21,7 +27,7 @@ test.describe("smoke — boot + AI-vs-AI match", () => {
 
 		// Wait for the testHook to expose the sim state.
 		await page.waitForFunction(() => window.__chonkers !== undefined, null, {
-			timeout: 15_000,
+			timeout: BOOT_TIMEOUT,
 		});
 
 		// Initial state: lobby (Screen=title, no match handle).
@@ -36,7 +42,7 @@ test.describe("smoke — boot + AI-vs-AI match", () => {
 		// <div id="ui-root">. Wait for it to appear.
 		await page
 			.getByRole("dialog", { name: /chonkers/i })
-			.waitFor({ state: "visible", timeout: 10_000 });
+			.waitFor({ state: "visible", timeout: SETTLE_TIMEOUT });
 
 		// Trigger newMatch via the testHook (avoids flakiness from
 		// raycaster-precise coordinate math against an animated lobby).
@@ -49,12 +55,12 @@ test.describe("smoke — boot + AI-vs-AI match", () => {
 		await page.waitForFunction(
 			() => window.__chonkers?.matchId !== null,
 			null,
-			{ timeout: 10_000 },
+			{ timeout: SETTLE_TIMEOUT },
 		);
 		await page.waitForFunction(
 			() => window.__chonkers?.screen === "play",
 			null,
-			{ timeout: 10_000 },
+			{ timeout: SETTLE_TIMEOUT },
 		);
 
 		const afterStart = await page.evaluate(() => ({

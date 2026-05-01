@@ -79,8 +79,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Install Playwright browser
-        run: pnpm exec playwright install chromium
+      - name: Install Playwright browsers
+        # `test:e2e:ci` runs across chromium + android-pixel (chrome) +
+        # ios-iphone (webkit) + ipad-landscape (webkit), so the install
+        # needs both engines, not just chromium. `--with-deps` adds the
+        # apt packages webkit needs on the ubuntu-latest runner.
+        run: pnpm exec playwright install --with-deps chromium webkit
 
       - name: Smoke E2E (tier 3 — full flows)
         run: pnpm run test:e2e:ci

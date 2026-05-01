@@ -19,6 +19,12 @@
 
 import { expect, test } from "@playwright/test";
 
+// CI runners are 6× slower than local for the boot path (large bundle
+// + cold three.js / texture upload). Local boot < 1s; CI boot can hit
+// 15s under load. Use a CI-aware timeout so the test still catches
+// regressions locally without flaking on CI.
+const BOOT_TIMEOUT = process.env.CI ? 30_000 : 15_000;
+
 test.describe("lobby flow — pure DOM, no testHook", () => {
 	test.beforeEach(async ({ page }) => {
 		// We deliberately do NOT pass ?testHook=1 — these tests prove
@@ -28,7 +34,7 @@ test.describe("lobby flow — pure DOM, no testHook", () => {
 		// dialog to appear (it's the boot screen).
 		await page
 			.getByRole("dialog", { name: /chonkers/i })
-			.waitFor({ state: "visible", timeout: 15_000 });
+			.waitFor({ state: "visible", timeout: BOOT_TIMEOUT });
 	});
 
 	test("lobby overlay shows New Game / Continue Game / Settings", async ({
@@ -109,7 +115,7 @@ test.describe("lobby flow — pure DOM, no testHook", () => {
 		// The bezel hamburger is the only persistent UI chrome during
 		// play — it should appear once the match is live.
 		await expect(page.getByRole("button", { name: /menu|pause/i })).toBeVisible(
-			{ timeout: 15_000 },
+			{ timeout: BOOT_TIMEOUT },
 		);
 	});
 
@@ -158,7 +164,7 @@ test.describe("lobby flow — pure DOM, no testHook", () => {
 		// Game lights up.
 		await page.goto("/chonkers/?testHook=1");
 		await page.waitForFunction(() => window.__chonkers !== undefined, null, {
-			timeout: 15_000,
+			timeout: BOOT_TIMEOUT,
 		});
 		await page
 			.getByRole("dialog", { name: /chonkers/i })
@@ -190,7 +196,7 @@ test.describe("lobby flow — pure DOM, no testHook", () => {
 		// on web).
 		await page.reload();
 		await page.waitForFunction(() => window.__chonkers !== undefined, null, {
-			timeout: 15_000,
+			timeout: BOOT_TIMEOUT,
 		});
 		const lobby = page.getByRole("dialog", { name: /chonkers/i });
 		await lobby.waitFor({ state: "visible", timeout: 10_000 });
