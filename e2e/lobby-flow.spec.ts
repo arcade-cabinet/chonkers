@@ -149,4 +149,66 @@ test.describe("lobby flow — pure DOM, no testHook", () => {
 		const newGame = lobby.getByRole("button", { name: /^new game$/i });
 		await expect(newGame).toBeFocused();
 	});
+
+	test("Continue Game enables after a match auto-saves; clicking it resumes", async ({
+		page,
+	}) => {
+		// Start a vs-AI match through the lobby. The first ply commits
+		// to the active-match KV slot, so on a fresh load Continue
+		// Game lights up.
+		await page.goto("/chonkers/?testHook=1");
+		await page.waitForFunction(() => window.__chonkers !== undefined, null, {
+			timeout: 15_000,
+		});
+		await page
+			.getByRole("dialog", { name: /chonkers/i })
+			.getByRole("button", { name: /^new game$/i })
+			.click();
+		await page
+			.getByRole("dialog", { name: /new game/i })
+			.getByRole("button", { name: /^easy/i })
+			.click();
+		// Wait for the match to start + at least one ply to commit
+		// (which writes the snapshot).
+		await page.waitForFunction(
+			() => window.__chonkers?.screen === "play",
+			null,
+			{ timeout: 30_000 },
+		);
+		// Force one stepTurn to make sure a ply has landed.
+		await page.evaluate(() => window.__chonkers?.actions.stepTurn());
+		await page.waitForFunction(
+			() => (window.__chonkers?.plyCount ?? 0) >= 1,
+			null,
+			{ timeout: 30_000 },
+		);
+		const savedPly =
+			(await page.evaluate(() => window.__chonkers?.plyCount)) ?? 0;
+
+		// Reload — Solid + scene re-bootstrap from scratch. The active-
+		// match snapshot persists via Capacitor Preferences (localStorage
+		// on web).
+		await page.reload();
+		await page.waitForFunction(() => window.__chonkers !== undefined, null, {
+			timeout: 15_000,
+		});
+		const lobby = page.getByRole("dialog", { name: /chonkers/i });
+		await lobby.waitFor({ state: "visible", timeout: 10_000 });
+
+		// Continue Game now enabled.
+		const cont = lobby.getByRole("button", { name: /^continue game$/i });
+		await expect(cont).toBeEnabled();
+
+		// Click resumes — match handle materialises, screen flips to
+		// "play", plyCount restored.
+		await cont.click();
+		await page.waitForFunction(
+			() => window.__chonkers?.screen === "play",
+			null,
+			{ timeout: 10_000 },
+		);
+		const restoredPly =
+			(await page.evaluate(() => window.__chonkers?.plyCount)) ?? -1;
+		expect(restoredPly).toBeGreaterThanOrEqual(savedPly);
+	});
 });

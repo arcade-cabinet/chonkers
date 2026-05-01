@@ -166,4 +166,63 @@ describe("createSimWorld", () => {
 		});
 		expect(sim.worldEntity.has(SplitChainView)).toBe(false);
 	});
+
+	it("resumeMatch replays a saved action log to restore plyCount + turn", async () => {
+		// Run a real match for a few plies to get a non-trivial action
+		// log + AI state pair. Then "save" by snapshotting the broker
+		// shapes and "resume" via the resumeMatch action; assert the
+		// new handle reaches the same plyCount + on-turn colour.
+		const original = createSimWorld();
+		const oActions = buildSimActions(original)(original.world);
+		oActions.newMatch({
+			redProfile: RED,
+			whiteProfile: WHITE,
+			humanColor: null,
+			coinFlipSeed: "0011223344556677",
+		});
+		// Step 6 plies to populate handle.actions + AI transposition tables.
+		const { stepTurn } = oActions;
+		for (let i = 0; i < 6; i += 1) {
+			await stepTurn();
+		}
+		const oh = original.handle;
+		if (!oh) throw new Error("original match handle disappeared");
+		const savedActions = [...oh.actions];
+		const savedAi = { red: oh.ai.red, white: oh.ai.white };
+		const savedTurn = oh.game.turn;
+		const savedPly = original.worldEntity.get(Match)?.plyCount ?? -1;
+		expect(savedActions.length).toBe(savedPly);
+
+		// Fresh world; resume from the snapshot.
+		const resumed = createSimWorld();
+		const rActions = buildSimActions(resumed)(resumed.world);
+		rActions.resumeMatch({
+			redProfile: RED,
+			whiteProfile: WHITE,
+			humanColor: null,
+			coinFlipSeed: "0011223344556677",
+			actions: savedActions,
+			ai: savedAi,
+		});
+		const rMatch = resumed.worldEntity.get(Match);
+		expect(rMatch?.plyCount).toBe(savedPly);
+		expect(rMatch?.turn).toBe(savedTurn);
+		expect(resumed.worldEntity.get(Screen)?.value).toBe("play");
+		// Board state matches: piece count + per-cell signature equal.
+		const sig = (
+			pieces: ReadonlyArray<{
+				col: number;
+				row: number;
+				height: number;
+				color: string;
+			}>,
+		) =>
+			pieces
+				.map((p) => `${p.col}.${p.row}.${p.height}.${p.color}`)
+				.sort()
+				.join("|");
+		expect(sig(rMatch?.pieces ?? [])).toBe(
+			sig(oh.game.board ? Array.from(oh.game.board.values()) : []),
+		);
+	});
 });

@@ -15,7 +15,11 @@
  */
 
 import { createActions, createWorld, type Entity, type World } from "koota";
-import type { Action, Color } from "@/engine";
+import {
+	type Action,
+	applyAction as applyEngineAction,
+	type Color,
+} from "@/engine";
 import {
 	applyHumanAction,
 	type CreateMatchOptions,
@@ -162,6 +166,25 @@ export interface NewMatchInput
 	readonly coinFlipSeed?: string;
 }
 
+/**
+ * Input for `actions.resumeMatch`. The persistence layer loads the
+ * snapshot + decodes the base64 yuka brain pair, then passes the
+ * decoded structures here. We re-create a fresh broker handle with
+ * the same coinFlipSeed + profiles, install the restored AI states,
+ * then replay the action log to reach the persisted ply.
+ */
+export interface ResumeMatchInput {
+	readonly redProfile: import("@/ai").ProfileKey;
+	readonly whiteProfile: import("@/ai").ProfileKey;
+	readonly humanColor: HumanColor;
+	readonly coinFlipSeed: string;
+	readonly actions: ReadonlyArray<Action>;
+	readonly ai: {
+		readonly red: import("@/ai").AiState;
+		readonly white: import("@/ai").AiState;
+	};
+}
+
 export function buildSimActions(sim: SimWorld) {
 	return createActions(() => ({
 		newMatch(input: NewMatchInput): void {
@@ -193,6 +216,37 @@ export function buildSimActions(sim: SimWorld) {
 			if (sim.worldEntity.has(SplitChainView))
 				sim.worldEntity.remove(SplitChainView);
 			sim.worldEntity.set(Screen, { value: "title" });
+		},
+
+		/**
+		 * Resume a previously saved match from a hydrated snapshot.
+		 * Reconstructs the broker handle (same seed + profiles), installs
+		 * the restored AI states, replays each persisted action through
+		 * the engine reducer to reach the saved ply, then syncs traits +
+		 * flips Screen to "play".
+		 */
+		resumeMatch(input: ResumeMatchInput): void {
+			sim.epoch += 1;
+			const handle = createMatch({
+				redProfile: input.redProfile,
+				whiteProfile: input.whiteProfile,
+				coinFlipSeed: input.coinFlipSeed,
+			});
+			handle.ai.red = input.ai.red;
+			handle.ai.white = input.ai.white;
+			for (const action of input.actions) {
+				handle.game = applyEngineAction(handle.game, action);
+				handle.actions.push(action);
+			}
+			sim.handle = handle;
+			sim.worldEntity.set(Selection, { cell: null });
+			sim.worldEntity.set(HoldProgress, { value: 0 });
+			sim.worldEntity.set(AiThinking, { value: false });
+			syncMatchTraits(sim, {
+				humanColor: input.humanColor,
+				plyCount: input.actions.length,
+			});
+			sim.worldEntity.set(Screen, { value: "play" });
 		},
 
 		setScreen(screen: ScreenKind): void {

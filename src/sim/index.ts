@@ -67,6 +67,7 @@ export {
 	type CreateSimWorldOptions,
 	createSimWorld,
 	type NewMatchInput,
+	type ResumeMatchInput,
 	type SimActions,
 	type SimActionsBuilder,
 	type SimWorld,

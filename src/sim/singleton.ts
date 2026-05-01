@@ -53,7 +53,19 @@ let cached: SimSingleton | null = null;
 let sceneTapCell: SceneCellTap | null = null;
 
 export function getSimSingleton(options?: CreateSimWorldOptions): SimSingleton {
-	if (cached) return cached;
+	if (cached) {
+		// First-caller-wins for options (createSimWorld captures hooks
+		// at construction). Warn on subsequent callers passing
+		// non-empty opts so the boot-order bug is visible at load time.
+		if (options && (options.onPlyCommit || options.onMatchEnd)) {
+			console.warn(
+				"[sim/singleton] getSimSingleton already initialized; " +
+					"passed-in options ignored. Caller must run BEFORE any " +
+					"hookless getSimSingleton() to register hooks.",
+			);
+		}
+		return cached;
+	}
 	const sim = createSimWorld(options ?? {});
 	const actions = buildSimActions(sim)(sim.world);
 	cached = {

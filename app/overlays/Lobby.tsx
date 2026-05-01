@@ -8,13 +8,18 @@
  */
 
 import { createSignal, type JSX, onMount } from "solid-js";
-import { loadActiveMatch } from "@/persistence/preferences/match";
+import {
+	loadActiveMatch,
+	restoreAiPair,
+} from "@/persistence/preferences/match";
+import { getSimSingleton } from "@/sim";
 import { Button } from "../primitives/Button";
 import { Modal } from "../primitives/Modal";
-import { openModal, uiState } from "../stores/ui-store";
+import { openModal } from "../stores/ui-store";
 
 export function Lobby(): JSX.Element {
 	const [hasSaved, setHasSaved] = createSignal(false);
+	const { actions } = getSimSingleton();
 
 	const refreshSaved = async () => {
 		try {
@@ -29,11 +34,18 @@ export function Lobby(): JSX.Element {
 		void refreshSaved();
 	});
 
-	const onResume = () => {
-		// TODO C3-followup: hydrate the saved match into the sim.
-		// For now this is a stub — Continue is wired but the actual
-		// hydration path lives in src/scene/index.ts and will be
-		// invoked here once the sim singleton exposes a resume API.
+	const onResume = async () => {
+		const snap = await loadActiveMatch();
+		if (!snap) return;
+		const ai = restoreAiPair(snap);
+		actions.resumeMatch({
+			redProfile: snap.redProfile,
+			whiteProfile: snap.whiteProfile,
+			humanColor: snap.humanColor,
+			coinFlipSeed: snap.coinFlipSeed,
+			actions: snap.actions,
+			ai,
+		});
 	};
 
 	return (
@@ -44,14 +56,17 @@ export function Lobby(): JSX.Element {
 					<Button variant="primary" onClick={() => openModal("new-game")}>
 						New Game
 					</Button>
-					<Button variant="secondary" disabled={!hasSaved()} onClick={onResume}>
+					<Button
+						variant="secondary"
+						disabled={!hasSaved()}
+						onClick={() => void onResume()}
+					>
 						Continue Game
 					</Button>
 					<Button variant="tertiary" onClick={() => openModal("settings")}>
 						Settings
 					</Button>
 				</div>
-				<p class="ck-lobby__hint">{uiState.matchId() === null ? "" : ""}</p>
 			</div>
 		</Modal>
 	);

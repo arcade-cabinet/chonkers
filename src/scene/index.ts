@@ -88,6 +88,37 @@ function findOverlay(): HTMLDivElement {
 const canvas: HTMLCanvasElement = findCanvas();
 const overlay: HTMLDivElement = findOverlay();
 
+// === Sim singleton bootstrap ===
+// MUST happen synchronously before any `await` so the persistence
+// hooks register before app/main.tsx can call getSimSingleton()
+// hookless. Both modules race at boot per <script type="module">'s
+// async load, so first-caller-wins. Scene's call comes first only
+// if it lands here (top-of-module, no awaits) instead of after the
+// installLighting await further down.
+const matchStartedAtMs = Date.now();
+{
+	const { sim: bootSim } = getSimSingleton({
+		onPlyCommit: async (handle) => {
+			try {
+				const m = bootSim.worldEntity.get(Match);
+				await saveActiveMatch(
+					snapshotFromHandle(handle, m?.humanColor ?? null, matchStartedAtMs),
+				);
+			} catch (err) {
+				console.warn("[scene] saveActiveMatch failed", err);
+			}
+		},
+		onMatchEnd: async () => {
+			try {
+				await clearActiveMatch();
+			} catch (err) {
+				console.warn("[scene] clearActiveMatch failed", err);
+			}
+		},
+	});
+	void bootSim;
+}
+
 function fitCanvas(c: HTMLCanvasElement): void {
 	const dpr = Math.min(window.devicePixelRatio, 2);
 	c.width = c.clientWidth * dpr;
@@ -135,31 +166,10 @@ fitCanvas(canvas);
 resizeCamera(camera, canvas);
 
 // === Sim world bootstrap (no auto-newMatch — lobby first) ===
-const matchStartedAt = { current: Date.now() };
-const humanColorForSnapshot: { current: HumanColor } = { current: null };
-
-const { sim, actions } = getSimSingleton({
-	onPlyCommit: async (handle) => {
-		try {
-			await saveActiveMatch(
-				snapshotFromHandle(
-					handle,
-					humanColorForSnapshot.current,
-					matchStartedAt.current,
-				),
-			);
-		} catch (err) {
-			console.warn("[scene] saveActiveMatch failed", err);
-		}
-	},
-	onMatchEnd: async () => {
-		try {
-			await clearActiveMatch();
-		} catch (err) {
-			console.warn("[scene] clearActiveMatch failed", err);
-		}
-	},
-});
+// Persistence hooks are registered by app/main.tsx (which initialises
+// the singleton first; src/scene/index.ts's getSimSingleton call here
+// is hookless and returns the cached instance).
+const { sim, actions } = getSimSingleton();
 
 // Audio bus — lazy init on first user interaction.
 let audioReady = false;
@@ -445,8 +455,6 @@ const lobby: LobbyAffordanceHandle = buildLobbyAffordances({
 
 async function startNewMatch(humanColor: HumanColor = "red"): Promise<void> {
 	await ensureAudio();
-	humanColorForSnapshot.current = humanColor;
-	matchStartedAt.current = Date.now();
 	humanAwaitingPivot = false;
 	actions.newMatch({
 		redProfile: "balanced-medium",
