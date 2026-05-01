@@ -251,6 +251,9 @@ describe("broker — 1000-run beta gate", () => {
 					}
 				}
 
+				// Normal-completion path: rebuild from final counters.
+				// The `finally` block below also rebuilds in case this
+				// line is skipped due to a mid-loop throw.
 				summary = buildSummary(
 					RUNS,
 					PLY_CAP,
@@ -262,12 +265,29 @@ describe("broker — 1000-run beta gate", () => {
 			} finally {
 				// Always flush — even if the test threw / timed out
 				// mid-loop, the artifact survives for diagnosis.
+				// Recompute summary from LIVE counters here so a throw
+				// that bypassed the post-loop rebuild still produces an
+				// accurate snapshot rather than reusing the previous
+				// checkpoint (which can lag by up to FLUSH_EVERY-1
+				// matches).
+				summary = buildSummary(
+					RUNS,
+					PLY_CAP,
+					matchesCompleted,
+					{ redWins, whiteWins, unfinished, outliers },
+					totalPlies,
+					pairingMap,
+				);
 				writeSummary(summary);
 			}
 
+			// Real conservation assertion — every match the loop
+			// counted must end up in exactly one of the win/draw
+			// buckets. The previous `concluded + outliers === RUNS`
+			// check was tautological (concluded was derived from
+			// RUNS - outliers).
 			expect(matchesCompleted).toBe(RUNS);
-			const concluded = RUNS - outliers;
-			expect(concluded + outliers).toBe(RUNS);
+			expect(redWins + whiteWins + unfinished).toBe(matchesCompleted);
 			const avgPly =
 				totalPlies.reduce((a, b) => a + b, 0) / Math.max(1, totalPlies.length);
 
