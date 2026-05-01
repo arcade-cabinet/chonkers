@@ -27,14 +27,41 @@ const BOOT_TIMEOUT = process.env.CI ? 30_000 : 15_000;
 
 test.describe("lobby flow — pure DOM, no testHook", () => {
 	test.beforeEach(async ({ page }) => {
+		// Capture browser-side errors so a CI failure surfaces the root
+		// cause instead of just "dialog never visible".
+		const consoleErrors: string[] = [];
+		const pageErrors: string[] = [];
+		page.on("console", (msg) => {
+			if (msg.type() === "error") consoleErrors.push(msg.text());
+		});
+		page.on("pageerror", (err) => {
+			pageErrors.push(`${err.name}: ${err.message}`);
+		});
+
 		// We deliberately do NOT pass ?testHook=1 — these tests prove
 		// the production overlay path works without dev-only surfaces.
 		await page.goto("/chonkers/");
 		// Solid mounts into <div id="ui-root">. Wait for the lobby
-		// dialog to appear (it's the boot screen).
-		await page
-			.getByRole("dialog", { name: /chonkers/i })
-			.waitFor({ state: "visible", timeout: BOOT_TIMEOUT });
+		// dialog to appear (it's the boot screen). On failure, dump the
+		// captured errors + ui-root snapshot so CI debugging doesn't
+		// require downloading the trace artifact.
+		try {
+			await page
+				.getByRole("dialog", { name: /chonkers/i })
+				.waitFor({ state: "visible", timeout: BOOT_TIMEOUT });
+		} catch (err) {
+			const uiRoot = await page
+				.locator("#ui-root")
+				.innerHTML()
+				.catch(() => "(missing)");
+			console.log("[diagnostic] page errors:", JSON.stringify(pageErrors));
+			console.log(
+				"[diagnostic] console errors:",
+				JSON.stringify(consoleErrors),
+			);
+			console.log("[diagnostic] #ui-root content:", uiRoot.slice(0, 500));
+			throw err;
+		}
 	});
 
 	test("lobby overlay shows New Game / Continue Game / Settings", async ({
