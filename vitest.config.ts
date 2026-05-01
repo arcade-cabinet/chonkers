@@ -1,14 +1,11 @@
 import path from "node:path";
-import react from "@vitejs/plugin-react";
 import { playwright } from "@vitest/browser-playwright";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
-	plugins: [react()],
 	resolve: {
 		alias: {
 			"@": path.resolve(__dirname, "src"),
-			"@app": path.resolve(__dirname, "app"),
 		},
 	},
 	test: {
@@ -20,7 +17,7 @@ export default defineConfig({
 					environment: "node",
 					include: ["src/**/__tests__/*.test.ts"],
 					exclude: [
-						"src/**/__tests__/*.browser.test.{ts,tsx}",
+						"src/**/__tests__/*.browser.test.ts",
 						// Alpha-stage gate. Runs in a dedicated job
 						// (`pnpm test:alpha`) so the default Node tier
 						// stays under CI's 3-minute target.
@@ -41,10 +38,7 @@ export default defineConfig({
 				extends: true,
 				test: {
 					name: "browser",
-					include: [
-						"src/**/__tests__/*.browser.test.{ts,tsx}",
-						"app/**/__tests__/*.browser.test.{ts,tsx}",
-					],
+					include: ["src/**/__tests__/*.browser.test.ts"],
 					browser: {
 						enabled: true,
 						provider: playwright({

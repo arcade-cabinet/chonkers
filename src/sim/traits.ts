@@ -64,11 +64,23 @@ export interface PiecePlacement {
  * primitive surface, sealing the engine/UI boundary as the
  * visual-shell PRD mandates.
  */
+/**
+ * Who's controlling each side of the match.
+ *   - "red" / "white": vs-AI; the named colour is the human, the
+ *     other side is dispatched automatically by the broker.
+ *   - "both": Pass-and-Play hotseat; both sides are local human.
+ *     Broker never auto-dispatches; every action arrives from the
+ *     scene's input layer.
+ *   - null: AI-vs-AI sim mode (governor + alpha tests). Broker
+ *     auto-steps every turn end-to-end without any pivot gate.
+ */
+export type HumanColor = Color | "both" | null;
+
 export interface MatchSnapshot {
 	readonly matchId: string;
 	readonly redProfile: ProfileKey;
 	readonly whiteProfile: ProfileKey;
-	readonly humanColor: Color | null;
+	readonly humanColor: HumanColor;
 	readonly turn: Color;
 	readonly winner: Color | null;
 	readonly plyCount: number;

@@ -129,8 +129,8 @@ Run via `pnpm icons` (script added to `package.json`). One source file, all plat
 
 ### App-state lifecycle
 
-```tsx
-// app/boot/boot.tsx (additions — wires App plugin)
+```ts
+// src/scene/index.ts (additions — wires App plugin)
 import { App as CapacitorApp } from '@capacitor/app';
 
 await CapacitorApp.addListener('appStateChange', ({ isActive }) => {
@@ -162,21 +162,21 @@ if (typeof document !== 'undefined') {
 
 ### Haptics integration
 
-```tsx
-// app/input/useHoldTimer.ts (additions)
+```ts
+// src/scene/overlay/splitRadial.ts (additions — fired from the hold-timer callback)
 import { Haptics, ImpactStyle } from '@capacitor/haptics';
 
 // inside the timer fire callback:
 Haptics.impact({ style: ImpactStyle.Medium }).catch(() => { /* unsupported platform — no-op */ });
 ```
 
-```tsx
-// app/canvas/Piece.tsx (additions for selection)
-useEffect(() => {
+```ts
+// src/scene/pieces.ts (additions for selection)
+function onSelectionChanged(selected: boolean): void {
   if (selected) {
     Haptics.selectionStart().catch(() => {});
   }
-}, [selected]);
+}
 ```
 
 The `.catch(() => {})` swallows errors on platforms where Haptics is unsupported (e.g. desktop browsers without Haptics support). This is the standard Capacitor pattern.
@@ -303,18 +303,18 @@ Run via `pnpm maestro:smoke` (script added). CI runs this in a new `native-smoke
 
 ### D. App-state lifecycle + haptics
 
-#### D1. Add app-state hooks to `app/boot/boot.tsx`
+#### D1. Add app-state hooks to `src/scene/index.ts`
 
-**Files:** `app/boot/boot.tsx`
+**Files:** `src/scene/index.ts`
 
 **Acceptance criteria:**
 - Capacitor App.addListener('appStateChange') wired to sim pause/resume
 - Web fallback via document.visibilitychange
 - Audio bus pauses ambient on background, resumes on foreground
 
-#### D2. Add haptics to `app/input/useHoldTimer.ts`
+#### D2. Add haptics to the splitting-radial hold timer
 
-**Files:** `app/input/useHoldTimer.ts`
+**Files:** `src/scene/overlay/splitRadial.ts`
 
 **Acceptance criteria:**
 - Hold-arm at 3000ms fires Haptics.impact medium
@@ -322,7 +322,7 @@ Run via `pnpm maestro:smoke` (script added). CI runs this in a new `native-smoke
 
 #### D3. Add haptics to selection + chonk events
 
-**Files:** `app/canvas/Piece.tsx`, `app/canvas/Stack.tsx`
+**Files:** `src/scene/pieces.ts`, `src/scene/animations.ts` (chonk-landing tween onComplete)
 
 **Acceptance criteria:**
 - Selection start fires Haptics.selectionStart

@@ -1,20 +1,25 @@
 /**
  * Koota world factory + action layer.
  *
- * `createSimWorld({db})` constructs a koota world with a single
+ * `createSimWorld()` constructs a koota world with a single
  * "world entity" carrying the Screen / Match / Selection / chain
  * mirror traits. Actions mutate those traits and call into the
- * headless `./broker.ts` for engine work + persistence.
+ * headless `./broker.ts` for engine work.
+ *
+ * Persistence is the caller's concern — pass an `onPlyCommit` hook
+ * via `CreateSimWorldOptions` if you want each ply to write the
+ * match snapshot to KV. The 100-run alpha test runs without it.
  *
  * Per CLAUDE.md import boundary: this module imports from `@/ai`,
- * `@/engine`, `@/store`, `@/persistence`, `@/audio` — same as the
- * broker — but NOT from `@/analytics` (analytics refresh is wired
- * via the broker's `onTerminal` hook).
+ * `@/engine`, and `./broker`. No `@/persistence`, no `@/scene`.
  */
 
 import { createActions, createWorld, type Entity, type World } from "koota";
-import type { Action, Color } from "@/engine";
-import { matchesRepo, type StoreDb } from "@/store";
+import {
+	type Action,
+	applyAction as applyEngineAction,
+	type Color,
+} from "@/engine";
 import {
 	applyHumanAction,
 	type CreateMatchOptions,
@@ -22,13 +27,11 @@ import {
 	type MatchHandle,
 	playTurn,
 } from "./broker";
-
-const matchesRepoForfeit = matchesRepo.forfeit;
-
 import { decideFirstPlayer } from "./coinFlip";
 import {
 	AiThinking,
 	HoldProgress,
+	type HumanColor,
 	Match,
 	piecesFromBoard,
 	Screen,
@@ -37,49 +40,43 @@ import {
 	SplitChainView,
 } from "./traits";
 
-/**
- * Returned from `createSimWorld`. Holds the koota world plus the
- * in-flight match handle (the broker's owned state). The visual
- * shell holds onto this through a React context.
- */
 export interface CreateSimWorldOptions {
-	readonly db: StoreDb;
 	/**
-	 * Called after every terminal match transition (forfeit or
-	 * engine-declared winner). Wire `refreshOnMatchEnd` from
-	 * `@/analytics` here in production. Per CLAUDE.md, `src/sim/*`
-	 * cannot import `@/analytics` directly.
+	 * Called after every successful ply (action committed, handle
+	 * advanced). Wire `saveActiveMatch(snapshot)` from
+	 * @/persistence/preferences/match here for runtime persistence.
 	 */
-	readonly onMatchEnd?: (matchId: string) => Promise<void> | void;
+	readonly onPlyCommit?: (handle: MatchHandle) => Promise<void> | void;
+	/**
+	 * Called once when the match transitions to a terminal state.
+	 * Wire it to `archiveCompletedMatch + clearActiveMatch` (move from
+	 * the active KV slot to history) in production.
+	 */
+	readonly onMatchEnd?: (handle: MatchHandle) => Promise<void> | void;
 }
 
 export interface SimWorld {
 	readonly world: World;
 	readonly worldEntity: Entity;
-	readonly db: StoreDb;
-	readonly onMatchEnd: ((matchId: string) => Promise<void> | void) | undefined;
+	readonly onPlyCommit:
+		| ((handle: MatchHandle) => Promise<void> | void)
+		| undefined;
+	readonly onMatchEnd:
+		| ((handle: MatchHandle) => Promise<void> | void)
+		| undefined;
 	/** The currently in-progress match handle, if any. */
 	handle: MatchHandle | null;
 	/**
 	 * Monotonically-increasing token bumped by `newMatch` and
 	 * `quitMatch`. Async actions (`stepTurn`, `commitHumanAction`,
 	 * `forfeit`) capture the epoch at entry and bail out before
-	 * mutating traits if the epoch has changed during the await —
-	 * the user quit or started a new match while the AI was
-	 * thinking, and the stale result must not overwrite the new
-	 * world state.
+	 * mutating traits if the epoch has changed during the await.
 	 */
 	epoch: number;
 }
 
-export function createSimWorld(options: CreateSimWorldOptions): SimWorld {
+export function createSimWorld(options: CreateSimWorldOptions = {}): SimWorld {
 	const world = createWorld({});
-	// Spawn the singleton "app state" entity that carries the
-	// always-present screen + UI traits. Match + SplitChainView are
-	// added later via `set()`. Note: we use `world.spawn(...)`
-	// rather than the createWorld(...traits) overload because the
-	// latter routes traits onto an internal `IsExcluded` worldEntity
-	// that doesn't appear in queries.
 	const worldEntity = world.spawn(
 		Screen({ value: "title" }),
 		Selection({ cell: null }),
@@ -89,7 +86,7 @@ export function createSimWorld(options: CreateSimWorldOptions): SimWorld {
 	return {
 		world,
 		worldEntity,
-		db: options.db,
+		onPlyCommit: options.onPlyCommit,
 		onMatchEnd: options.onMatchEnd,
 		handle: null,
 		epoch: 0,
@@ -110,31 +107,28 @@ function upsert<T>(
 	if (entity.has(traitDef as never)) {
 		entity.set(traitDef as never, value as never);
 	} else {
-		// `add(traitDef(value))` — koota's trait factories accept the
-		// value object/factory-output as their argument and return a
-		// ConfigurableTrait suitable for add().
 		const factoryFn = traitDef as unknown as (v: T) => unknown;
 		entity.add(factoryFn(value) as never);
 	}
 }
 
 /**
- * Mirror the broker's match state onto the koota traits so React
- * subscriptions wake up. Called after every action that advances the
- * match (newMatch, playerMove, aiTurn, forfeit).
- *
- * `humanColor` and `plyCount` are passed in EXPLICITLY by the
- * caller. Implicit preservation from the prior trait snapshot
- * silently loses these on session-resume paths where the entity
- * had no Match trait before this sync — the caller (newMatch /
- * resumeMatch) is the only authoritative source.
- *
- * The `pieces` field is a frozen primitive snapshot derived from
- * the engine's board map. The trait does NOT store the live
- * `GameState` reference — the engine/UI boundary stays sealed.
+ * Pick the post-terminal Screen based on humanColor + winner:
+ *   - "red"/"white" (vs AI): "win" if the human won, "lose" otherwise.
+ *   - "both" (PaP): "spectator-result" — both players sat at the
+ *     table; the end-game overlay shows "Red wins" / "White wins"
+ *     generically without picking a sad face for either of them.
+ *   - null (sim mode): "spectator-result" — no human to address.
  */
+function terminalScreen(humanColor: HumanColor, winner: Color): ScreenKind {
+	if (humanColor === "red" || humanColor === "white") {
+		return winner === humanColor ? "win" : "lose";
+	}
+	return "spectator-result";
+}
+
 interface SyncMatchTraitsContext {
-	readonly humanColor: Color | null;
+	readonly humanColor: HumanColor;
 	readonly plyCount: number;
 }
 
@@ -168,24 +162,34 @@ function syncMatchTraits(sim: SimWorld, ctx: SyncMatchTraitsContext): void {
 
 export interface NewMatchInput
 	extends Pick<CreateMatchOptions, "redProfile" | "whiteProfile"> {
-	/** Which color the human plays, or null for AI-vs-AI. */
-	readonly humanColor: Color | null;
+	readonly humanColor: HumanColor;
 	readonly coinFlipSeed?: string;
 }
 
 /**
- * Action builder. Takes the SimWorld and returns the action record
- * koota's `useActions` consumes.
- *
- * Actions are async because they touch the database. The visual
- * shell awaits them when sequencing (e.g., newMatch → first AI turn
- * for a human-as-white opener).
+ * Input for `actions.resumeMatch`. The persistence layer loads the
+ * snapshot + decodes the base64 yuka brain pair, then passes the
+ * decoded structures here. We re-create a fresh broker handle with
+ * the same coinFlipSeed + profiles, install the restored AI states,
+ * then replay the action log to reach the persisted ply.
  */
+export interface ResumeMatchInput {
+	readonly redProfile: import("@/ai").ProfileKey;
+	readonly whiteProfile: import("@/ai").ProfileKey;
+	readonly humanColor: HumanColor;
+	readonly coinFlipSeed: string;
+	readonly actions: ReadonlyArray<Action>;
+	readonly ai: {
+		readonly red: import("@/ai").AiState;
+		readonly white: import("@/ai").AiState;
+	};
+}
+
 export function buildSimActions(sim: SimWorld) {
 	return createActions(() => ({
-		async newMatch(input: NewMatchInput): Promise<void> {
+		newMatch(input: NewMatchInput): void {
 			sim.epoch += 1;
-			const handle = await createMatch(sim.db, {
+			const handle = createMatch({
 				redProfile: input.redProfile,
 				whiteProfile: input.whiteProfile,
 				...(input.coinFlipSeed !== undefined
@@ -193,18 +197,16 @@ export function buildSimActions(sim: SimWorld) {
 					: {}),
 			});
 			sim.handle = handle;
-			// Reset every transient UI trait so a non-title entry
-			// (Play-again from EndScreen) starts the fresh match
-			// without inheriting the prior match's Selection / hold-
-			// progress / AiThinking state.
 			sim.worldEntity.set(Selection, { cell: null });
 			sim.worldEntity.set(HoldProgress, { value: 0 });
 			sim.worldEntity.set(AiThinking, { value: false });
 			syncMatchTraits(sim, { humanColor: input.humanColor, plyCount: 0 });
 			sim.worldEntity.set(Screen, { value: "play" });
+			// First persist for the active-match KV slot.
+			if (sim.onPlyCommit) void sim.onPlyCommit(handle);
 		},
 
-		async quitMatch(): Promise<void> {
+		quitMatch(): void {
 			sim.epoch += 1;
 			sim.handle = null;
 			sim.worldEntity.set(Selection, { cell: null });
@@ -214,6 +216,37 @@ export function buildSimActions(sim: SimWorld) {
 			if (sim.worldEntity.has(SplitChainView))
 				sim.worldEntity.remove(SplitChainView);
 			sim.worldEntity.set(Screen, { value: "title" });
+		},
+
+		/**
+		 * Resume a previously saved match from a hydrated snapshot.
+		 * Reconstructs the broker handle (same seed + profiles), installs
+		 * the restored AI states, replays each persisted action through
+		 * the engine reducer to reach the saved ply, then syncs traits +
+		 * flips Screen to "play".
+		 */
+		resumeMatch(input: ResumeMatchInput): void {
+			sim.epoch += 1;
+			const handle = createMatch({
+				redProfile: input.redProfile,
+				whiteProfile: input.whiteProfile,
+				coinFlipSeed: input.coinFlipSeed,
+			});
+			handle.ai.red = input.ai.red;
+			handle.ai.white = input.ai.white;
+			for (const action of input.actions) {
+				handle.game = applyEngineAction(handle.game, action);
+				handle.actions.push(action);
+			}
+			sim.handle = handle;
+			sim.worldEntity.set(Selection, { cell: null });
+			sim.worldEntity.set(HoldProgress, { value: 0 });
+			sim.worldEntity.set(AiThinking, { value: false });
+			syncMatchTraits(sim, {
+				humanColor: input.humanColor,
+				plyCount: input.actions.length,
+			});
+			sim.worldEntity.set(Screen, { value: "play" });
 		},
 
 		setScreen(screen: ScreenKind): void {
@@ -228,160 +261,122 @@ export function buildSimActions(sim: SimWorld) {
 			sim.worldEntity.set(HoldProgress, { value });
 		},
 
-		/**
-		 * Advance the match by one ply (the on-turn AI's turn OR a
-		 * human-committed action). The visual shell calls this after
-		 * a human commits a move via the input pipeline OR when it's
-		 * the AI's turn.
-		 */
 		async stepTurn(): Promise<void> {
 			const handle = sim.handle;
 			if (!handle) return;
-			// Re-entrancy guard. AiThinking flips true synchronously
-			// below, but a caller can fire stepTurn twice in the same
-			// React batch (e.g., StrictMode double-invocation, or two
-			// useEffects landing in the same microtask). Without this
-			// guard, both calls observe `AiThinking === false`,
-			// proceed in parallel, and produce two persisted moves
-			// for one logical ply.
 			if (sim.worldEntity.get(AiThinking)?.value) return;
-			// Epoch token captured at entry. If newMatch / quitMatch
-			// fires during the AI's `await playTurn`, the epoch
-			// mismatches and we bail before mutating traits — the
-			// stale result from the previous match must not overwrite
-			// the new world state.
 			const epoch = sim.epoch;
 			const prior = sim.worldEntity.get(Match);
 			const humanColor = prior?.humanColor ?? null;
 			const priorPly = prior?.plyCount ?? 0;
+			// `isCurrent()` guards against stale-epoch writes — if
+			// `newMatch()` / `quitMatch()` / `resumeMatch()` supersedes
+			// the handle while a turn is in flight, the persistence
+			// hooks + AiThinking flip would otherwise corrupt the
+			// replacement match's state. Every async-callback site
+			// downstream needs the same guard.
+			const isCurrent = (): boolean =>
+				sim.epoch === epoch && sim.handle === handle;
 			sim.worldEntity.set(AiThinking, { value: true });
 			try {
-				const result = await playTurn(sim.db, handle, {
+				const result = await playTurn(handle, {
 					mode: "live",
-					...(sim.onMatchEnd ? { onTerminal: sim.onMatchEnd } : {}),
+					...(sim.onPlyCommit
+						? {
+								onPlyCommit: (h) =>
+									isCurrent() ? sim.onPlyCommit?.(h) : undefined,
+							}
+						: {}),
+					...(sim.onMatchEnd
+						? {
+								onTerminal: () =>
+									isCurrent() ? sim.onMatchEnd?.(handle) : undefined,
+							}
+						: {}),
 				});
-				if (sim.epoch !== epoch || sim.handle !== handle) return;
+				if (!isCurrent()) return;
 				const newPly = result.persistedMove ? priorPly + 1 : priorPly;
 				syncMatchTraits(sim, { humanColor, plyCount: newPly });
 				if (result.terminal && handle.game.winner) {
-					// Translate engine winner → screen. Human matches
-					// route to win/lose. AI-vs-AI routes to a neutral
-					// `spectator-result` screen since neither side is
-					// "the player" — labelling it 'win' or 'lose'
-					// would mislead a viewer about whose perspective
-					// the message is from.
-					if (humanColor === null) {
-						sim.worldEntity.set(Screen, { value: "spectator-result" });
-					} else {
-						sim.worldEntity.set(Screen, {
-							value: handle.game.winner === humanColor ? "win" : "lose",
-						});
-					}
+					sim.worldEntity.set(Screen, {
+						value: terminalScreen(humanColor, handle.game.winner),
+					});
 				}
 			} finally {
-				sim.worldEntity.set(AiThinking, { value: false });
+				if (isCurrent()) {
+					sim.worldEntity.set(AiThinking, { value: false });
+				}
 			}
 		},
 
-		// Internal helper: sync traits after an external mutation
-		// (e.g., a human action applied directly through the engine
-		// outside of stepTurn). Exposed for the input pipeline's
-		// commit path to call after an action lands. Caller passes
-		// humanColor + plyCount explicitly — the trait does not
-		// preserve them implicitly across removes/adds.
-		syncTraits(ctx: { humanColor: Color | null; plyCount: number }): void {
+		syncTraits(ctx: { humanColor: HumanColor; plyCount: number }): void {
 			syncMatchTraits(sim, ctx);
 		},
 
-		/**
-		 * Apply a human-supplied action via the broker. Use from the
-		 * input pipeline's commit path (drag-and-release, click-to-
-		 * move, split-overlay commit). The engine validates legality;
-		 * an `IllegalActionError` rejects the promise.
-		 *
-		 * Mirrors `stepTurn`'s screen-transition logic for terminal
-		 * outcomes — wins/losses route to the right screen for the
-		 * player's perspective.
-		 */
 		async commitHumanAction(action: Action): Promise<void> {
 			const handle = sim.handle;
 			if (!handle) return;
-			// Same epoch / handle-identity guard as stepTurn — protects
-			// against quitMatch / newMatch firing during the await.
 			const epoch = sim.epoch;
 			const prior = sim.worldEntity.get(Match);
 			const humanColor = prior?.humanColor ?? null;
 			const priorPly = prior?.plyCount ?? 0;
-			const result = await applyHumanAction(sim.db, handle, action, {
-				...(sim.onMatchEnd ? { onTerminal: sim.onMatchEnd } : {}),
+			const isCurrent = (): boolean =>
+				sim.epoch === epoch && sim.handle === handle;
+			const result = await applyHumanAction(handle, action, {
+				...(sim.onPlyCommit
+					? {
+							onPlyCommit: (h) =>
+								isCurrent() ? sim.onPlyCommit?.(h) : undefined,
+						}
+					: {}),
+				...(sim.onMatchEnd
+					? {
+							onTerminal: () =>
+								isCurrent() ? sim.onMatchEnd?.(handle) : undefined,
+						}
+					: {}),
 			});
-			if (sim.epoch !== epoch || sim.handle !== handle) return;
+			if (!isCurrent()) return;
 			const newPly = result.persistedMove ? priorPly + 1 : priorPly;
 			syncMatchTraits(sim, { humanColor, plyCount: newPly });
-			// Selection clears after every committed action — the
-			// human starts the next turn fresh.
 			sim.worldEntity.set(Selection, { cell: null });
 			if (result.terminal && handle.game.winner) {
-				if (humanColor === null) {
-					sim.worldEntity.set(Screen, { value: "spectator-result" });
-				} else {
-					sim.worldEntity.set(Screen, {
-						value: handle.game.winner === humanColor ? "win" : "lose",
-					});
-				}
+				sim.worldEntity.set(Screen, {
+					value: terminalScreen(humanColor, handle.game.winner),
+				});
 			}
 		},
 
-		/**
-		 * Mark the on-turn human as forfeiting. Stamps the
-		 * `forfeit-<color>` outcome on the matches row + flips the
-		 * screen. Per the no-resignation-UI directive, this is also
-		 * how the AI's weighted-forfeit decision lands when stepTurn
-		 * returns kind:'forfeit' — but THIS action is the human-
-		 * triggered button.
-		 */
 		async forfeit(): Promise<void> {
 			const handle = sim.handle;
 			if (!handle) return;
-			// Same epoch / handle-identity guard as stepTurn.
 			const epoch = sim.epoch;
 			const prior = sim.worldEntity.get(Match);
 			const humanColor = prior?.humanColor ?? null;
 			const mover = handle.game.turn;
-			await matchesRepoForfeit(sim.db, handle.matchId, mover);
-			if (sim.epoch !== epoch || sim.handle !== handle) return;
+			const newWinner: Color = mover === "red" ? "white" : "red";
 			handle.game = {
 				...handle.game,
-				winner: mover === "red" ? "white" : "red",
+				winner: newWinner,
 			};
-			if (sim.onMatchEnd) await sim.onMatchEnd(handle.matchId);
-			if (sim.epoch !== epoch || sim.handle !== handle) return;
+			const isCurrent = (): boolean =>
+				sim.epoch === epoch && sim.handle === handle;
+			if (sim.onMatchEnd && isCurrent()) await sim.onMatchEnd(handle);
+			if (!isCurrent()) return;
 			syncMatchTraits(sim, {
 				humanColor,
 				plyCount: prior?.plyCount ?? 0,
 			});
-			if (humanColor === null) {
-				sim.worldEntity.set(Screen, { value: "spectator-result" });
-			} else {
-				sim.worldEntity.set(Screen, {
-					value: humanColor === mover ? "lose" : "win",
-				});
-			}
+			sim.worldEntity.set(Screen, {
+				value: terminalScreen(humanColor, newWinner),
+			});
 		},
 
-		// First-player coin-flip exposed so the title screen can show
-		// who'll go first BEFORE the match is committed (for "ready?
-		// red goes first" UX). Pure derivation; no side effects.
 		previewFirstPlayer(seed: string): Color {
 			return decideFirstPlayer(seed);
 		},
 	}));
 }
 
-/** The koota actions builder — pass `useActions(simActionsBuilder)` in
- *  React or call `simActionsBuilder(world)` directly outside React
- *  to get the bound action record. */
 export type SimActionsBuilder = ReturnType<typeof buildSimActions>;
-
-/** The bound action record (the methods you actually call). */
 export type SimActions = ReturnType<SimActionsBuilder>;

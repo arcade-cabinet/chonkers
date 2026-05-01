@@ -65,3 +65,4 @@ public/assets/pbr/**/WoodFloor008.png
 .claude/state/
 __screenshots__/
 .commit-msg.tmp
+artifacts/

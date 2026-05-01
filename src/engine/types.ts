@@ -76,21 +76,19 @@ export interface Action {
 }
 
 /**
- * A pending forced-split chain. After the player commits a non-
- * contiguous split, the remaining detachments must be placed on
- * subsequent turns by the SAME player who initiated the chain (the
- * `owner`). Per RULES.md §5.4 step 2, control flips even mid-chain,
- * so the opponent's intervening turns play normally and the chain
- * just stays pending. The chain only constrains action selection
- * when `state.turn === state.chain.owner`.
+ * A pending forced-split chain — set ONLY when a multi-run split
+ * stalled mid-resolution because a queued run had no legal
+ * destination (RULES.md §5.4.1). The chain owner is locked into
+ * retrying the head detachment on every subsequent turn until the
+ * chain resolves or dies; their normal-move enumeration is empty
+ * while the chain is pending. The opponent plays normally on their
+ * intervening turns and is unaffected by the chain.
  *
  * `owner` is required because top-of-stack ownership at `source` can
- * shift mid-chain (a chain continuation lands the owner's slices on
- * a destination, then the next obligated detach happens against a
- * possibly mixed-color residual whose top is no longer guaranteed
- * to be the chain owner's colour). Without an explicit owner field,
- * the standard owner check would reject every chain continuation
- * whose residual top now belongs to the opponent.
+ * shift between chain commits (an in-turn run can chonk through and
+ * leave a mixed-colour residual). Without an explicit owner field,
+ * the standard owner check would reject every chain retry whose
+ * residual top now belongs to the opponent.
  */
 export interface SplitChain {
 	readonly source: Cell;

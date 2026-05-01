@@ -1,6 +1,6 @@
 ---
 title: Design
-updated: 2026-04-29
+updated: 2026-04-30
 status: current
 domain: product
 ---
@@ -56,9 +56,9 @@ The palette is **derived from the curated PBR textures** in `public/assets/pbr/`
 | `accent.split` | `#3FB67A` | Split-segment flash on hold-ready |
 | `surface.scrim` | `rgba(15, 10, 5, 0.72)` | Modal backdrop, pause overlay |
 
-The `splitRadial.*` sub-tree adds slice-state colours (idle, hovered, selected, hold-ready, committed-opacity) for `app/components/SplitRadial.tsx`. The `turnBadge.*` sub-tree adds red/white colour banding for `app/components/TurnBadge.tsx`. These all reference the same wood/ink/accent base colours so the palette stays cohesive.
+The `splitRadial.*` sub-tree adds slice-state colours (idle, hovered, selected, hold-ready, committed-opacity) used by the splitting radial in `src/scene/overlay/splitRadial.ts`. The `turnBadge.*` sub-tree adds red/white colour banding for the diegetic turn indicator (a small wood pip on the bezel that lights for the active player). These all reference the same wood/ink/accent base colours so the palette stays cohesive.
 
-Tokens are defined in `src/design/tokens.ts` (one `tokens as const` export) and exposed to Radix Themes via `radixTheme` in `src/design/theme.ts` (`accentColor: 'amber'` matching `accent.select`), plus to CSS as `--ck-*` custom properties in `app/css/style.css`. All three sources stay in sync.
+Tokens are defined in `src/design/tokens.ts` (one `tokens as const` export). The scene reads them directly when constructing materials and when generating SVG overlay markup. There is no Radix theme bridge and no CSS custom-property mirror — the tokens module is the single source.
 
 ### Typography
 
@@ -105,14 +105,51 @@ The 9×11 board with engraved gridlines is the game's signature shot. Design con
 
 ---
 
-## The split overlay
+## UI surfaces — diegetic for play, branded overlays for menus
 
-When the player taps a stack of height ≥ 2, a 2D SVG radial menu appears, centred over the stack's screen-projected position. The overlay is HTML/SVG layered on top of the R3F canvas — **not** WebGL geometry — so:
+The vision split as of 2026-04-30 (PRQ-C* on `prd/threejs-shell`):
+
+- **Diegetic SVG overlays** (vanilla, in `src/scene/overlay/`) own per-stack interaction during play. The split radial anchors to the stack it splits — the affordance is *attached* to the wood the player is looking at. There are no floating in-game buttons, no in-game menu chrome, no full-screen overlays during a turn.
+- **Centered branded overlays** (Solid TSX, in `app/`) own everything else: lobby title screen, new-game configuration (difficulty + Pass-and-Play picker), settings, pause, end-game. Real `<dialog>` semantics, focus traps, ARIA, axe-passable, Playwright-clickable without testHook shortcuts.
+
+This is a deliberate trade. The earlier "every affordance lives on a piece" rule was elegant in theory but produced a hostile first-time experience (no difficulty hint, no Pass-and-Play option, no settings) and gave Playwright + axe almost nothing to assert on. Centering the menu chrome unlocks a real lobby + Pass-and-Play + accessibility story; keeping the per-stack interaction diegetic preserves the "the board IS the game" feel.
+
+The complete state diagrams for both layers live in [UI_FLOWS.md](./UI_FLOWS.md).
+
+### Diegetic SVG overlay (the splitting radial)
+
+Mechanism: the scene's rAF loop calls `camera.project(piece.getWorldPosition())` for each visible affordance and writes the resulting screen-space coordinate to the SVG element's `transform: translate(...)`. The SVG is regular DOM (not inside the canvas, not inside a custom reconciler) appended to `<div id="overlay">` once at boot. Pointer events on slice paths fire native DOM handlers; hit-testing is exact and crisp.
+
+Animation is driven by `gsap` for both the 3D pieces (mesh transforms, materials, camera) and the 2D SVG overlays (path attributes, opacity, transform). One animation library, one timeline model, one easing vocabulary across the canvas universe.
+
+### Branded overlay (Solid in `app/`)
+
+Mechanism: a sibling `<div id="ui-root">` next to the `<canvas>` in `index.html`. Solid renders modal dialogs into it. Each overlay is a real `<dialog>` element with focus trap and ESC-to-close (where appropriate). Solid's fine-grained reactivity composes with the existing `koota` world — the overlay subscribes to the `Screen` trait to know which surface to render.
+
+The two layers do not cross-contaminate: lint rules forbid `solid-js` imports outside `app/**` and `three` / `gsap` imports inside `app/**`. The bridge is the koota world + the broker `actions` namespace.
+
+### Surfaces
+
+| Surface | Layer | Where it sits | What it does |
+|---|---|---|---|
+| Lobby (title) | Branded overlay | Centered above the leveled-board scene | New Game / Continue Game / Settings. Continue greys when no saved match. |
+| New-game config | Branded overlay | Centered modal, opens from Lobby's "New Game" | 4 cards: Easy / Medium / Hard / Pass-and-Play. Each card has a one-line descriptor. |
+| Settings | Branded overlay | Centered modal | Audio mute / haptics toggle / reduced-motion / default-difficulty. v1 English-only. |
+| Bezel hamburger | DOM button overlaid on canvas | Top-right corner of the bezel mesh's screen projection | The only persistent UI chrome during play. Opens the Pause overlay. |
+| Coin flip | 3D mesh | The coin spawns above the board, spins via gsap, lands on a face | The landing face decides who plays first. No SVG required. |
+| Splitting radial | Diegetic SVG | On the top puck of the selected stack when stack height ≥ 2 | See "The splitting radial" below. |
+| Selection ring + valid-move markers | 3D meshes | Around the selected stack and on legal target cells | Pulsing emissive ring (gsap-driven). |
+| Pivot-drag turn-end | Gesture on canvas | Drag the bezel toward the opponent | Ends the human's turn. In Pass-and-Play this also rotates the board+frame 180° so the next player sees their orientation upright. |
+| Pause | Branded overlay | Centered modal, opens from bezel hamburger | Resume / Settings / Quit. |
+| End-game | Branded overlay | Centered modal, opens when state.winner ≠ null | Play Again / Quit. The board stays visible behind. |
+
+### The splitting radial
+
+When the player taps a stack of height ≥ 2, a 2D SVG radial menu appears, centred over the top puck's screen-projected position. SVG is the right tool for slice geometry:
 
 - Slice borders stay crisp at any zoom.
-- CSS animations drive the flash + pulse.
+- gsap drives the open/close + slice flash + hold-ready pulse.
 - Hit-testing for slice selection is native pointer events, not raycasts.
-- `framer-motion` drives the open/close + flash animations.
 
 Slice count = stack height. Players can select up to N − 1 slices (the whole stack ≠ a split). Visual states per slice:
 
@@ -152,24 +189,26 @@ Edge: `duckAmbient` early-returns if ambient isn't already playing. So if a stin
 
 ## Motion
 
-`framer-motion` owns all 2D UI motion. R3F + GSAP-style tweens (or `@react-three/drei`'s `useSpring`) own 3D piece motion. Two motion budgets:
+`gsap` owns all motion — 3D mesh transforms, camera moves, SVG overlay attributes, opacity, the lot. One library, one timeline model, one easing vocabulary. Two motion budgets:
 
-- **UI motion** — radial overlay open (160ms ease-out), slice flash (240ms ease-in-out, 2 cycles), modal in/out (180ms).
+- **UI motion** — radial overlay open (160ms ease-out), slice flash (240ms ease-in-out, 2 cycles), pause/end radial in/out (180ms).
 - **Piece motion** — lift-arc-drop on move (420ms total: 120ms lift, 200ms arc, 100ms settle bounce). Split-extract is 300ms for the slice-pucks to detach + follow pointer.
 
-The 2D variants live in `src/design/motion.ts` as a shared library. Visual-shell components (PRQ-4) import them by name rather than redeclaring transitions:
+The motion vocabulary lives in `src/design/tokens.ts` (durations) and `src/scene/animations.ts` (gsap tween factories). Surfaces import factories by name rather than redeclaring tweens:
 
-| Variant | Where it's used | Token |
-|---------|-----------------|-------|
-| `radialOpen` | `app/components/SplitRadial.tsx` open animation | `tokens.motion.uiOpenMs` |
-| `radialClose` | `app/components/SplitRadial.tsx` close (faster than open) | `tokens.motion.uiCloseMs` |
-| `sliceSelect` | Slice idle → hovered → selected (80ms ease-out) | hardcoded (one-off) |
-| `holdFlash` | Selected slice pulses while the hold-arm timer runs | `tokens.motion.uiFlashMs` |
-| `modalIn` / `modalOut` | Forfeit confirm, settings, game-over screen | `tokens.motion.modalMs` / `uiCloseMs` |
-| `screenFade` | Cross-fade between top-level Radix screens | `tokens.motion.screenFadeMs` |
-| `reducedMotionFallback` | Drop-in for any of the above when reduced-motion is on | 0.001s |
+| Factory | Where it's used | Duration token |
+|---|---|---|
+| `tweenRadialOpen(svgEl)` | Splitting radial open (the only remaining diegetic SVG; lobby / pause / end-game are now centered Solid `<dialog>` modals — see app/overlays/) | `tokens.motion.uiOpenMs` |
+| `tweenRadialClose(svgEl)` | Splitting radial close | `tokens.motion.uiCloseMs` |
+| `tweenSliceSelect(sliceEl)` | Slice idle → hovered → selected (80ms ease-out) | hardcoded (one-off) |
+| `tweenHoldFlash(sliceEls)` | Selected slices pulse while the hold-arm timer runs | `tokens.motion.uiFlashMs` |
+| `tweenPieceMove(meshes, fromXZ, toXZ)` | Lift / arc / settle for a 1-stack or full-stack move | 420ms split across phases |
+| `tweenSplitDetach(meshes, pointerStream)` | Selected slice-pucks detach and follow the pointer in worldspace | 300ms detach, then live |
+| `tweenBoardTip(camera, towardPlayer)` | The X-axis tip toward whoever owns the turn | `tokens.motion.boardTipMs` |
+| `tweenCoinSpin(coin, faceUp)` | Coin spins, decelerates, lands on the chosen face | `tokens.motion.coinSpinMs` |
+| `reducedMotion` | Drop-in alternative used by every factory above when reduced-motion is on | 0.001s for UI; 200ms linear translate for pieces |
 
-Reduce-motion users (`prefers-reduced-motion` OR `kv.get('settings', 'reducedMotion')`) get the fallback for all variants and a flat 200ms linear translate for 3D pieces — no arcs, no bounces.
+Reduce-motion users (`prefers-reduced-motion` OR `kv.get('settings', 'reducedMotion')`) get the reduced-motion path automatically — no arcs, no bounces, no hold-flash pulse.
 
 ---
 

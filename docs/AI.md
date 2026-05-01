@@ -57,7 +57,7 @@ path). The two modes are documented below.
 
 2. **Same dump, same load → behaviourally equivalent state.** `loadAiState(dumpAiState(s))` produces an `AiState` `s'` such that for every game state `g` and mode `m`: `chooseAction(g, profile_of(s), m, s) === chooseAction(g, profile_of(s'), m, s')`. The states are not required to be bit-equal — the transposition table is a perf cache and may be repacked on dump/load — but they must produce the same actions for all inputs. The dump format is an opaque BLOB with a monotonic format-version integer (4 bytes, little-endian) following a 4-byte magic `'CHAI'`.
 
-3. **Same match seed, same profile pair, same opening → same game (replay mode).** Given recorded `coin_flip_seed`, `red_profile`, `white_profile`, and `opening_position_hash` from a `matches` row, **re-running the match in `replay` mode** reproduces the exact ply sequence. This makes outlier-replay possible at rc-stage 10,000-run scale.
+3. **Same match seed, same profile pair, same opening → same game (replay mode).** Given a `MatchHandle`'s recorded `coinFlipSeed`, `redProfile`, and `whiteProfile`, **re-running the match in `replay` mode** reproduces the exact ply sequence. This makes outlier-replay possible at rc-stage 10,000-run scale via the governor spec's per-match filesystem artifacts.
 
 ### `live` vs `replay` mode
 
@@ -107,6 +107,13 @@ The evaluation function scores any board state from a player's perspective as a 
 | `opponent_forward_progress` | mirror of `forward_progress` for the opponent. Negative. | 0..120 |
 | `opponent_home_row_tops` | mirror of `home_row_tops` for the opponent. Heavily negative — opponent winning is the worst outcome. | 0..12 |
 | `opponent_tall_stacks_unblocked` | opponent tall stacks with no player blocker adjacent. Negative. | 0..~6 |
+| `total_pieces_advancement` | sum of `(stack_height × distance-toward-goal)` over owned cells — credits BURIED pieces, not just tops. Counters the row-vs-row standoff where flat 1-stack walls form. | 0..~720 |
+| `mobile_threat_count` | count of player's owned stacks with height ≥ 2 (splittable + chonk-capable). Heavily rewarded — without 2+stacks the player has no offensive leverage past the 1-stack blocker line (RULES §4.2). | 0..12 |
+| `frontier_advance` | max distance-toward-goal of any owned top. Rewards committing a salient lone advancer that forces the opponent to defend rather than mirror. | 0..10 |
+| `even_trade_count` | count of player 1-stacks adjacent to opponent 1-stacks. Each is a free chonk that costs the opponent a piece and gives us a 2-stack on their cell. | 0..~30 |
+| `cluster_density` | unordered (own, own) cell pairs at Chebyshev-1. Rewards clustering — mutual support, defensive walls. Disposition-modulated: defensive +2.5, balanced +1.0, aggressive +0.3. | 0..~40 |
+| `longest_wall` | length of the longest contiguous horizontal run of own owned cells on a single row. Defensive formations. Defensive +1.5, balanced +0.5, aggressive +0.0. | 0..9 |
+| `funnel_pressure` | count of opponent cells with ≥ 2 of our pieces in their 8-neighbourhood. Encirclement / funnel formations. Aggressive +4.0, balanced +2.0, defensive +0.5. | 0..12 |
 
 A profile's `weights` map associates each feature with a real-valued multiplier. The evaluation is `sum(features[k] × weights[k])`.
 
@@ -121,22 +128,33 @@ The disposition determines the **ratio** between feature weights. Difficulty app
 | Feature | aggressive | balanced | defensive |
 |---|---:|---:|---:|
 | `forward_progress` | +3.0 | +2.0 | +1.5 |
-| `top_count` | +2.0 | +2.0 | +2.5 |
+| `top_count` | +1.0 | +1.5 | +2.0 |
 | `home_row_tops` | +20.0 | +20.0 | +20.0 |
-| `chonk_opportunities` | +1.5 | +0.8 | +0.3 |
+| `chonk_opportunities` | +4.0 | +2.5 | +1.0 |
 | `tall_stack_count` | +2.5 | +1.5 | +0.8 |
 | `blocker_count` | +0.5 | +1.5 | +3.0 |
 | `chain_owed` | -2.0 | -2.0 | -2.0 |
 | `opponent_forward_progress` | -1.5 | -2.0 | -3.0 |
 | `opponent_home_row_tops` | -25.0 | -25.0 | -25.0 |
 | `opponent_tall_stacks_unblocked` | -1.0 | -2.0 | -3.5 |
+| `total_pieces_advancement` | +1.0 | +0.7 | +0.5 |
+| `mobile_threat_count` | +5.0 | +3.5 | +2.0 |
+| `frontier_advance` | +3.0 | +2.0 | +1.0 |
+| `even_trade_count` | +6.0 | +3.5 | +2.0 |
+| `cluster_density` | +0.3 | +1.0 | +2.5 |
+| `longest_wall` | +0.0 | +0.5 | +1.5 |
+| `funnel_pressure` | +4.0 | +2.0 | +0.5 |
 
 Reading the table:
 
-- **aggressive** weights `forward_progress` and `chonk_opportunities` highest — pushes its own pieces forward, looks for stacking opportunities, accepts opponent counter-progress as the cost of pace.
-- **defensive** weights `blocker_count` and `opponent_tall_stacks_unblocked` highest — places 1-stack blockers, denies opponent area, slow-rolls forward progress.
-- **balanced** is the midpoint — modest weights on both attack and defence, no extreme.
+- **aggressive** weights `chonk_opportunities`, `even_trade_count`, `funnel_pressure` highest — actively seeks trades, encircles opponent groups, builds tall stacks (`mobile_threat_count`) to push through. Low cluster preference.
+- **defensive** weights `blocker_count`, `opponent_tall_stacks_unblocked`, `cluster_density`, `longest_wall` highest — places 1-stack blockers, builds walls, keeps pieces in mutual support, denies opponent area.
+- **balanced** is the midpoint — modest weights everywhere; clusters defensively but takes trades when offered.
 - The win-condition features (`home_row_tops`, `opponent_home_row_tops`) are equal across all three dispositions and dominant in magnitude. No profile is willing to lose to win an aesthetic; winning is winning.
+
+#### Why cluster + threat features matter
+
+Without `mobile_threat_count`, `even_trade_count`, and `funnel_pressure`, the alpha governor pegged 100% at the ply cap (RULES §4.2 standoff: a 1-stack blocks any taller stack, so the AI sat behind row-4-vs-row-6 walls and mirrored). The fix wasn't deeper search — it was teaching the eval that **building 2-stacks** + **executing 1-vs-1 trades** is how you create the higher-stack interaction the rules require for a piece-capture cascade. The 100-run alpha gate now resolves 100/100.
 
 ### Difficulty shapes — search depth + prune aggressiveness
 
@@ -162,9 +180,9 @@ The action set returned by `chooseAction` includes `forfeit` alongside `move` an
 | balanced-* | -120.0 (forfeits in clearly-lost positions, e.g. opponent has 10/12 tops on the home row) |
 | defensive-* | -80.0 (forfeits earlier than balanced once the position is hopeless) |
 
-When the threshold is crossed, the AI evaluates "forfeit now" against "play one more move." If forfeiting is no worse than the best available move, the AI forfeits. The `matches.winner` column records `forfeit-red` or `forfeit-white` depending on which side gave up; the sim broker triggers the standard game-over sting + the *opponent's* victory voice line.
+When the threshold is crossed, the AI evaluates "forfeit now" against "play one more move." If forfeiting is no worse than the best available move, the AI forfeits. The broker records the winner as the OPPOSITE color of the forfeiter on `handle.game.winner`, and the scene layer triggers the standard game-over sting + the *opponent's* victory voice line.
 
-Humans get a forfeit button in the HUD that runs the same code path on the human side: same sting, same audio cue, same `matches.winner` value.
+Humans get a forfeit slice in the pause radial that runs the same code path: same sting, same audio cue, same winner record.
 
 ## State representation
 
@@ -194,35 +212,51 @@ export function loadAiState(blob: Uint8Array): AiState;
 
 The dump is a forward-versioned BLOB: a 4-byte magic `'CHAI'`, a 4-byte little-endian `format_version` (currently `1`), then a serialised payload. The serialiser uses CBOR (compact binary object representation) — smaller than JSON, deterministic byte order for stable hashes, native support for `Uint8Array` and integers.
 
-`loadAiState` reads the format_version first. Version `1` is the only one that exists. Future versions add a `migrateAiState(blob: Uint8Array, fromVersion: number, toVersion: number): Uint8Array` step before parsing, applied during `loadAiState` if `format_version < CURRENT_VERSION`. This mirrors the SQL migration ladder for the database — forward-only, monotonic, never edit a shipped version.
+`loadAiState` reads the format_version first. Version `1` is the only one that exists and is unlikely to change — yuka is a frozen rope and the dump payload is minimal (`profileKey` + `chainPlannedRemainder`). If the format ever changes, `loadAiState` throws on resume, the active-match snapshot is treated as corrupt by the persistence layer, and the player starts fresh. No `migrateAiState` ladder exists — the cost-benefit doesn't justify it for a casual game.
 
-The dump-blob lives in `ai_states.dump_blob` (see `docs/DB.md`); the format version goes in `ai_states.dump_format_version`. Resume reads exactly one row per AI per match.
+The dump-blob is base64-encoded inside the `ActiveMatchSnapshot.{red,white}AiDumpB64` field — see `docs/PERSISTENCE.md`. Resume restores both yuka brains in one read of the active-match KV slot.
 
 ## Coin flip for first move
 
-Red moves first per RULES §3, but **which player is red** is decided per-match. The sim broker generates a `coin_flip_seed` (a UUID-derived 64-bit integer) at match-creation time and stores it in `matches.coin_flip_seed`. The broker uses that seed to deterministically pick which of the two players plays red.
+Red moves first per RULES §3, but **which player is red** is decided per-match. The sim broker generates a `coinFlipSeed` (a UUID-derived 64-bit integer) at match-creation time and stores it on `MatchHandle.coinFlipSeed`. The broker uses that seed to deterministically pick which of the two players plays red.
 
-This is the **only** entropy in chonkers. After this single sample, the rest of the match is a deterministic function of (engine rules, AI profiles, recorded moves). Replaying the match — for outlier debugging during the rc 10,000-run pass, or for a post-match replay UI — re-derives the same colour assignment from the same seed and produces the same game.
+This is the **only** entropy in chonkers. After this single sample, the rest of the match is a deterministic function of (engine rules, AI profiles, recorded actions). Replaying the match — for outlier debugging during governor runs — re-derives the same colour assignment from the same seed and produces the same game. The active-match snapshot persists `coinFlipSeed` so resume reproduces play deterministically.
 
 The seed is generated by the platform's `crypto.getRandomValues()` at match-creation time only. **`crypto.getRandomValues` is not banned in the broker** — only in the engine, AI, sim core, and store. The broker is the legitimate entropy source for one-shot match initialisation.
 
 ## What lives in code, not the database
 
-The 9 profile keys + their weight tables + their search depths + their forfeit thresholds are **TypeScript constants** in `src/ai/profiles.ts`. They are not database rows. Reasons:
-
-- The values change via balance-tune commits during alpha/beta/rc; tracked as conventional-commit `feat(ai): tune balanced-medium forfeit threshold` edits with reviewable diffs.
-- `matches.red_profile` and `matches.white_profile` are foreign references *to* code constants — validated at insert time by `src/store/repos/matchesRepo.ts`, which only accepts profile keys that exist in `src/ai/profiles.ts` (or the literal `'human'`).
-- A schema migration is the wrong mechanism for "change a number from 2.0 to 2.1." A code commit is the right one.
-
-If user-defined profiles ever ship (let users tune their own AIs), that's a schema migration at *that* point — adding a `user_profiles` table — and `matches.{red,white}_profile` becomes a union of "built-in profile key" and "FK to user_profiles.id". That's a future-far concern.
+The 9 profile keys + their weight tables + their search depths + their forfeit thresholds are **TypeScript constants** in `src/ai/profiles.ts`. The values change via balance-tune commits during alpha/beta/rc; tracked as conventional-commit `feat(ai): tune balanced-medium forfeit threshold` edits with reviewable diffs. `MatchHandle.{redProfile,whiteProfile}` is a `ProfileKey` literal validated by `isProfileKey` at handle-creation time.
 
 ## Tuning history
 
 The tables above are the **alpha-stage initial weights**. As balance data lands from the 100/1000/10000 runs, this section records each tune.
 
-### alpha-stage initial (current)
+### alpha-stage initial (2026-04-29)
 
-Authored 2026-04-29 from theoretical reasoning over the chonkers feature set. No empirical data yet. These values are committed to make alpha possible; the alpha 100-run pass is where empirical tuning begins.
+Authored from theoretical reasoning over the chonkers feature set. The original 10-feature vector + 3 disposition weight tables. Alpha 100-run governor against this vector pegged 100% at the ply cap — the AI sat behind row-4-vs-row-6 1-stack walls and mirrored sideways indefinitely.
+
+### alpha tune 1 — cluster + threat features (2026-04-30)
+
+Added 7 new features (`total_pieces_advancement`, `mobile_threat_count`, `frontier_advance`, `even_trade_count`, `cluster_density`, `longest_wall`, `funnel_pressure`) to break the standoff. All three disposition weight tables expanded with disposition-modulated values for the cluster/funnel features (defensive favours walls + density; aggressive favours funnels + threats; balanced is the midpoint). Existing weights retuned: `top_count` lowered (was over-rewarding flat 1-stack preservation), `chonk_opportunities` raised 2-3× (actually take the chonk).
+
+**Result**: 100-run alpha 100/100 finishers, 0 outliers, avgPly 111.27. Per-pairing wins (red-white):
+- aggressive-easy vs balanced-easy: 0-34 (avgPly 168)
+- balanced-easy vs defensive-easy: 33-0 (avgPly 92)
+- defensive-easy vs aggressive-easy: 0-33 (avgPly 71)
+
+3-way intransitivity is acceptable alpha-stage signal; balanced dominates both extremes which is rough but expected (it has the most-tuned mix). Beta governor will sample more pairings + run aggressive-vs-aggressive, etc.
+
+### governor-rotation infra (2026-05-01) — NOT a weight change
+
+Two attempted weight tunes against the alpha 100-run data both stalled the broker gate (matches running to 200-ply outliers). The tune attempts were reverted; root cause was insufficient signal:
+
+- The alpha 100-run only samples 3 of 9 ordered pairings (aggressive-easy×balanced-easy, balanced-easy×defensive-easy, defensive-easy×aggressive-easy) at 33 matches each — too small a sample for confident weight-direction inference.
+- The beta governor was running `runs=1000` of a single hardcoded pairing (`balanced-medium vs balanced-medium`, the default in `src/scene/index.ts startNewMatch`). 1000 of one pairing tells you nothing about cross-disposition balance.
+
+**Infra fix**: `startNewMatch` accepts an optional `{ redProfile, whiteProfile }` pair (testHook-exposed), and `e2e/governor.spec.ts` now cycles through all 9 ordered (red, white) pairings on the easy tier. With `runs=1000` each pairing gets ~111 matches — enough power for the directive's 60/40 win-rate gate. Per-pairing stats are accumulated and soft-asserted at the end of the run with a console-logged summary so the full balance picture surfaces even when one pairing is out of band.
+
+No weight values changed. The next entry will record the FIRST data-driven tune once the new rotated 1000-run lands.
 
 ### (next entries appended on each balance tune)
 
@@ -231,4 +265,4 @@ Each entry records:
 - The run cycle that fed the tune (alpha 100-run, beta 1000-run, rc 10000-run, or an interim ad-hoc tune)
 - Which weights / depths / thresholds changed and by how much
 - The balance signal that motivated the change (e.g. "aggressive-hard won 73% vs defensive-hard at alpha — too high; reduced `chonk_opportunities` weight from +1.5 to +1.1")
-- The `matches`-sample signature (number of matches counted, span of `started_at` values) for reproducibility
+- The match-sample signature (number of matches counted, governor run-id) for reproducibility

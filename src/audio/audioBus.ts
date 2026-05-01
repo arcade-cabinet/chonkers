@@ -19,6 +19,7 @@
 
 import { Howl, Howler } from "howler";
 import { kv } from "@/persistence/preferences";
+import { assetUrl } from "@/utils/assetUrl";
 import { AUDIO_ROLES, type AudioRole, STING_ROLES } from "./roles";
 
 const DEFAULT_VOLUME = 0.7;
@@ -121,7 +122,7 @@ class HowlerAudioBus implements AudioBus {
 			this.howls.set(
 				role,
 				new Howl({
-					src: [AUDIO_ROLES[role]],
+					src: [assetUrl(AUDIO_ROLES[role])],
 					preload: true,
 					loop: role === "ambient",
 					volume: this.volume,

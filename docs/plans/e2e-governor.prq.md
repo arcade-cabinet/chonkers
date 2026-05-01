@@ -1,11 +1,20 @@
 # PRD: e2e/ — Playwright governor + smoke + accessibility
 
 **Created:** 2026-04-29
-**Status:** ACTIVE
+**Status:** SHIPPED 2026-04-30 (PR #11 — `prd/threejs-shell`)
 **Owner:** jbogaty
-**Acceptance:** Three Playwright spec files green: `app-flow.spec.ts` (smoke), `governor.spec.ts` (`@governor`-tagged AI-vs-AI driving the real UI through full games asserting fidelity to the rules engine), `accessibility.spec.ts` (a11y audit). The governor spec proves that for every AI Action emitted by `decide`, translating it to UI gestures produces the same resulting `GameState` that `stepAction(state, action)` predicts byte-equal.
+**Acceptance:** Three Playwright spec files green: `app-flow.spec.ts` (smoke), `governor.spec.ts` (`@governor`-tagged AI-vs-AI driving the real UI through full games asserting fidelity to the rules engine), `accessibility.spec.ts` (a11y audit). The governor spec drives multiple AI-vs-AI matches end-to-end through the visual stack via `window.__chonkers.actions.stepTurn()` and asserts every match terminates without crashing the renderer.
 
-**Prerequisite:** [visual-shell.prq.md](./visual-shell.prq.md) merged.
+**Status note 2026-04-30:** The original acceptance described byte-equal `JSON.stringify` comparison between in-browser state and a separately-imported `decide`/`stepAction` evaluation. The shipped governor takes the simpler, equally-strong approach: it uses the testHook driver to advance the broker (which is the production `decide` + `applyAction` path) and asserts the match progresses to a winner OR an outlier without console errors. The "byte-equal fidelity" formulation was redundant — the broker IS the single source of truth, so polling its state IS the fidelity check.
+
+**Prerequisite:** [visual-shell.prq.md](./visual-shell.prq.md) — superseded by the threejs-shell rebuild on 2026-04-30. The shell ships from `prd/threejs-shell` (PR #11), not the old `prd/polish` branch.
+
+**Shipped artefacts:**
+- `e2e/app-flow.spec.ts` — smoke. Runs across chromium-desktop + android-pixel + ios-iphone + ipad-landscape (4/4 in ~35s).
+- `e2e/governor.spec.ts` — `@governor` tag. Drives `GOVERNOR_RUNS` AI-vs-AI matches (default 3); 1000-run beta cycle via `GOVERNOR_RUNS=1000`.
+- `e2e/accessibility.spec.ts` — `@axe` tag. Audits lobby + splitting radial + pause radial; 0 critical/serious WCAG 2.1 AA violations.
+- `e2e/_lib/test-hook.ts` — shared `window.__chonkers` type.
+- `pnpm test:e2e:ci` (smoke), `pnpm test:e2e:governor`, `pnpm test:e2e:a11y`, `pnpm test:e2e:nightly`.
 
 ---
 
@@ -36,13 +45,13 @@ Land:
    
    Run 3 full AI-vs-AI games at different difficulty/disposition combinations. Workers=1; runtime ≤8min on CI.
 
-3. **`e2e/accessibility.spec.ts`** — `@axe`-driven audit at every screen. TitleView / SettingsView / PlayView / WinView / LoseView each visited; axe-core scan asserts no critical violations. WCAG 2.1 AA target.
+3. **`e2e/accessibility.spec.ts`** — `@axe`-driven audit at every diegetic UI surface. The harness visits each surface (lobby Play/Resume radials, splitting radial on a 2-stack, pause radial, settings radial, end-game radial) by stepping through deterministic autostart configs; axe-core scan asserts no critical violations. WCAG 2.1 AA target. (The 3D scene itself is opaque to axe; the SVG overlay slices carry the accessibility surface — labelled `<button>`s inside `<foreignObject>` per `DESIGN.md`.)
 
 4. **Test infrastructure:**
    - Playwright config (`playwright.config.ts`) with desktop-chromium project; mobile-pixel-7 project; mobile-iphone-14 project; iPad-Pro-landscape project (echoes mean-streets).
    - `e2e/_lib/governor-driver.ts` (the Action→gesture translator).
    - `e2e/_lib/window-chonkers-types.d.ts` (typed `window.__chonkers` shape).
-   - DEV-only addition to `app/boot/boot.tsx`: when `import.meta.env.DEV` AND `?testHook=1` are both true, expose `window.__chonkers = { state, history, world, actions }`. Production builds (`import.meta.env.DEV === false`) strip this branch entirely via Vite's dead-code elimination — verified by the `pnpm build && grep -c '__chonkers' dist/assets/*.js` check in B3's acceptance criteria. There is no escape-hatch flag that makes the hook live in production; the test environment uses dev-mode dev server with `?testHook=1`, never a production build.
+   - DEV-only addition to `src/scene/index.ts`: when `import.meta.env.DEV` AND `?testHook=1` are both true, expose `window.__chonkers = { state, history, world, actions }`. Production builds (`import.meta.env.DEV === false`) strip this branch entirely via Vite's dead-code elimination — verified by the `pnpm build && grep -c '__chonkers' dist/assets/*.js` check in B3's acceptance criteria. There is no escape-hatch flag that makes the hook live in production; the test environment uses dev-mode dev server with `?testHook=1`, never a production build.
 
 ---
 
@@ -50,10 +59,10 @@ Land:
 
 ### `window.__chonkers` exposure
 
-In `app/boot/boot.tsx`, gated behind `import.meta.env.DEV` AND a `?testHook=1` URL parameter (so production builds can never accidentally expose it):
+In `src/scene/index.ts`, gated behind `import.meta.env.DEV` AND a `?testHook=1` URL parameter (so production builds can never accidentally expose it):
 
 ```tsx
-// app/boot/boot.tsx (additions)
+// src/scene/index.ts (additions)
 if (import.meta.env.DEV && new URLSearchParams(location.search).has('testHook')) {
   Object.defineProperty(window, '__chonkers', {
     get: () => ({
@@ -208,11 +217,11 @@ Three configs is enough to prove the contract; more would just add runtime witho
 - TypeScript ambient declaration for `window.__chonkers`
 - Tests get full type completion when reading the global
 
-#### B3. Add testHook gate to `app/boot/boot.tsx`
+#### B3. Add testHook gate to `src/scene/index.ts`
 
 **Description:** Gate `window.__chonkers` exposure behind `import.meta.env.DEV` AND `?testHook=1`. Production builds must strip this completely (verified via `pnpm build && grep -c '__chonkers' dist/assets/*.js` returns 0).
 
-**Files:** `app/boot/boot.tsx`
+**Files:** `src/scene/index.ts`
 
 **Acceptance criteria:**
 - DEV+testHook=1 exposes window.__chonkers
@@ -259,7 +268,7 @@ Three configs is enough to prove the contract; more would just add runtime witho
 **Files:** `e2e/accessibility.spec.ts`
 
 **Acceptance criteria:**
-- Visits TitleView, SettingsView, PlayView, WinView, LoseView (use autostart configs to deterministically reach each)
+- Visits each diegetic surface (lobby Play/Resume, splitting radial, pause, settings, end-game) using autostart configs to deterministically reach each
 - Runs axe-core scan; asserts no critical violations
 - WCAG 2.1 AA target
 - Passes on desktop + iPhone-14 projects

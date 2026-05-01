@@ -43,19 +43,11 @@
 	},
 	"overrides": [
 		{
-			"includes": ["**/*.test.ts", "**/*.test.tsx", "**/*.browser.test.tsx"],
+			"includes": ["**/*.test.ts", "**/*.browser.test.ts"],
 			"linter": {
 				"rules": {
 					"style": { "noNonNullAssertion": "off" },
 					"suspicious": { "noNonNullAssertedOptionalChain": "off" }
-				}
-			}
-		},
-		{
-			"includes": ["app/css/style.css"],
-			"linter": {
-				"rules": {
-					"complexity": { "noImportantStyles": "off" }
 				}
 			}
 		}

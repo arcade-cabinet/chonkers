@@ -45,6 +45,19 @@ export const ALL_PROFILE_KEYS: ReadonlyArray<ProfileKey> = [
 /**
  * Feature weights — the ratios that define a disposition.
  * See docs/AI.md "Feature vector" for the meanings.
+ *
+ * Tuning rationale (2026-04-30 standoff fix):
+ *   - `total_pieces_advancement` weight credits BURIED pieces, so
+ *     building a 2-stack + advancing it has a higher score than
+ *     leaving two flat 1-stacks.
+ *   - `mobile_threat_count` heavily rewarded so the AI chonks own
+ *     1-stacks together to make 2-stacks (the only legal way to
+ *     chonk other 2-stacks).
+ *   - `even_trade_count` rewards the immediately-available 1-vs-1
+ *     trade — every such trade gives us a 2-stack on the opponent's
+ *     prior cell, which then threatens further chonks.
+ *   - `frontier_advance` makes salient lone advancers attractive,
+ *     forcing the opponent to defend rather than mirror.
  */
 export interface FeatureWeights {
 	readonly forward_progress: number;
@@ -57,45 +70,77 @@ export interface FeatureWeights {
 	readonly opponent_forward_progress: number;
 	readonly opponent_home_row_tops: number;
 	readonly opponent_tall_stacks_unblocked: number;
+	readonly total_pieces_advancement: number;
+	readonly mobile_threat_count: number;
+	readonly frontier_advance: number;
+	readonly even_trade_count: number;
+	readonly cluster_density: number;
+	readonly longest_wall: number;
+	readonly funnel_pressure: number;
 }
 
 const AGGRESSIVE_WEIGHTS: FeatureWeights = {
 	forward_progress: +3.0,
-	top_count: +2.0,
+	top_count: +1.0,
 	home_row_tops: +20.0,
-	chonk_opportunities: +1.5,
+	chonk_opportunities: +4.0,
 	tall_stack_count: +2.5,
 	blocker_count: +0.5,
 	chain_owed: -2.0,
 	opponent_forward_progress: -1.5,
 	opponent_home_row_tops: -25.0,
 	opponent_tall_stacks_unblocked: -1.0,
+	total_pieces_advancement: +1.0,
+	mobile_threat_count: +5.0,
+	frontier_advance: +3.0,
+	even_trade_count: +6.0,
+	// Aggressive: low cluster (spreads to find weak points), no wall
+	// preference, HIGH funnel pressure (encircle + push).
+	cluster_density: +0.3,
+	longest_wall: +0.0,
+	funnel_pressure: +4.0,
 };
 
 const BALANCED_WEIGHTS: FeatureWeights = {
 	forward_progress: +2.0,
-	top_count: +2.0,
+	top_count: +1.5,
 	home_row_tops: +20.0,
-	chonk_opportunities: +0.8,
+	chonk_opportunities: +2.5,
 	tall_stack_count: +1.5,
 	blocker_count: +1.5,
 	chain_owed: -2.0,
 	opponent_forward_progress: -2.0,
 	opponent_home_row_tops: -25.0,
 	opponent_tall_stacks_unblocked: -2.0,
+	total_pieces_advancement: +0.7,
+	mobile_threat_count: +3.5,
+	frontier_advance: +2.0,
+	even_trade_count: +3.5,
+	cluster_density: +1.0,
+	longest_wall: +0.5,
+	funnel_pressure: +2.0,
 };
 
 const DEFENSIVE_WEIGHTS: FeatureWeights = {
 	forward_progress: +1.5,
-	top_count: +2.5,
+	top_count: +2.0,
 	home_row_tops: +20.0,
-	chonk_opportunities: +0.3,
+	chonk_opportunities: +1.0,
 	tall_stack_count: +0.8,
 	blocker_count: +3.0,
 	chain_owed: -2.0,
 	opponent_forward_progress: -3.0,
 	opponent_home_row_tops: -25.0,
 	opponent_tall_stacks_unblocked: -3.5,
+	total_pieces_advancement: +0.5,
+	mobile_threat_count: +2.0,
+	frontier_advance: +1.0,
+	even_trade_count: +2.0,
+	// Defensive: HIGH cluster + wall (mutual support, hard to break),
+	// low funnel (doesn't initiate encirclement).
+	cluster_density: +2.5,
+	longest_wall: +1.5,
+	funnel_pressure: +0.5,
 };
 
 /**
@@ -111,6 +156,11 @@ export interface DifficultyKnobs {
 }
 
 const EASY_KNOBS: DifficultyKnobs = {
+	// depth=2 keeps inference fast (~80 ms typical at branching ~96).
+	// Higher depths are reserved for medium/hard. The eval features
+	// (mobile_threat_count, even_trade_count, frontier_advance,
+	// cluster_density) compensate for the shallow horizon by giving
+	// the search strong heuristic gradients toward chonking + funnels.
 	search_depth: 2,
 	prune_aggression: 0.4,
 	time_budget_ms: 200,

@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta
+			name="viewport"
+			content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no"
+		/>
+		<meta name="theme-color" content="#1a0f08" />
+		<meta name="apple-mobile-web-app-capable" content="yes" />
+		<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+		<title>Chonkers</title>
+		<style>
+			html,
+			body {
+				margin: 0;
+				padding: 0;
+				height: 100%;
+				background: #1a0f08;
+				color: #f5ebd8;
+				overflow: hidden;
+				touch-action: none;
+				overscroll-behavior: none;
+				font-family: "Lato", system-ui, sans-serif;
+			}
+			#scene-canvas {
+				display: block;
+				width: 100vw;
+				height: 100vh;
+			}
+			#overlay {
+				position: fixed;
+				inset: 0;
+				pointer-events: none;
+				z-index: 10;
+			}
+			#ui-root {
+				position: fixed;
+				inset: 0;
+				pointer-events: none;
+				z-index: 20;
+			}
+			#ui-root > * {
+				pointer-events: auto;
+			}
+		</style>
+	</head>
+	<body>
+		<canvas id="scene-canvas"></canvas>
+		<div id="overlay"></div>
+		<div id="ui-root"></div>
+		<script type="module" src="/src/scene/index.ts"></script>
+		<script type="module" src="/app/main.tsx"></script>
+	</body>
+</html>

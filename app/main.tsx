@@ -1,85 +1,63 @@
-import { Theme } from "@radix-ui/themes";
-import "@radix-ui/themes/styles.css";
-import { StrictMode, Suspense, useEffect, useState } from "react";
-import { createRoot } from "react-dom/client";
-import { radixTheme } from "@/design/theme";
-import { App } from "./App";
-import { type BootResult, boot, ErrorBoundary, SimProvider } from "./boot";
-import "./css/style.css";
-import "./css/fonts.css";
+/**
+ * Solid render root for the branded centered overlays.
+ *
+ * Mounts into <div id="ui-root"> sibling to the <canvas>. Subscribes
+ * to the scene's koota world via the bridge in `./stores/ui-store.ts`
+ * and renders one of the overlay components based on the current
+ * `Screen` trait. The 3D scene continues to own the canvas; this
+ * layer only owns the menu chrome + persistent in-game hamburger.
+ *
+ * No three / gsap imports here — those are forbidden in app/ by
+ * .claude/gates.json. The bridge is pure koota signals.
+ */
 
-function BootGate() {
-	const [result, setResult] = useState<BootResult | null>(null);
-	const [error, setError] = useState<Error | null>(null);
+import { Show } from "solid-js";
+import { render } from "solid-js/web";
+import { BezelHamburger } from "./overlays/BezelHamburger";
+import { BoardA11yGrid } from "./overlays/BoardA11yGrid";
+import { EndGame } from "./overlays/EndGame";
+import { Lobby } from "./overlays/Lobby";
+import { NewGameConfig } from "./overlays/NewGameConfig";
+import { Pause } from "./overlays/Pause";
+import { Settings } from "./overlays/Settings";
+import { uiState } from "./stores/ui-store";
 
-	useEffect(() => {
-		let cancelled = false;
-		let bootResult: BootResult | null = null;
-		boot()
-			.then((r) => {
-				bootResult = r;
-				if (cancelled) {
-					void r.dispose();
-					return;
-				}
-				setResult(r);
-			})
-			.catch((err: unknown) => {
-				if (cancelled) return;
-				setError(err instanceof Error ? err : new Error(String(err)));
-			});
-		return () => {
-			cancelled = true;
-			// Dispose on unmount so the Capacitor App lifecycle
-			// listener doesn't accumulate across HMR reloads in dev
-			// or component remounts in production. If boot hasn't
-			// resolved yet, the cancelled flag will trigger the
-			// dispose inside the .then handler.
-			if (bootResult) void bootResult.dispose();
-		};
-	}, []);
+import "./styles.css";
 
-	if (error) {
-		// Re-throw so the surrounding ErrorBoundary catches it.
-		throw error;
-	}
-	if (!result) {
-		return (
-			<div
-				role="status"
-				aria-live="polite"
-				style={{
-					display: "flex",
-					alignItems: "center",
-					justifyContent: "center",
-					height: "100vh",
-				}}
-			>
-				Loading…
-			</div>
-		);
-	}
-
+function App() {
 	return (
-		<SimProvider boot={result}>
-			<App />
-		</SimProvider>
+		<>
+			<Show when={uiState.screen() === "title"}>
+				<Lobby />
+			</Show>
+			<Show when={uiState.screen() === "play"}>
+				<BezelHamburger />
+			</Show>
+			<BoardA11yGrid />
+
+			<Show when={uiState.modal() === "new-game"}>
+				<NewGameConfig />
+			</Show>
+			<Show when={uiState.modal() === "settings"}>
+				<Settings />
+			</Show>
+			<Show when={uiState.modal() === "pause"}>
+				<Pause />
+			</Show>
+			<Show
+				when={
+					uiState.screen() === "win" ||
+					uiState.screen() === "lose" ||
+					uiState.screen() === "spectator-result"
+				}
+			>
+				<EndGame />
+			</Show>
+		</>
 	);
 }
 
-const container = document.getElementById("root");
-if (!container) {
-	throw new Error("#root element missing from index.html");
+const root = document.getElementById("ui-root");
+if (root) {
+	render(() => <App />, root);
 }
-
-createRoot(container).render(
-	<StrictMode>
-		<Theme {...radixTheme}>
-			<ErrorBoundary>
-				<Suspense fallback={null}>
-					<BootGate />
-				</Suspense>
-			</ErrorBoundary>
-		</Theme>
-	</StrictMode>,
-);

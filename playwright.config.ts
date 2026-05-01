@@ -1,30 +1,37 @@
 /**
  * Playwright config for the chonkers e2e suite.
  *
- * - **Smoke** (`pnpm test:e2e:ci`) — boots the dev server, asserts
- *   the title screen renders, starts an AI-vs-AI match, and
- *   confirms the game progresses. Runs in <30s on a single
- *   chromium project. PR-gating.
- * - **Governor** (`@governor` tag, nightly) — drives the AI through
- *   the UI and asserts state-machine fidelity. PRQ-5 follow-up
- *   work; the smoke test gates merges today, governor gates beta.
+ * Tier 1 — chromium desktop. The PR-gating tier; smoke runs here on
+ * every PR via `pnpm test:e2e:ci` (under 30s).
  *
- * Mobile + iPad projects land alongside the governor in the beta
- * cycle. Today: chromium desktop only.
+ * Tier 2 — mobile + iPad projects. The form factors the released app
+ * actually ships to (Capacitor wraps the same web bundle for Android
+ * + iOS). The smoke spec runs on every project; the governor + the
+ * future a11y spec run on chromium desktop only — the mobile/iPad
+ * projects exist to surface viewport / touch / DPR regressions in the
+ * boot path, not to re-run multi-minute AI-vs-AI matches three times.
  */
 
 import { defineConfig, devices } from "@playwright/test";
 
+const isCI = !!process.env.CI;
+
 export default defineConfig({
 	testDir: "./e2e",
-	timeout: 60_000,
-	expect: { timeout: 5_000 },
-	forbidOnly: !!process.env.CI,
-	retries: process.env.CI ? 2 : 0,
+	// Per-test timeout. CI runners are 6-10× slower than local (cold
+	// cache + headless chromium's software WebGL); a Continue Game
+	// flow that does cold-boot + match start + ply step + reload +
+	// cold-boot again can take 70-90s on CI. Local-CI=true runs in
+	// 1.8min for the whole suite, so the larger ceiling doesn't slow
+	// dev iteration.
+	timeout: isCI ? 180_000 : 60_000,
+	expect: { timeout: isCI ? 15_000 : 5_000 },
+	forbidOnly: isCI,
+	retries: isCI ? 2 : 0,
 	workers: 1,
-	reporter: process.env.CI ? "github" : "list",
+	reporter: isCI ? "github" : "list",
 	use: {
-		baseURL: "http://localhost:5173",
+		baseURL: "http://localhost:5273/chonkers/",
 		trace: "on-first-retry",
 		screenshot: "only-on-failure",
 	},
@@ -33,11 +40,32 @@ export default defineConfig({
 			name: "chromium",
 			use: { ...devices["Desktop Chrome"] },
 		},
+		{
+			// Pixel-class Android. Smoke only; governor would 3× the
+			// already-9min runtime to no signal — touch input is exercised
+			// by the smoke spec's testHook gestures.
+			name: "android-pixel",
+			use: { ...devices["Pixel 7"] },
+			grep: /smoke/,
+		},
+		{
+			// iPhone 14 — primary iOS target for v1.
+			name: "ios-iphone",
+			use: { ...devices["iPhone 14"] },
+			grep: /smoke/,
+		},
+		{
+			// iPad — landscape-only is the canonical orientation per
+			// DESIGN.md (the board is wider than tall).
+			name: "ipad-landscape",
+			use: { ...devices["iPad Pro 11 landscape"] },
+			grep: /smoke/,
+		},
 	],
 	webServer: {
 		command: "pnpm dev",
-		url: "http://localhost:5173",
-		reuseExistingServer: !process.env.CI,
+		url: "http://localhost:5273",
+		reuseExistingServer: !isCI,
 		timeout: 120_000,
 		stdout: "pipe",
 		stderr: "pipe",

@@ -57,7 +57,14 @@ export function evaluate(
 		f.chain_owed * w.chain_owed +
 		f.opponent_forward_progress * w.opponent_forward_progress +
 		f.opponent_home_row_tops * w.opponent_home_row_tops +
-		f.opponent_tall_stacks_unblocked * w.opponent_tall_stacks_unblocked
+		f.opponent_tall_stacks_unblocked * w.opponent_tall_stacks_unblocked +
+		f.total_pieces_advancement * w.total_pieces_advancement +
+		f.mobile_threat_count * w.mobile_threat_count +
+		f.frontier_advance * w.frontier_advance +
+		f.even_trade_count * w.even_trade_count +
+		f.cluster_density * w.cluster_density +
+		f.longest_wall * w.longest_wall +
+		f.funnel_pressure * w.funnel_pressure
 	);
 }
 

@@ -1,7 +1,7 @@
 <!-- profile: arcade-game + mobile-android + standard-repo v1 -->
 # chonkers
 
-Two-player abstract strategy game — checkers reimagined around stacking instead of capture. R3F + Radix + framer-motion + Capacitor on TypeScript 6.0+.
+Two-player abstract strategy game — checkers reimagined around stacking instead of capture. Vanilla three.js + gsap canvas universe (`src/scene/`) + Solid TSX branded overlays for menus (`app/`), wrapped by Capacitor for native, on TypeScript 6.0+. **No React, no R3F, no Radix, no framer-motion anywhere in the application. Solid is permitted ONLY inside `app/`.**
 
 ## Profiles loaded
 
@@ -21,20 +21,18 @@ The included profile content is plain Markdown documenting the same conventions 
 - **Tests (node tier):** `pnpm test:node`
 - **Tests (browser tier):** `pnpm test:browser`
 - **E2E smoke:** `pnpm test:e2e:ci`
-- **E2E governor:** planned in [`docs/plans/e2e-governor.prq.md`](./docs/plans/e2e-governor.prq.md) — script will be added in PRQ-6
+- **E2E governor:** see [`docs/plans/e2e-governor.prq.md`](./docs/plans/e2e-governor.prq.md)
 - **Production build:** `pnpm build`
 - **Capacitor sync:** `pnpm cap:sync`
-- **Android debug APK:** `pnpm native:android:debug` (works after PRQ-7 native-shell completes; uses existing `cap:sync`)
-- **iOS debug build:** `pnpm native:ios:build` (same — works post PRQ-7)
-
-Commands marked "planned" or "post-PRQ-N" are not yet runnable; the PRD that adds them is referenced. All commands without that note work today.
+- **Android debug APK:** `pnpm native:android:debug`
+- **iOS debug build:** `pnpm native:ios:build`
 
 ## Coordination
 
 This repo runs in **autonomous long-running execution mode**. The execution surface is:
 
 - **The queue:** [`.agent-state/directive.md`](./.agent-state/directive.md) — the live PRD pipeline, who's working on what right now, what's done, what's blocked. Read this first on every session start.
-- **The PRDs:** [`docs/plans/*.prq.md`](./docs/plans/) — one PRD per major slice, each with locked acceptance criteria + task list. The six PRDs in dependency order: persistence-and-db, logic-surfaces-and-broker, audio-and-design-tokens, visual-shell, e2e-governor, native-shell. (Schema was originally a separate PRD; it has been merged into persistence-and-db so the drizzle schema, build-time `public/game.db` pipeline, and runtime version-replay all land in one PR — see `docs/DB.md`.)
+- **The PRDs:** [`docs/plans/*.prq.md`](./docs/plans/) — one PRD per major slice, each with locked acceptance criteria + task list. Active PRDs in dependency order: logic-surfaces-and-broker (engine + AI + sim broker — shipped), audio-and-design-tokens (audio bus + tokens — shipped), e2e-governor, native-shell. The visual-shell PRD was retired and replaced by the threejs-shell rebuild (see `.agent-state/directive.md`). The persistence-and-db PRD was retired with the SQLite rip (PRQ-T-persist) — persistence is now KV-only and documented in `docs/PERSISTENCE.md`.
 - **The runbook:** [`docs/plans/EXECUTION.md`](./docs/plans/EXECUTION.md) — PR-per-PRD workflow, branch naming, commit cadence, reviewer dispatch, merge gate.
 - **The autonomy reference:** [`docs/plans/AUTONOMY.md`](./docs/plans/AUTONOMY.md) — `gh` + GraphQL recipes for thread resolution, change-request handling, self-approval, squash-merge, STOP_FAIL recovery.
 
@@ -43,56 +41,79 @@ This repo runs in **autonomous long-running execution mode**. The execution surf
 ## Architecture cheat-sheet
 
 ```text
-src/                               # PURE TYPESCRIPT — no JSX, no React, no DOM
-├── persistence/                   # Durable storage layer
-│   ├── preferences/               # typed JSON kv over @capacitor/preferences
-│   └── sqlite/                    # drizzle ORM + @capacitor-community/sqlite,
-│                                  # build-time game.db, runtime version-replay
+index.html                         # Two universes mounted side-by-side:
+                                   #   <canvas>            → src/scene/index.ts (three.js + gsap)
+                                   #   <div id="ui-root">  → app/main.tsx     (Solid TSX overlays)
+                                   #   <div id="overlay">  → src/scene/overlay (diegetic SVG)
+app/                               # SOLID UNIVERSE — branded centered overlays only.
+├── main.tsx                       # Solid render root. Subscribes to koota.
+├── overlays/                      # One file per overlay screen.
+│   ├── Lobby.tsx                  # Title: New Game / Continue Game / Settings.
+│   ├── NewGameConfig.tsx          # 4 cards: Easy / Medium / Hard / Pass-and-Play.
+│   ├── Settings.tsx               # Audio / haptics / reduced-motion / default difficulty.
+│   ├── Pause.tsx                  # Resume / Settings / Quit.
+│   └── EndGame.tsx                # Play Again / Quit.
+├── primitives/                    # Branded Modal, Button, Card primitives.
+├── stores/                        # Solid signals reflecting koota state.
+└── styles.css                     # Overlay-only CSS.
+src/                               # CANVAS UNIVERSE — three.js + gsap + game logic.
+├── scene/                         # three.js scene + gsap tweens + diegetic SVG overlay.
+│   ├── index.ts                   # Boot: mounts canvas, runs rAF loop, subscribes to koota.
+│   ├── board.ts                   # 9×11 wood surface — interior playfield (WoodFloor007 PBR) +
+│   │                              # home rows (WoodFloor008 PBR), engraved gridlines, bezel frame.
+│   ├── pieces.ts                  # Stack rendering: THREE.Group per cell, N puck meshes.
+│   ├── lighting.ts                # HDRI + key/fill/rim directional lights.
+│   ├── camera.ts                  # Tilted "sitting at the table" camera + axis tip per turn.
+│   ├── coinFlip.ts                # 3D coin spawn + gsap spin + landing assignment.
+│   ├── input.ts                   # Raycaster against board plane + pieces; pointer routing;
+│   │                              # pivot-drag turn-end gesture (180° rotation in PaP).
+│   ├── animations.ts              # gsap tween factories. Reduced-motion variants here.
+│   └── overlay/                   # Diegetic SVG overlays positioned per-frame via camera.project().
+│       └── splitRadial.ts         # The ONLY remaining diegetic overlay — anchored to a stack.
+├── persistence/                   # Typed JSON KV over @capacitor/preferences. NO SQLite.
 ├── engine/                        # Pure rules engine. 3D occupancy state. No PRNG.
-├── ai/                            # Yuka Graph + alpha-beta minimax. 9 disposition×difficulty
-│                                  # profiles. Deterministic. dumpAiState/loadAiState.
-├── store/                         # Typed CRUD repos over drizzle (matchesRepo, movesRepo,
-│                                  # aiStatesRepo, analyticsRepo).
-├── analytics/                     # Pre-baked aggregate refresh logic. Materialised rows.
-├── sim/                           # Koota state layer + actions broker. Routes save/resume.
-│                                  # Owns coin_flip_seed (only entropy in the system).
-├── audio/                         # Howler bus, seven committed clips, role-keyed.
-├── design/                        # Tokens + Radix theme + framer-motion variants.
+├── ai/                            # Yuka Graph + alpha-beta minimax. 9 profiles. Deterministic.
+├── sim/                           # Koota state layer + headless actions broker. Owns coinFlipSeed
+│                                  # (only entropy). Modes: vs-AI, Pass-and-Play (humanColor="both"),
+│                                  # AI-vs-AI sim (humanColor=null).
+├── audio/                         # Howler bus, role-keyed clips.
+├── design/                        # tokens.ts only — palette, typography, motion durations.
+│                                  # Consumed by both src/scene/ AND app/ (design-system shared).
 └── utils/                         # Coords, type guards, asset manifest.
 
-app/                               # ALL .tsx LIVES HERE — React, R3F, Radix, framer-motion
-├── main.tsx, App.tsx, index.html
-├── canvas/                        # R3F scene
-├── screens/                       # Radix full-screen views
-├── components/                    # Radix atoms incl. SplitRadial
-├── input/                         # Pointer/touch pipeline
-├── hooks/                         # usePrefs, useFrameloop, etc.
-├── boot/                          # Boot + ErrorBoundary
-└── css/
-
-scripts/                           # Build-time scripts incl. build-game-db.mjs
-drizzle/                           # drizzle-kit-generated migration SQL (committed to git)
-e2e/                               # Playwright specs incl. governor.spec.ts
-docs/                              # Canonical docs: RULES, DESIGN, LORE, ARCHITECTURE,
-│                                  # PERSISTENCE, DB, AI, TESTING, STATE.
-docs/plans/                        # PRDs + execution runbooks (this file's neighbors)
+scripts/                           # (currently empty)
+e2e/                               # Playwright specs incl. governor.spec.ts + accessibility.spec.ts
+docs/                              # Canonical docs: RULES, DESIGN, LORE, ARCHITECTURE, UI_FLOWS,
+│                                  # PERSISTENCE, AI, TESTING, STATE.
+docs/plans/                        # PRDs + execution runbooks
 .agent-state/                      # Live working memory (directive, digest, cursor)
 ```
 
 ## Strict architectural rules
 
-- **`src/*`** never imports from `app/*`. Provable by grep + lint.
-- **No React imports in `src/*`.** Lint-enforced.
-- **`src/engine/*`** never imports `src/ai/*`, `src/sim/*`, or `src/store/*`.
+- **`app/`** holds Solid TSX overlay components (lobby, new-game config, settings, pause, end-game). Imports `solid-js`, `koota`, `app/**`, and the broker `actions` namespace via the koota world. Never imports `three`, `gsap`, or any module under `src/scene/`. Per PRQ-C* (2026-04-30).
+- **`src/`** holds the canvas universe + game logic. Never imports `solid-js`. Never imports anything under `app/**`.
+- **No React anywhere in the project.** Biome rule + lint.
+- **No R3F / Radix / framer-motion imports anywhere.** Biome rule + lint.
+- **No SQLite, drizzle, or relational database.** Persistence is KV-only via `@capacitor/preferences`.
+- **`src/engine/*`** never imports `src/ai/*`, `src/sim/*`, or `src/scene/*`.
 - **`src/ai/*`** imports only from `src/engine/*` (one-way).
-- **`src/persistence/preferences/*`** is a leaf — imports nothing from other `src/` packages.
-- **`src/persistence/sqlite/*`** imports only the drizzle / capacitor / better-sqlite3 deps it needs; nothing from `src/{engine,ai,sim,store}/`.
-- **`src/store/*`** imports from `src/persistence/sqlite/*` for drizzle handles; type-only from `src/{engine,ai}/*`.
-- **`src/sim/*`** is the broker — imports from `src/{engine,ai,store,persistence,audio}/*`. Only place that calls `crypto.getRandomValues()` (for the per-match `coin_flip_seed`).
-- **No `Math.random()`** in `src/{engine,ai,sim,store}/`. Banned by `.claude/gates.json`. The sim broker's coin-flip is the only entropy source.
-- **No mocks** in tests (per `docs/TESTING.md`). Each layer's tests use the real layer below it. Tier 1 uses `makeTestDb()` (real `better-sqlite3`); Tier 2 uses real capacitor-sqlite; Tier 3 runs the full stack. The 100-run broker test is the alpha-stage integration assertion.
+- **`src/persistence/preferences/*`** is the KV layer — imports `@capacitor/preferences` for storage; type-only from `src/{engine,sim}/*`. Runtime imports from `src/ai/*` are confined to `dumpAiState` / `loadAiState` for AI-brain (de)serialization (a typed-only contract is impossible because the AI brain must round-trip through base64). `snapshotFromHandle` builds the persistable shape; `restoreAiPair` rebuilds the runtime brain pair.
+- **`src/sim/*`** is the broker — imports from `src/{engine,ai}/*`. Only place that calls `crypto.getRandomValues()` (for the per-match `coinFlipSeed`).
+- **`src/scene/*`** is the render layer — imports from `src/{sim,audio,design,persistence,utils}/*` only; type-only from `src/{engine,ai}/*`. Uses `three` + `gsap` + DOM SVG APIs. Wires `onPlyCommit` / `onMatchEnd` to `saveActiveMatch` / `clearActiveMatch`.
+- **No `Math.random()`** in `src/{engine,ai,sim}/`. Banned by `.claude/gates.json`. The sim broker's coin-flip is the only entropy source.
+- **No mocks** in tests (per `docs/TESTING.md`). Each layer's tests use the real layer below it. The 100-run broker test is the alpha-stage integration assertion (pure in-memory, no persistence side effect).
 
 Per-repo specifics that override profile defaults: see profile files for the standard rules; this CLAUDE.md only adds chonkers-unique items.
+
+## UI surface rule (revised PRQ-C*, 2026-04-30)
+
+Two universes:
+
+- **Diegetic SVG overlays** (`src/scene/overlay/`) own per-stack interaction during play. Today: the splitting radial. There are no diegetic menus, no in-game floating buttons during a turn — the only persistent in-game chrome is the bezel hamburger (a single DOM button overlaid on the canvas, opening the Pause overlay).
+- **Branded centered overlays** (`app/`, Solid TSX) own the lobby title, new-game configuration (difficulty + Pass-and-Play), settings, pause, end-game. Real `<dialog>` elements with focus traps + ESC handling. Axe-passable, Playwright-clickable without testHook shortcuts.
+
+The board IS the playfield. The overlays ARE the menus. See `docs/UI_FLOWS.md` for the full state diagrams and `docs/DESIGN.md` §"UI surfaces" for the surface map.
 
 ## Notes
 

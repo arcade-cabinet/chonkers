@@ -7,36 +7,32 @@ domain: design
 
 # src/design
 
-Design tokens + Radix Themes config + framer-motion variant library. Pure constants and types — no runtime IO, no React, no DOM.
+Design tokens. Pure constants and types — no runtime IO, no DOM, no React.
 
 ## Layout
 
 ```text
 src/design/
-├── index.ts        # barrel: tokens, radixTheme, all motion variants
-├── tokens.ts       # one `tokens as const` export — wood, ink, accent,
-│                   # surface, font, motion, board, splitRadial, turnBadge
-├── theme.ts        # `radixTheme: ThemeProps` — Radix Themes config
-└── motion.ts       # framer-motion Variants — radialOpen, radialClose,
-                    # sliceSelect, holdFlash, modalIn, modalOut,
-                    # screenFade, reducedMotionFallback
+├── index.ts   # barrel: re-exports `tokens` and `Tokens`
+└── tokens.ts  # one `tokens as const` export — wood, ink, accent,
+               # surface, font, motion, board, scene, bezel,
+               # splitRadial, turnBadge
 ```
 
 ## Quick start
 
-```tsx
-import { tokens, radixTheme, modalIn } from "@/design";
-import { Theme } from "@radix-ui/themes";
-import { motion } from "framer-motion";
+```ts
+import { tokens } from "@/design";
+import * as THREE from "three";
 
-// Wrap the app in the Radix theme:
-<Theme {...radixTheme}>{children}</Theme>
+// Reference token values when constructing materials:
+const boardMat = new THREE.MeshStandardMaterial({
+	color: tokens.wood.boardMain,
+});
 
-// Reference token values directly:
-<div style={{ background: tokens.wood.boardMain }} />
-
-// Use a motion variant:
-<motion.div variants={modalIn} initial="hidden" animate="visible" />
+// Read motion durations into gsap factories:
+import gsap from "gsap";
+gsap.to(svgEl, { opacity: 1, duration: tokens.motion.uiOpenMs / 1000 });
 ```
 
 ## Tokens overview
@@ -52,13 +48,15 @@ See `docs/DESIGN.md` "Palette" + "Motion" for the full table. Sub-trees:
 | `tokens.font.*` | Display + body font stacks |
 | `tokens.motion.*` | UI + 3D-piece motion duration budgets (in ms) |
 | `tokens.board.*` | Board dimensions (cols, rows, cellSize, puck dims) |
-| `tokens.splitRadial.*` | Slice-state colours for `app/components/SplitRadial.tsx` |
-| `tokens.turnBadge.*` | Red/white colour banding for `app/components/TurnBadge.tsx` |
+| `tokens.scene.*` | Camera position, fov, tilt magnitudes |
+| `tokens.bezel.*` | Cabinet frame thickness, depth, lift |
+| `tokens.splitRadial.*` | Slice-state colours for the splitting radial |
+| `tokens.turnBadge.*` | Red/white colour banding for the diegetic turn indicator |
 
-## Motion variants
+## Motion
 
-See `docs/DESIGN.md` "Motion" for the consumer table. All variants source their durations from `tokens.motion.*`. `reducedMotionFallback` is a near-instant drop-in for any variant when `usePrefersReducedMotion` (PRQ-4) returns true.
+`src/design` owns motion DURATIONS only. Animation lives in `src/scene/animations.ts` as `gsap` tween factories that read durations from `tokens.motion.*`. There is no Radix theme bridge and no framer-motion variant library — both have been removed.
 
 ## Import boundary
 
-Per `CLAUDE.md`, this package imports only `framer-motion` and `@radix-ui/themes` types. It does NOT import from `@/engine`, `@/ai`, `@/sim`, `@/store`, `@/persistence`, `@/audio`, or anywhere in `app/`. It is a leaf package — every consumer is downstream.
+Per `CLAUDE.md`, this package has no external dependencies. It is a leaf — every consumer is downstream. `src/scene/` is the primary consumer.

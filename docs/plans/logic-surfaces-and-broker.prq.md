@@ -1,14 +1,12 @@
 # PRD: Chonkers Logic Surfaces + Broker Demonstration
 
 **Created:** 2026-04-29
-**Status:** ACTIVE
+**Updated:** 2026-04-30 — persistence-and-db prerequisite retired (PRQ-T-persist); the broker is now headless (no `db` arg) and persistence is wired via `onPlyCommit` / `onMatchEnd` hooks against the active-match KV slot. References to `src/store/`, `src/persistence/sqlite/`, and `src/analytics/` in the lower sections of this document are obsolete; see `docs/ARCHITECTURE.md` and `docs/PERSISTENCE.md` for the current shape.
+**Status:** SHIPPED (engine + AI + sim broker landed and tested; the persistence-prerequisite half is moot)
 **Owner:** jbogaty
-**Acceptance:** ≥100 full chonkers matches driven through `src/sim/actions.ts` (the broker), each completing legally end-to-end with real engine, real AI, and real persistence — no mocks anywhere in the call graph.
+**Acceptance:** ≥100 full chonkers matches driven through the broker, each completing legally end-to-end with real engine and real AI — no mocks anywhere in the call graph. (Persistence is now optional via hooks; the 100-run gate runs without any persistence side effect, exercising the pure in-memory state machine.)
 
-**Prerequisite (must be complete and merged before this PRD begins):**
-- [persistence-and-db.prq.md](./persistence-and-db.prq.md) — `src/persistence/preferences/` (kv) + `src/persistence/sqlite/` (drizzle ORM + capacitor-sqlite, build-time `public/game.db`, runtime version-replay) + `src/store/` (typed CRUD repos). This PRD consumes those as installed dependencies. The earlier separate "schema" PRD has been merged into this prerequisite.
-
-This PRD does not build the persistence + db + store layer; it only consumes it.
+**Prerequisite (no longer applicable):** `persistence-and-db.prq.md` was retired on 2026-04-30 alongside the SQLite rip. Persistence collapsed to KV-only and the design fits in `docs/PERSISTENCE.md`.
 
 ---
 
@@ -188,23 +186,24 @@ Each layer's tests must pass before the next layer begins. The no-mocks discipli
 
 ### Group B — Repo layout migration
 
-#### B1. Apply `src/` vs `app/` split
+#### B1. Apply `src/`-only repo layout
 
-**Description:** Move existing files into the new layout. `src/` holds only pure TypeScript (no JSX/TSX). `app/` holds all React. `src/render/` → `app/canvas/`; `src/ui/` → `app/screens/`; `src/main.tsx` → `app/main.tsx`; `src/App.tsx` → `app/App.tsx`; `src/index.html` → `app/index.html`; `src/css/` → `app/css/`; `src/manifest.json` → `public/manifest.webmanifest`; `src/sim/` (legacy types/coords/initialState) → `src/engine/` with `coords.ts` renamed `positions.ts` for 3D semantics. Drop `tests/` directory entirely.
+**Description (updated 2026-04-30):** This PRD originally moved files into a `src/` (pure TS) vs `app/` (React/JSX) split. The `app/` half has been retired — there is no React, no JSX, no R3F, no Radix in the project. All code now lives under `src/`. Moves: `src/render/` and `src/ui/` are absorbed into `src/scene/`; `src/main.tsx` / `src/App.tsx` are replaced by `src/scene/index.ts`; `src/index.html` moves to repo root as `index.html`; `src/css/` is absorbed into `src/scene/styles.ts` (small CSS-as-string injected at boot for the overlay container + `@font-face` rules); `src/manifest.json` → `public/manifest.webmanifest`; `src/sim/` (legacy types/coords/initialState) → `src/engine/` with `coords.ts` renamed `positions.ts` for 3D semantics. Drop `tests/` directory entirely.
 
 **Files:** filesystem moves; `tsconfig.json`; `vite.config.ts`; `vitest.config.ts`; `biome.json`; `.gitignore`; `package.json` scripts
 
 **Acceptance criteria:**
-- `find src -name '*.tsx' -o -name '*.jsx'` returns zero results
-- `find app -type f \( -name '*.tsx' -o -name '*.ts' \)` finds all React entry points
-- `tsconfig.json` paths: `@/*` → `src/*`, `~/*` → `app/*`; both `src` and `app` in `include`
-- `vite.config.ts` `root: 'app'`; aliases for `@` and `~`
-- `vitest.config.ts` two projects: `node` (`src/**/__tests__/*.test.ts`) and `browser` (`app/**/__tests__/*.browser.test.tsx`)
-- `biome.json` includes both `src/**` and `app/**`; React/JSX rules scoped to `app/**` override
+- `find . -name '*.tsx' -o -name '*.jsx'` returns zero results outside `node_modules`
+- `find src -type f -name '*.ts'` finds the entire application source
+- `tsconfig.json` paths: `@/*` → `src/*`; `src` in `include`
+- `vite.config.ts` `root: '.'`; alias for `@`
+- `vitest.config.ts` two projects: `node` (`src/**/__tests__/*.test.ts`) and `browser` (`src/**/__tests__/*.browser.test.ts`)
+- `biome.json` includes `src/**`; React/JSX rules removed
 - `pnpm typecheck` clean
 - `pnpm lint` clean
-- `pnpm build` produces `dist/` from `app/index.html` entry
+- `pnpm build` produces `dist/` from `index.html` entry
 - `tests/` directory does not exist
+- No `app/` directory exists
 
 ---
 

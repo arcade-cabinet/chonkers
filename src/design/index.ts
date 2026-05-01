@@ -1,26 +1,12 @@
 /**
- * src/design — design tokens + theme + motion variants.
+ * src/design — design tokens.
  *
- * Pure constants and types. No runtime IO, no React, no DOM.
- * Consumed by the visual shell (`app/`) for component theming
- * and by `src/audio/` for nothing — audio + design are sibling
- * leaf packages.
- *
- * Per CLAUDE.md import boundary: this package imports only
- * `framer-motion` and `@radix-ui/themes` types. It does NOT
- * import from `@/engine`, `@/ai`, `@/sim`, `@/store`, or
- * anywhere in `app/`.
+ * Pure constants and types. No runtime IO, no DOM, no React.
+ * Consumed directly by `src/scene/` (materials, SVG markup,
+ * tween durations). There is no Radix theme bridge and no
+ * framer-motion variant library — animation lives in
+ * `src/scene/animations.ts` as gsap factories that read motion
+ * durations from `tokens.motion.*`.
  */
 
-export {
-	holdFlash,
-	modalIn,
-	modalOut,
-	radialClose,
-	radialOpen,
-	reducedMotionFallback,
-	screenFade,
-	sliceSelect,
-} from "./motion";
-export { radixTheme } from "./theme";
 export { type Tokens, tokens } from "./tokens";

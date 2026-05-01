@@ -8,7 +8,7 @@
 
 1. [P1] **Update docs/DESIGN.md** — Reconcile tokens table, motion variant references, audio role table.
 2. [P1] **Author src/audio/README.md** — Quick-start + role table.
-3. [P1] **Author src/design/README.md** — Tokens / theme / motion at a glance.
+3. [P1] **Author src/design/README.md** — Tokens-only barrel — palette, typography, motion durations. (theme + motion modules were retired 2026-04-30; see tasks 13-14.)
 4. [P2] **Install Howler** — `pnpm add howler @types/howler`.
 5. [P3] **Author src/audio/__tests__/_setup.ts** — Browser-tier setup, bus singleton reset, kv settings clear.
 6. [P3] **Write src/audio/__tests__/audioBus.test.ts** — Init preloads, play triggers, setVolume clamps + persists, setMuted stops + persists, idempotent.
@@ -18,11 +18,11 @@
 10. [P4] **Implement src/audio/ducking.ts** — duckAmbient + restoreAmbient with fade.
 11. [P4] **Author src/audio/index.ts barrel** — getAudioBus, createAudioBus, types.
 12. [P4] **Update src/design/tokens.ts** — Add splitRadial + turnBadge sub-trees.
-13. [P4] **Author src/design/theme.ts** — Radix theme config.
-14. [P4] **Author src/design/motion.ts** — Variant library + reducedMotionFallback.
-15. [P4] **Update src/design/index.ts barrel** — Re-exports.
+13. ~~[P4] Author src/design/theme.ts — Radix theme config.~~ **REMOVED 2026-04-30**: no Radix in the project.
+14. ~~[P4] Author src/design/motion.ts — Variant library + reducedMotionFallback.~~ **REMOVED 2026-04-30**: motion lives in `src/scene/animations.ts` as gsap factories.
+15. [P4] **Update src/design/index.ts barrel** — Re-exports `tokens` only.
 16. [P5] **Run test suite** — `pnpm test:browser src/audio` green, typecheck clean, ≤20s.
-17. [P5] **Cross-package check** — Audio imports only @/persistence + howler; design imports only framer-motion + @radix-ui/themes types.
+17. [P5] **Cross-package check** — Audio imports only @/persistence + howler; design imports nothing external.
 
 ## Configuration
 

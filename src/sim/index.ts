@@ -1,20 +1,22 @@
 /**
  * src/sim — actions broker for chonkers.
  *
- * The broker routes between engine + ai + store + persistence/sqlite +
- * analytics. It owns the per-match `coin_flip_seed` (the only entropy
- * source in the entire game) and the save/resume routing for AI
- * dump_blobs.
+ * The broker routes between engine + ai. It owns the per-match
+ * `coin_flip_seed` (the only entropy source in the entire game).
  *
- * The visual shell (PRQ-4) wraps this with koota traits for live
- * UI subscription. The broker itself is headless and node-runnable
- * so the alpha-stage 100-run gate (Tier 1, no UI) can drive it
- * directly.
+ * Persistence is the caller's concern: pass `onPlyCommit` /
+ * `onMatchEnd` hooks to `createSimWorld` to wire the active-match
+ * KV slot (see @/persistence/preferences/match).
+ *
+ * The scene layer (src/scene/) wraps this with koota traits for
+ * live UI subscription. The broker itself is headless and node-
+ * runnable so the alpha-stage 100-run gate (Tier 1, no UI) can drive
+ * it directly.
  */
 
-// Re-export pure render helpers + types from @/engine so app/* never
-// has to reach into engine directly. These are stateless math
-// functions / types — no broker bypass risk.
+// Re-export pure render helpers + types from @/engine so the scene
+// layer never has to reach into engine directly. These are stateless
+// math functions / types — no broker bypass risk.
 export {
 	type Action,
 	adjacentCells,
@@ -23,6 +25,8 @@ export {
 	type Cell,
 	type Color,
 	cellsEqual,
+	enumerateLegalActions,
+	type GameState,
 	posToVector3,
 	type Run,
 	vector3ToPos,
@@ -36,13 +40,19 @@ export {
 	type PlayTurnResult,
 	playToCompletion,
 	playTurn,
-	saveMatchProgress,
 } from "./broker";
 export { decideFirstPlayer, freshCoinFlipSeed } from "./coinFlip";
+export {
+	getSimSingleton,
+	resetSimSingleton,
+	type SceneCellTap,
+	setSceneTapCell,
+} from "./singleton";
 export {
 	AiThinking,
 	FALLBACK_PIECES,
 	HoldProgress,
+	type HumanColor,
 	Match,
 	type MatchSnapshot,
 	type PiecePlacement,
@@ -59,6 +69,7 @@ export {
 	type CreateSimWorldOptions,
 	createSimWorld,
 	type NewMatchInput,
+	type ResumeMatchInput,
 	type SimActions,
 	type SimActionsBuilder,
 	type SimWorld,

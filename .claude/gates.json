@@ -1,5 +1,5 @@
 {
-	"$comment": "Per-repo commit-gate rules for chonkers. Aligned with the PRD architecture: src/{persistence,schema,engine,ai,store,analytics,sim,audio,design} as pure-TS packages; app/{canvas,screens,components,input,hooks,boot,css} as the React layer. Tests co-located in __tests__/ within each package. See docs/ARCHITECTURE.md and docs/plans/*.prq.md for the full picture. Many rules below are PREVENTIVE — they fire only when a future commit introduces a violation. The fact that no current src/ files import 'react' or call Math.random() doesn't mean the rules are unused; it means the rules have been protecting the boundary from being crossed since they were authored.",
+	"$comment": "Per-repo commit-gate rules for chonkers. Aligned with the current architecture: src/{persistence,engine,ai,sim,audio,design,scene,utils} as pure-TS packages plus app/ for the Solid menu-overlay layer. No React, no R3F, no Radix, no framer-motion. No SQLite, no drizzle. Tests are co-located in __tests__/ within each package, plus e2e/ for browser specs. See docs/ARCHITECTURE.md for the full picture. Many rules below are PREVENTIVE — they fire only when a future commit introduces a violation.",
 	"coverage_rules": [
 		{
 			"when_changed": ["src/engine/**"],
@@ -20,35 +20,17 @@
 			"block_message": "src/persistence/ change without a co-located __tests__ update."
 		},
 		{
-			"when_changed": ["src/schema/**"],
-			"require_changed": ["src/schema/**/__tests__/**"],
-			"or_explicit_skip": "// no-schema-test-impact: <≥10 word reason>",
-			"block_message": "src/schema/ change without a co-located __tests__ update. Migration changes must land with tests proving they apply correctly."
-		},
-		{
-			"when_changed": ["src/store/**"],
-			"require_changed": ["src/store/**/__tests__/**"],
-			"or_explicit_skip": "// no-store-test-impact: <≥10 word reason>",
-			"block_message": "src/store/ change without a co-located __tests__ update."
-		},
-		{
-			"when_changed": ["src/analytics/**"],
-			"require_changed": ["src/analytics/**/__tests__/**"],
-			"or_explicit_skip": "// no-analytics-test-impact: <≥10 word reason>",
-			"block_message": "src/analytics/ change without a co-located __tests__ update."
-		},
-		{
 			"when_changed": ["src/sim/**"],
 			"require_changed": ["src/sim/**/__tests__/**"],
 			"or_explicit_skip": "// no-sim-test-impact: <≥10 word reason>",
 			"block_message": "src/sim/ change without a co-located __tests__ update. The sim broker is the integration point — changes must land with the matching test."
 		},
 		{
-			"when_changed": ["app/canvas/**", "app/screens/**", "app/components/**"],
+			"when_changed": ["src/scene/**"],
 			"require_run": "pnpm test:browser",
 			"evidence_pattern": "Tests\\s+\\d+\\s+passed",
 			"or_explicit_skip": "// no-browser-test-impact: <≥10 word reason>",
-			"block_message": "app/ render/screen/component change requires browser-tier test pass evidence."
+			"block_message": "src/scene/ change requires browser-tier test pass evidence."
 		},
 		{
 			"when_changed": ["docs/RULES.md"],
@@ -63,15 +45,22 @@
 			"block_message": "AI.md is authoritative. A contract change must land with the test that proves it."
 		},
 		{
+			"when_changed": ["app/**"],
+			"require_changed": ["app/**/__tests__/**", "e2e/**"],
+			"or_explicit_skip": "// no-overlay-test-impact: <≥10 word reason>",
+			"block_message": "app/ change without a co-located __tests__ or an e2e spec update. Solid overlays must land with the click-the-button-fires-the-action test."
+		},
+		{
+			"when_changed": ["docs/UI_FLOWS.md"],
+			"require_changed": ["e2e/**", "app/**"],
+			"or_explicit_skip": "// ui-doc-only: <≥10 word reason>",
+			"block_message": "UI_FLOWS.md is authoritative. A flow change must land with either the e2e spec or the Solid component that implements it."
+		},
+		{
 			"when_changed": ["capacitor.config.json", "android/**", "ios/**"],
 			"require_run": "pnpm cap:sync",
 			"evidence_pattern": "(✔ Sync finished|Sync finished in)",
 			"block_message": "Capacitor / Android / iOS change requires `pnpm cap:sync` evidence."
-		},
-		{
-			"when_changed": ["src/schema/chonkers/**.sql"],
-			"or_explicit_skip": "// new-migration: <≥10 word reason — only allowed for files matching ^[0-9]{3}-.*\\.sql$ that did not previously exist>",
-			"block_message": "Schema migrations are forward-only. Existing .sql files MUST NOT be modified. Add a new NNN-name.sql file instead."
 		}
 	],
 	"ban_patterns": [
@@ -83,32 +72,47 @@
 		{
 			"pattern": "performance\\.now\\(\\)",
 			"globs": ["src/engine/**", "src/ai/**"],
-			"message": "Engine + AI must be wall-clock independent. Animation timing belongs in app/ via R3F's useFrame."
+			"message": "Engine + AI must be wall-clock independent. Animation timing belongs in src/scene/ via gsap."
 		},
 		{
 			"pattern": "from ['\"]react['\"]",
-			"globs": ["src/**"],
-			"message": "src/ is pure TypeScript. React lives in app/."
+			"globs": ["src/**", "app/**"],
+			"message": "There is no React in the project. The render layer is vanilla three.js + gsap + DOM SVG; the overlay layer is Solid."
 		},
 		{
 			"pattern": "from ['\"]react-dom['\"]",
-			"globs": ["src/**"],
-			"message": "src/ is pure TypeScript. ReactDOM lives in app/."
+			"globs": ["src/**", "app/**"],
+			"message": "There is no ReactDOM in the project."
 		},
 		{
-			"pattern": "from ['\"]@/ai['\"]|from ['\"]@/sim['\"]|from ['\"]@/store['\"]|from ['\"]@/audio['\"]",
+			"pattern": "from ['\"]@react-three/(fiber|drei)['\"]",
+			"globs": ["src/**", "app/**"],
+			"message": "R3F was retired in PRQ-T0. Use vanilla three.js."
+		},
+		{
+			"pattern": "from ['\"]@radix-ui/",
+			"globs": ["src/**", "app/**"],
+			"message": "Radix was retired in PRQ-T0. Diegetic SVG overlays only — see docs/DESIGN.md."
+		},
+		{
+			"pattern": "from ['\"]framer-motion['\"]",
+			"globs": ["src/**", "app/**"],
+			"message": "framer-motion was retired in PRQ-T0. Use gsap factories in src/scene/animations.ts."
+		},
+		{
+			"pattern": "from ['\"]drizzle-orm['\"]|from ['\"]@capacitor-community/sqlite['\"]",
+			"globs": ["src/**", "app/**"],
+			"message": "SQLite + drizzle were retired in PRQ-T-persist. Persistence is KV-only via @capacitor/preferences — see docs/PERSISTENCE.md."
+		},
+		{
+			"pattern": "from ['\"]@/ai['\"]|from ['\"]@/sim['\"]|from ['\"]@/audio['\"]|from ['\"]@/scene['\"]",
 			"globs": ["src/engine/**"],
 			"message": "src/engine/ is a leaf package. It must not import from any other src/ package. See docs/ARCHITECTURE.md module-boundary rules."
 		},
 		{
-			"pattern": "from ['\"]@/sim['\"]|from ['\"]@/store['\"]|from ['\"]@/audio['\"]",
+			"pattern": "from ['\"]@/sim['\"]|from ['\"]@/audio['\"]|from ['\"]@/scene['\"]",
 			"globs": ["src/ai/**"],
 			"message": "src/ai/ may only import from src/engine/ (one-way). See docs/ARCHITECTURE.md module-boundary rules."
-		},
-		{
-			"pattern": "from ['\"]@/engine['\"]|from ['\"]@/ai['\"]|from ['\"]@/sim['\"]|from ['\"]@/store['\"]|from ['\"]@/schema['\"]",
-			"globs": ["src/persistence/**"],
-			"message": "src/persistence/ is generic transport. It must not import from any chonkers-specific package. Portability is the whole point."
 		},
 		{
 			"pattern": "from ['\"]yuka/.*MathUtils|from ['\"]yuka/.*NavMesh|from ['\"]yuka/.*Wander|from ['\"]yuka/.*steering",
@@ -116,9 +120,19 @@
 			"message": "Yuka's MathUtils / NavMesh / WanderBehavior / steering call Math.random(). Use only Yuka's deterministic primitives (Graph, Node, Edge, Vector3, BoundingSphere, BVH, Dijkstra, AStar)."
 		},
 		{
-			"pattern": "from ['\"]~/",
+			"pattern": "from ['\"]solid-js['\"]|from ['\"]solid-js/",
 			"globs": ["src/**"],
-			"message": "src/ never imports from app/. The dependency arrow is one-way: app/ → src/."
+			"message": "Solid is the menu-overlay universe — its imports are confined to app/. The src/ tree is the canvas universe (three.js + gsap). See CLAUDE.md 'Strict architectural rules'."
+		},
+		{
+			"pattern": "from ['\"]three['\"]|from ['\"]three/|from ['\"]gsap['\"]|from ['\"]gsap/",
+			"globs": ["app/**"],
+			"message": "three.js + gsap are the canvas universe — their imports are confined to src/scene/. The app/ tree is the Solid menu-overlay universe. See CLAUDE.md 'Strict architectural rules'."
+		},
+		{
+			"pattern": "from ['\"]@/scene['\"]|from ['\"]@/scene/",
+			"globs": ["app/**"],
+			"message": "app/ must not import scene internals. The bridge is the koota world + the broker actions namespace."
 		}
 	],
 	"forbidden_bash": [

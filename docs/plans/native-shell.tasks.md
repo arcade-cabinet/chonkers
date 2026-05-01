@@ -14,9 +14,9 @@
 6. [P3] **Author assets/icon-source.svg** — 1024x1024 brand-palette mark, legible at 48px.
 7. [P3] **Author scripts/generate-icons.ts + pnpm icons script** — Sharp-based regen for all sizes.
 8. [P3] **Author assets/splash-source.svg + splash assets** — Wood-board subdued visual.
-9. [P4] **Add app-state hooks to app/boot/boot.tsx** — Capacitor App + Page Visibility fallback wired to sim pause/resume.
-10. [P4] **Add haptics to app/input/useHoldTimer.ts** — Medium impact at 3s arm.
-11. [P4] **Add haptics to app/canvas/Piece.tsx + Stack.tsx** — Selection start; chonk impact heavy.
+9. [P4] **Add app-state hooks to src/scene/index.ts** — Capacitor App + Page Visibility fallback wired to sim pause/resume.
+10. [P4] **Add haptics to src/scene/overlay/splitRadial.ts** — Medium impact at 3s arm.
+11. [P4] **Add haptics to src/scene/pieces.ts + animations.ts (chonk onComplete)** — Selection start; chonk impact heavy.
 12. [P4] **Add pause/resume actions to src/sim/actions.ts** — Halt/resume frame loop + tweens; engine state unaffected.
 13. [P5] **Author maestro/smoke.yml** — Full smoke flow per architecture.
 14. [P5] **Add pnpm maestro:smoke script** — Local maestro runner.

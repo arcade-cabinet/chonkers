@@ -1,33 +1,37 @@
 ---
 title: Persistence
-updated: 2026-04-29
+updated: 2026-04-30
 status: current
 domain: technical
 ---
 
 # Persistence
 
-`src/persistence/` is the **typed JSON key-value store** over `@capacitor/preferences`. It carries small, frequently-read settings — volume, mute, reduced-motion override, last camera angle, last-used AI profile pair, tutorial-seen flag, etc. — that don't belong in the relational database.
+`src/persistence/` is the **typed JSON key-value store** over `@capacitor/preferences`. Capacitor handles platform routing: `localStorage` on web, `UserDefaults` on iOS, `SharedPreferences` on Android.
 
-Match history, AI dumps, move logs, and analytics aggregates all live in `src/persistence/sqlite/` (drizzle ORM + `@capacitor-community/sqlite`). See `docs/DB.md`.
+There is **no SQLite** and no relational database. Match history has no in-app value (no replay UI, no achievements, no progression in the game), so it doesn't need persistent runtime storage. Balance testing in governor specs writes per-match artifacts to `artifacts/governor-runs/<run-id>/<match-id>.json` on the local filesystem, not Preferences.
 
-## Scope boundary
+## Two slot kinds
 
-| Belongs in `kv` | Belongs in `db` |
-|---|---|
-| audio volume, mute flag | match metadata, results |
-| last selected camera angle | move history per match |
-| AI profile pair last used | AI dump_blob snapshots |
-| `prefers-reduced-motion` user override | analytics aggregates |
-| `tutorial_seen` flag | opening positions, position hashes |
-| current language (when localised) | per-match-singleton state (chain, in-progress flag) |
+| Slot | Key | Purpose |
+|---|---|---|
+| **Settings** | `kv['settings'][<key>]` | Small, frequently-read user preferences. |
+| **Active match** | `kv['match']['active']` | At most ONE in-progress match snapshot. Carries everything needed to resume mid-turn including the AI's `dumpAiState` blob (base64-encoded). Cleared on match-end. |
 
-If the data shape is **a small JSON value addressed by a known key**, it goes in `kv`. If the data shape is **rows queryable by relational predicate (WHERE / JOIN / GROUP BY)**, it goes in `db`.
+The active-match snapshot shape is `ActiveMatchSnapshot` in `src/persistence/preferences/match.ts`.
+
+## No migrations
+
+Yuka and the engine state shape are both frozen ropes. The AI's dump format is versioned (currently v1, has not changed since the AI shipped). If the format ever changes, `loadAiState` throws on resume, the active-match slot is treated as corrupt, and the player starts a fresh match. Backwards compatibility is "newer reads of older shapes might fail," which is acceptable for a casual game.
+
+This is a deliberate simplification: no `drizzle-kit` migrations, no schema versioning, no `replay-forward` flow, no `bootstrap` import-from-asset path. The store is "JSON in, JSON out."
 
 ## API
 
+### Settings
+
 ```ts
-import { kv } from '@/persistence';
+import { kv } from "@/persistence";
 
 // Get a JSON-serializable value by namespace + key.
 // Returns null if the key is missing or the stored value is corrupted JSON.
@@ -43,10 +47,56 @@ await kv.remove(namespace: string, key: string): Promise<void>;
 await kv.list<T>(namespace: string): Promise<Array<{ key: string; value: T }>>;
 
 // Clear every key in a namespace, OR every key the package owns when no namespace given.
-// "Owned" means stored under the chonkers `namespace::key` encoding —
-// Capacitor Preferences keys written by other modules are never touched.
 await kv.clear(namespace?: string): Promise<void>;
 ```
+
+### Active match
+
+```ts
+import {
+  type ActiveMatchSnapshot,
+  saveActiveMatch,
+  loadActiveMatch,
+  clearActiveMatch,
+  snapshotFromHandle,
+  restoreAiPair,
+} from "@/persistence";
+
+// On every successful ply commit (wired via SimWorld.onPlyCommit):
+const snapshot = snapshotFromHandle(handle, humanColor, startedAt);
+await saveActiveMatch(snapshot);
+
+// On boot:
+const saved = await loadActiveMatch();
+if (saved) {
+  // Rebuild handle.game by replaying actions from
+  //   createInitialState(decideFirstPlayer(saved.coinFlipSeed))
+  // then restore yuka brains via restoreAiPair(saved).
+}
+
+// On match end (SimWorld.onMatchEnd):
+await clearActiveMatch();
+```
+
+## Resume flow
+
+The active match is fully reconstructible from:
+1. `coinFlipSeed` → `decideFirstPlayer(seed)` → `createInitialState(firstPlayer)` initial board.
+2. `actions[]` → fold `applyAction` over the action log to reconstruct the current `GameState`.
+3. `redAiDumpB64` + `whiteAiDumpB64` → `restoreAiPair(snapshot)` to restore the yuka brains.
+
+The deterministic engine + deterministic AI mean replay produces a byte-identical position to where the player paused. Yuka's transposition table is rebuilt on demand (the dump blob carries `chainPlannedRemainder` + `profileKey` only — see `src/ai/dump.ts`).
+
+## Settings keys (current)
+
+| Key | Type | Default |
+|---|---|---|
+| `volume` | `number` (0..1) | `0.7` |
+| `muted` | `boolean` | `false` |
+| `reducedMotion` | `boolean` | `false` (overrides `prefers-reduced-motion`) |
+| `haptics` | `boolean` | `true` |
+| `defaultDifficulty` | `'easy' \| 'medium' \| 'hard'` | `'medium'` |
+| `defaultDisposition` | `'aggressive' \| 'balanced' \| 'defensive'` | `'balanced'` |
 
 ## Encoding
 
@@ -66,18 +116,17 @@ The `kv` wrapper adds typed JSON serialization + the namespace encoding — abou
 
 ## Concurrency
 
-Capacitor Preferences serialises per-key writes platform-side, so concurrent `put` calls to different keys do not interfere. Concurrent `put` calls to the *same* key are last-writer-wins; this is fine for the use cases (settings written from a single UI thread).
+Capacitor Preferences serialises per-key writes platform-side, so concurrent `put` calls to different keys do not interfere. Concurrent `put` calls to the *same* key are last-writer-wins; this is fine for the use cases (settings written from a single UI thread, active-match snapshot written from a single rAF loop).
 
 ## Tests
 
-Tests live at `src/persistence/preferences/__tests__/kv.browser.test.ts` and run in the browser tier (`pnpm test:browser`) under real Capacitor Preferences via the `@capacitor/preferences` web implementation. Coverage includes round-trip property tests over arbitrary JSON values, namespace isolation, corrupted-JSON null fallback, concurrent-put safety, and clear-by-namespace boundaries.
+Tests live at `src/persistence/preferences/__tests__/*.browser.test.ts` and run in the browser tier (`pnpm test:browser`) under real Capacitor Preferences via the `@capacitor/preferences` web implementation. Coverage includes round-trip property tests over arbitrary JSON values, namespace isolation, corrupted-JSON null fallback, concurrent-put safety, and clear-by-namespace boundaries. The active-match snapshot tests construct a handle, save, load, and assert the round trip is faithful including the AI brain restoration.
 
 There is no node-tier test suite for `kv` — Capacitor Preferences requires a browser environment to exercise the web path. The behaviour under iOS/Android is the platform's responsibility (Capacitor's own tests).
 
 ## What `src/persistence/` does NOT provide
 
-- Relational queries → `src/persistence/sqlite/`
-- Bulk updates / transactions → `src/persistence/sqlite/`
-- Migration versioning → `src/persistence/sqlite/`
-- Game state save/resume → `src/sim/` (broker), backed by `src/persistence/sqlite/`
-- Encrypted storage → out of scope; Capacitor Preferences is plain text on every platform
+- Relational queries — out of scope; the game has no shape that benefits from JOIN/GROUP BY at runtime.
+- Migration versioning — out of scope; yuka + engine shapes are frozen.
+- Encrypted storage — out of scope; Capacitor Preferences is plain text on every platform.
+- Match history / governor outliers — those are written to filesystem artifacts inside test/governor specs, not into Preferences. See `e2e/governor.spec.ts` (planned PRQ-T9).
