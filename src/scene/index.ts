@@ -667,11 +667,7 @@ function tick(): void {
 			if (!isInteractive || isAiSideTurnEnd) {
 				const facing = match.turn === "red" ? -1 : 1;
 				tweenBoardTip({ boardGroup: board.group, direction: facing });
-				if (
-					isInteractive === false &&
-					!aiThinking &&
-					match.winner === null
-				) {
+				if (isInteractive === false && !aiThinking && match.winner === null) {
 					void actions.stepTurn();
 				}
 			}

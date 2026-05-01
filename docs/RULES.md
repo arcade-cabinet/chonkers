@@ -196,3 +196,33 @@ A player may cancel an active selection by tapping outside the overlay. This dis
 | No legal move for the player on turn | (v1: cannot occur — the rule set guarantees a legal move exists from any state with ≥1 owned piece. If proven otherwise post-launch, the rule is "current player loses.") |
 
 There is no draw, no resignation UI in v1, and no timer.
+
+---
+
+## 8. Pass-and-Play (hotseat mode)
+
+Pass-and-Play (PaP) is a local hotseat variant: both players are human, sharing a single device. The rules of the game are unchanged — every clause in §1–§7 applies identically. PaP only specifies how the device hands control between the two players.
+
+### 8.1 Setup
+
+A PaP match is created from the New-Game overlay's "Pass and Play" card. The match handle's `humanColor` is `"both"`. The broker never auto-dispatches an AI on either side; every action arrives from the on-turn player's input.
+
+### 8.2 The handoff gesture
+
+The pivot-drag (the diegetic turn-end gesture introduced for vs-AI play) is the PaP handoff trigger. After the on-turn player commits an action:
+
+1. The engine's `state.turn` flips to the opponent's colour (logical).
+2. The scene blocks any further input from the same player — the only legal input is the pivot-drag toward the opponent's side of the table.
+3. When the pivot-drag completes (drag distance exceeds `END_TURN_DRAG_THRESHOLD_PX` toward the opponent), the board + bezel + scene group **rotate 180° around the world Y axis** as part of the same gsap tween.
+4. After the rotation settles, the next player's pieces are at the bottom of their view, their goal row at the top — the orientation they would see if they had just sat down on the opposite side of the table.
+5. The next player's input is now active. Their pivot-drag direction is also toward the (now-rotated) opponent — the gesture is identical from each player's perspective.
+
+### 8.3 Why this matters
+
+The 180° rotation IS the ritual of passing the device. There is no "your turn now" banner, no toast, no popup — the device is physically passed across the table while the rotation animates, and the next player picks it up to a board oriented for them. The pivot-drag enforces that this happens deliberately; the rotation makes the deliberation legible.
+
+### 8.4 Scope
+
+PaP at v1 is local-only. Persistence works the same as a vs-AI match: the active match snapshot is saved on every ply commit; reload restores the match in the orientation the on-turn player was last seeing. There is no networking, no second device, no spectator view.
+
+A future PRD may extend the broker's match-handle shape to support `"red-remote" | "white-remote"` for P2P serverless multiplayer; the engine + AI + sim layers are unchanged.

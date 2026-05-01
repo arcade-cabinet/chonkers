@@ -105,25 +105,43 @@ The 9×11 board with engraved gridlines is the game's signature shot. Design con
 
 ---
 
-## Diegetic UI — every affordance lives on a piece
+## UI surfaces — diegetic for play, branded overlays for menus
 
-There are no floating buttons, no full-screen menus, no Radix dialogs. **Every interactive surface is a diegetic SVG overlay positioned above a piece on the board** — the affordance is *attached* to the wood the player is looking at.
+The vision split as of 2026-04-30 (PRQ-C* on `prd/threejs-shell`):
 
-The shared mechanism: the scene's rAF loop calls `camera.project(piece.getWorldPosition())` for each visible affordance and writes the resulting screen-space coordinate to the SVG element's `transform: translate(...)`. The SVG is regular DOM (not inside the canvas, not inside a custom reconciler) appended to `<div id="overlay">` once at boot. Pointer events on slice paths fire native DOM handlers; hit-testing is exact and crisp.
+- **Diegetic SVG overlays** (vanilla, in `src/scene/overlay/`) own per-stack interaction during play. The split radial anchors to the stack it splits — the affordance is *attached* to the wood the player is looking at. There are no floating in-game buttons, no in-game menu chrome, no full-screen overlays during a turn.
+- **Centered branded overlays** (Solid TSX, in `app/`) own everything else: lobby title screen, new-game configuration (difficulty + Pass-and-Play picker), settings, pause, end-game. Real `<dialog>` semantics, focus traps, ARIA, axe-passable, Playwright-clickable without testHook shortcuts.
 
-Animation is driven by `gsap` for both the 3D pieces (mesh transforms, materials, camera) and the 2D SVG overlays (path attributes, opacity, transform). One animation library, one timeline model, one easing vocabulary across the whole app.
+This is a deliberate trade. The earlier "every affordance lives on a piece" rule was elegant in theory but produced a hostile first-time experience (no difficulty hint, no Pass-and-Play option, no settings) and gave Playwright + axe almost nothing to assert on. Centering the menu chrome unlocks a real lobby + Pass-and-Play + accessibility story; keeping the per-stack interaction diegetic preserves the "the board IS the game" feel.
+
+The complete state diagrams for both layers live in [UI_FLOWS.md](./UI_FLOWS.md).
+
+### Diegetic SVG overlay (the splitting radial)
+
+Mechanism: the scene's rAF loop calls `camera.project(piece.getWorldPosition())` for each visible affordance and writes the resulting screen-space coordinate to the SVG element's `transform: translate(...)`. The SVG is regular DOM (not inside the canvas, not inside a custom reconciler) appended to `<div id="overlay">` once at boot. Pointer events on slice paths fire native DOM handlers; hit-testing is exact and crisp.
+
+Animation is driven by `gsap` for both the 3D pieces (mesh transforms, materials, camera) and the 2D SVG overlays (path attributes, opacity, transform). One animation library, one timeline model, one easing vocabulary across the canvas universe.
+
+### Branded overlay (Solid in `app/`)
+
+Mechanism: a sibling `<div id="ui-root">` next to the `<canvas>` in `index.html`. Solid renders modal dialogs into it. Each overlay is a real `<dialog>` element with focus trap and ESC-to-close (where appropriate). Solid's fine-grained reactivity composes with the existing `koota` world — the overlay subscribes to the `Screen` trait to know which surface to render.
+
+The two layers do not cross-contaminate: lint rules forbid `solid-js` imports outside `app/**` and `three` / `gsap` imports inside `app/**`. The bridge is the koota world + the broker `actions` namespace.
 
 ### Surfaces
 
-| Surface | Where it sits | What it does |
-|---|---|---|
-| Lobby Play / Resume | On the two demo pucks resting in the centre of the board at boot | Tap the red puck to start a new match; tap the white puck to resume the saved match (faded if none). |
-| Coin flip | The coin itself is a 3D mesh that spawns above the board, spins via gsap, lands on a face. | The landing face decides who plays first. No SVG required. |
-| Pause | On the centre cell of the board when the player triple-taps the bezel | Radial: Resume, Settings, Quit. |
-| Splitting radial | On the top puck of the selected stack when stack height ≥ 2 | See "The splitting radial" below. |
-| Selection ring + valid-move markers | 3D meshes around the selected stack and on legal target cells | Pulsing emissive ring (gsap-driven). |
-| End-of-match | On the winning stack's top piece on the home row | Radial: Play Again, Quit. |
-| Settings (volume, reduced-motion, etc.) | A radial that opens from the centre cell when reached from Pause | Each slice a toggle. |
+| Surface | Layer | Where it sits | What it does |
+|---|---|---|---|
+| Lobby (title) | Branded overlay | Centered above the leveled-board scene | New Game / Continue Game / Settings. Continue greys when no saved match. |
+| New-game config | Branded overlay | Centered modal, opens from Lobby's "New Game" | 4 cards: Easy / Medium / Hard / Pass-and-Play. Each card has a one-line descriptor. |
+| Settings | Branded overlay | Centered modal | Audio mute / haptics toggle / reduced-motion / default-difficulty. v1 English-only. |
+| Bezel hamburger | DOM button overlaid on canvas | Top-right corner of the bezel mesh's screen projection | The only persistent UI chrome during play. Opens the Pause overlay. |
+| Coin flip | 3D mesh | The coin spawns above the board, spins via gsap, lands on a face | The landing face decides who plays first. No SVG required. |
+| Splitting radial | Diegetic SVG | On the top puck of the selected stack when stack height ≥ 2 | See "The splitting radial" below. |
+| Selection ring + valid-move markers | 3D meshes | Around the selected stack and on legal target cells | Pulsing emissive ring (gsap-driven). |
+| Pivot-drag turn-end | Gesture on canvas | Drag the bezel toward the opponent | Ends the human's turn. In Pass-and-Play this also rotates the board+frame 180° so the next player sees their orientation upright. |
+| Pause | Branded overlay | Centered modal, opens from bezel hamburger | Resume / Settings / Quit. |
+| End-game | Branded overlay | Centered modal, opens when state.winner ≠ null | Play Again / Quit. The board stays visible behind. |
 
 ### The splitting radial
 

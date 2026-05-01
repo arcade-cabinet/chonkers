@@ -40,7 +40,8 @@ Stages reflect *kind of validation completed*, not *version number*. release-ple
 
 ## What is in flight
 
-- **`prd/threejs-shell` (new branch)** — rebuild of the render layer as `src/scene/`. Removes all React/R3F/Radix/framer-motion deps; adds gsap. Ports the POC's pattern verbatim (vanilla three.js scene + DOM-sibling SVG overlay positioned via `camera.project()`) and extends it to every diegetic surface (lobby Play/Resume on demo pucks, pause radial on centre cell, end-game radial on winning stack, settings as a radial). Sim/engine/AI/store/persistence/audio remain unchanged.
+- **`prd/threejs-shell` (PR #11)** — render-layer rebuild SHIPPED 2026-04-30. Vanilla three.js + gsap + diegetic SVG overlay; KV-only persistence; PRQ-T0..T9 + B4 + B5 landed.
+- **PRQ-C* (this branch)** — branded centered overlays + Pass-and-Play. Reintroduces `app/` at root for Solid TSX overlays (lobby title, new-game config with difficulty + PaP picker, settings, pause, end-game). Diegetic SVG keeps the splitting radial; menus move to centered modals. Pass-and-Play hotseat ships: both sides human, broker never auto-dispatches, pivot-drag turn-end rotates board+frame 180° so next player sees their orientation upright. PRD: [docs/plans/lobby-overlay-pap.prq.md](./plans/lobby-overlay-pap.prq.md). Flows: [UI_FLOWS.md](./UI_FLOWS.md). Tasks: C1 docs (this commit), C2 e2e specs, C3 Solid + broker + scene rotation.
 
 ## What has not started
 

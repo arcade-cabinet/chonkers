@@ -45,6 +45,18 @@
 			"block_message": "AI.md is authoritative. A contract change must land with the test that proves it."
 		},
 		{
+			"when_changed": ["app/**"],
+			"require_changed": ["app/**/__tests__/**", "e2e/**"],
+			"or_explicit_skip": "// no-overlay-test-impact: <≥10 word reason>",
+			"block_message": "app/ change without a co-located __tests__ or an e2e spec update. Solid overlays must land with the click-the-button-fires-the-action test."
+		},
+		{
+			"when_changed": ["docs/UI_FLOWS.md"],
+			"require_changed": ["e2e/**", "app/**"],
+			"or_explicit_skip": "// ui-doc-only: <≥10 word reason>",
+			"block_message": "UI_FLOWS.md is authoritative. A flow change must land with either the e2e spec or the Solid component that implements it."
+		},
+		{
 			"when_changed": ["capacitor.config.json", "android/**", "ios/**"],
 			"require_run": "pnpm cap:sync",
 			"evidence_pattern": "(✔ Sync finished|Sync finished in)",
@@ -106,6 +118,21 @@
 			"pattern": "from ['\"]yuka/.*MathUtils|from ['\"]yuka/.*NavMesh|from ['\"]yuka/.*Wander|from ['\"]yuka/.*steering",
 			"globs": ["src/**"],
 			"message": "Yuka's MathUtils / NavMesh / WanderBehavior / steering call Math.random(). Use only Yuka's deterministic primitives (Graph, Node, Edge, Vector3, BoundingSphere, BVH, Dijkstra, AStar)."
+		},
+		{
+			"pattern": "from ['\"]solid-js['\"]|from ['\"]solid-js/",
+			"globs": ["src/**"],
+			"message": "Solid is the menu-overlay universe — its imports are confined to app/. The src/ tree is the canvas universe (three.js + gsap). See CLAUDE.md 'Strict architectural rules'."
+		},
+		{
+			"pattern": "from ['\"]three['\"]|from ['\"]three/|from ['\"]gsap['\"]|from ['\"]gsap/",
+			"globs": ["app/**"],
+			"message": "three.js + gsap are the canvas universe — their imports are confined to src/scene/. The app/ tree is the Solid menu-overlay universe. See CLAUDE.md 'Strict architectural rules'."
+		},
+		{
+			"pattern": "from ['\"]@/scene['\"]|from ['\"]@/scene/",
+			"globs": ["app/**"],
+			"message": "app/ must not import scene internals. The bridge is the koota world + the broker actions namespace."
 		}
 	],
 	"forbidden_bash": [
