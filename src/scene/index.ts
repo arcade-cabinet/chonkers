@@ -186,6 +186,18 @@ let priorScreen: string | null = null;
 let priorPlyCount = -1;
 let priorWinner: Color | null | undefined;
 
+/**
+ * In player-vs-AI matches: true while the human has committed an
+ * action but not yet performed the tip-board pivot gesture. Engine
+ * state.turn has already flipped to the AI's colour, but the AI is
+ * NOT dispatched until the human tips. Cleared by `endHumanTurn`.
+ *
+ * AI-vs-AI matches (humanColor === null) ignore this flag — the
+ * broker auto-steps every turn end-to-end without waiting on a
+ * physical gesture (the AI has no hands to tip with).
+ */
+let humanAwaitingPivot = false;
+
 function piecesSignature(pcs: ReadonlyArray<PiecePlacement>): string {
 	return pcs
 		.map((p) => `${p.col}.${p.row}.${p.height}.${p.color}`)
@@ -229,6 +241,17 @@ const inputCtx: InputHandles = installInput({
 		void commitHumanAction(action);
 	},
 	endHumanTurn: (): void => {
+		// The pivot-drag gesture. Clears the await-pivot flag, then
+		// dispatches the AI. The board-tip animation runs from the
+		// drag itself; tick()'s turn-change branch will see priorTurn
+		// === match.turn (already updated by us during the human's
+		// commit) and skip the redundant tween.
+		const wasAwaiting = humanAwaitingPivot;
+		humanAwaitingPivot = false;
+		if (wasAwaiting) {
+			const facing = sim.handle?.game.turn === "red" ? -1 : 1;
+			tweenBoardTip({ boardGroup: board.group, direction: facing });
+		}
 		void actions.stepTurn();
 	},
 });
@@ -263,7 +286,15 @@ async function commitHumanAction(action: Action): Promise<void> {
 	handle.game = applyEngineAction(handle.game, action);
 	actions.setSelection(null);
 	if (wasChonk) void playChonkHaptic();
-	await actions.stepTurn();
+	// Per the diegetic-UI rule: the player does NOT auto-end their
+	// turn. The engine has flipped state.turn (so the AI is on
+	// "logical" turn), but the scene gates AI dispatch + board tip
+	// behind the pivot-drag gesture. The flag is read by the tick()
+	// loop's turn-change branch and by `endHumanTurn`. AI-vs-AI
+	// matches don't set this flag (humanColor === null path).
+	if (handle.game.winner === null) {
+		humanAwaitingPivot = true;
+	}
 }
 
 // === Splitting radial ===
@@ -366,6 +397,7 @@ async function startNewMatch(humanColor: Color | null = "red"): Promise<void> {
 	await ensureAudio();
 	humanColorForSnapshot.current = humanColor;
 	matchStartedAt.current = Date.now();
+	humanAwaitingPivot = false;
 	actions.newMatch({
 		redProfile: "balanced-medium",
 		whiteProfile: "balanced-medium",
@@ -616,15 +648,32 @@ function tick(): void {
 		}
 		if (match.turn !== priorTurn) {
 			priorTurn = match.turn;
-			const facing = match.turn === "red" ? -1 : 1;
-			tweenBoardTip({ boardGroup: board.group, direction: facing });
-			if (
-				match.humanColor !== null &&
-				match.turn !== match.humanColor &&
-				!aiThinking &&
-				match.winner === null
-			) {
-				void actions.stepTurn();
+			// AI-vs-AI matches (humanColor === null): the board auto-
+			// tips on every turn-flip and the broker auto-dispatches
+			// the next ply. No human gesture in the loop.
+			//
+			// Player-vs-AI matches: the auto-tip + auto-dispatch are
+			// gated behind the pivot-drag. While humanAwaitingPivot is
+			// true, the engine has already flipped state.turn (so the
+			// AI is "logically" on turn) but the SCENE waits for the
+			// player to physically tip the board before tipping the
+			// view + dispatching the AI. `endHumanTurn` clears the
+			// flag and runs both the tween + dispatch.
+			//
+			// AI-side turn-end (after AI's commit) DOES auto-tip +
+			// auto-dispatch — the AI has no hands to gesture with.
+			const isInteractive = match.humanColor !== null;
+			const isAiSideTurnEnd = isInteractive && match.turn === match.humanColor;
+			if (!isInteractive || isAiSideTurnEnd) {
+				const facing = match.turn === "red" ? -1 : 1;
+				tweenBoardTip({ boardGroup: board.group, direction: facing });
+				if (
+					isInteractive === false &&
+					!aiThinking &&
+					match.winner === null
+				) {
+					void actions.stepTurn();
+				}
 			}
 		}
 		// Audio dispatch on ply change.
