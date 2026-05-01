@@ -156,6 +156,11 @@ export async function playTurn(
 			turn: mover === "red" ? "white" : "red",
 			chain: null,
 		};
+		// Persist the post-stall state — `turn` flipped + `chain`
+		// cleared is durable game state. If the app suspends after a
+		// stalled flip and before the next real ply, the saved snapshot
+		// would otherwise restore the wrong side / wrong chain.
+		if (options.onPlyCommit) await options.onPlyCommit(handle);
 		return {
 			action: null,
 			decision,
@@ -221,6 +226,7 @@ export interface PlayToCompletionResult {
 	readonly outlier: boolean;
 	readonly plies: number;
 	readonly winner: Color | null;
+	/** Cumulative stall flips across the match (diagnostic). */
 	readonly stallCount: number;
 }
 
@@ -233,36 +239,46 @@ export async function playToCompletion(
 	const maxPlies = options.maxPlies ?? DEFAULT_MAX_PLIES;
 	const maxStalls = options.maxStalls ?? maxPlies;
 	let plies = 0;
-	let stalls = 0;
+	let stallTotal = 0;
+	let stallStreak = 0;
 
 	while (true) {
 		const result = await playTurn(handle, options);
+		// Count the terminal ply itself before returning — winning
+		// plies set BOTH `persistedMove` AND `terminal`, and skipping
+		// the increment makes governor stats report one ply short.
+		if (result.persistedMove) plies += 1;
 		if (result.terminal) {
 			return {
 				outlier: false,
 				plies,
 				winner: handle.game.winner,
-				stallCount: stalls,
+				stallCount: stallTotal,
 			};
 		}
 		if (result.persistedMove) {
-			plies += 1;
+			// `maxStalls` bounds CONSECUTIVE stalled flips, not the
+			// cumulative total — a successful ply ends the streak so
+			// a few isolated stalls in a healthy match don't trip the
+			// outlier guard.
+			stallStreak = 0;
 			if (plies >= maxPlies) {
 				return {
 					outlier: true,
 					plies,
 					winner: handle.game.winner,
-					stallCount: stalls,
+					stallCount: stallTotal,
 				};
 			}
 		} else {
-			stalls += 1;
-			if (stalls >= maxStalls) {
+			stallTotal += 1;
+			stallStreak += 1;
+			if (stallStreak >= maxStalls) {
 				return {
 					outlier: true,
 					plies,
 					winner: handle.game.winner,
-					stallCount: stalls,
+					stallCount: stallTotal,
 				};
 			}
 		}

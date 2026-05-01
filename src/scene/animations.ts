@@ -15,24 +15,31 @@ import gsap from "gsap";
 import type * as THREE from "three";
 import { tokens } from "@/design";
 
-let reducedMotionPreference: boolean | null = null;
+let systemReducedMotion: boolean | null = null;
+let userReducedMotionOverride: boolean | null = null;
 
-/**
- * Read once and cache. Returning a static read keeps tween factories
- * synchronous; settings-toggle radials should call
- * `setReducedMotionOverride(value)` after writing to kv so the cache
- * stays in sync without a re-read every frame.
- */
-export function reducedMotion(): boolean {
-	if (reducedMotionPreference !== null) return reducedMotionPreference;
+function readSystemPreference(): boolean {
+	if (systemReducedMotion !== null) return systemReducedMotion;
 	if (typeof window === "undefined") return false;
-	const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
-	reducedMotionPreference = mq.matches;
-	return reducedMotionPreference;
+	systemReducedMotion = window.matchMedia(
+		"(prefers-reduced-motion: reduce)",
+	).matches;
+	return systemReducedMotion;
 }
 
-export function setReducedMotionOverride(value: boolean): void {
-	reducedMotionPreference = value;
+/**
+ * Effective reduced-motion flag: the user's explicit Settings choice
+ * if they made one, otherwise the OS `prefers-reduced-motion` value.
+ * The override is ADDITIVE rather than replacing — `false` from the
+ * user does NOT silence an OS-level reduce preference (a11y first).
+ */
+export function reducedMotion(): boolean {
+	const sys = readSystemPreference();
+	return sys || userReducedMotionOverride === true;
+}
+
+export function setReducedMotionOverride(value: boolean | null): void {
+	userReducedMotionOverride = value;
 }
 
 const PIECE_LIFT_S = tokens.motion.pieceLiftMs / 1000;

@@ -13,7 +13,12 @@ import { tokens } from "@/design";
 export function buildCamera(
 	canvas: HTMLCanvasElement,
 ): THREE.PerspectiveCamera {
-	const aspect = canvas.clientWidth / canvas.clientHeight;
+	// Hidden / zero-sized canvases (first mount, hidden parent) would
+	// otherwise produce Infinity/NaN aspect and seed an invalid
+	// projection matrix — fall back to 1 until `resizeCamera` runs.
+	const w = canvas.clientWidth;
+	const h = canvas.clientHeight;
+	const aspect = w > 0 && h > 0 ? w / h : 1;
 	const camera = new THREE.PerspectiveCamera(
 		tokens.scene.cameraFov,
 		aspect,

@@ -128,12 +128,6 @@ export function BoardA11yGrid() {
 												visibility: pos().hidden ? "hidden" : "visible",
 											}}
 											onClick={() => onCellActivate(col, row)}
-											onKeyDown={(ev) => {
-												if (ev.key === "Enter" || ev.key === " ") {
-													ev.preventDefault();
-													onCellActivate(col, row);
-												}
-											}}
 										/>
 									);
 								}}

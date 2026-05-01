@@ -76,32 +76,32 @@
 		},
 		{
 			"pattern": "from ['\"]react['\"]",
-			"globs": ["src/**"],
-			"message": "There is no React in the project. The render layer is vanilla three.js + gsap + DOM SVG."
+			"globs": ["src/**", "app/**"],
+			"message": "There is no React in the project. The render layer is vanilla three.js + gsap + DOM SVG; the overlay layer is Solid."
 		},
 		{
 			"pattern": "from ['\"]react-dom['\"]",
-			"globs": ["src/**"],
+			"globs": ["src/**", "app/**"],
 			"message": "There is no ReactDOM in the project."
 		},
 		{
 			"pattern": "from ['\"]@react-three/(fiber|drei)['\"]",
-			"globs": ["src/**"],
+			"globs": ["src/**", "app/**"],
 			"message": "R3F was retired in PRQ-T0. Use vanilla three.js."
 		},
 		{
 			"pattern": "from ['\"]@radix-ui/",
-			"globs": ["src/**"],
+			"globs": ["src/**", "app/**"],
 			"message": "Radix was retired in PRQ-T0. Diegetic SVG overlays only — see docs/DESIGN.md."
 		},
 		{
 			"pattern": "from ['\"]framer-motion['\"]",
-			"globs": ["src/**"],
+			"globs": ["src/**", "app/**"],
 			"message": "framer-motion was retired in PRQ-T0. Use gsap factories in src/scene/animations.ts."
 		},
 		{
 			"pattern": "from ['\"]drizzle-orm['\"]|from ['\"]@capacitor-community/sqlite['\"]",
-			"globs": ["src/**"],
+			"globs": ["src/**", "app/**"],
 			"message": "SQLite + drizzle were retired in PRQ-T-persist. Persistence is KV-only via @capacitor/preferences — see docs/PERSISTENCE.md."
 		},
 		{

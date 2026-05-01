@@ -34,8 +34,12 @@ export function Modal(props: ModalProps): JSX.Element {
 			firstBtn?.focus();
 		}
 		const onCancel = (ev: Event) => {
+			// When `onClose` is undefined the dialog has no dismissal path
+			// — let the browser handle ESC natively (closes the dialog)
+			// instead of preventDefault'ing into a non-dismissible state.
+			if (!props.onClose) return;
 			ev.preventDefault();
-			props.onClose?.();
+			props.onClose();
 		};
 		dlg.addEventListener("cancel", onCancel);
 		onCleanup(() => {

@@ -24,21 +24,21 @@
 import * as THREE from "three";
 import { getAudioBus } from "@/audio";
 import { tokens } from "@/design";
-import {
-	type Action,
-	BOARD_COLS,
-	BOARD_ROWS,
-	type Color,
-	enumerateLegalActions,
-	type GameState,
-	posToVector3,
-} from "@/engine";
+import type { Action, Color, GameState } from "@/engine";
 import {
 	clearActiveMatch,
 	saveActiveMatch,
 	snapshotFromHandle,
 } from "@/persistence";
-import { decideFirstPlayer, getSimSingleton, setSceneTapCell } from "@/sim";
+import {
+	BOARD_COLS,
+	BOARD_ROWS,
+	decideFirstPlayer,
+	enumerateLegalActions,
+	getSimSingleton,
+	posToVector3,
+	setSceneTapCell,
+} from "@/sim";
 import {
 	boardProjection,
 	cellIndex,
@@ -263,6 +263,7 @@ const inputCtx: InputHandles = installInput({
 	commitAction: (action: Action): void => {
 		void commitHumanAction(action);
 	},
+	enumerateLegalActions,
 	endHumanTurn: (): void => {
 		// Pivot-drag turn-end gesture.
 		const wasAwaiting = humanAwaitingPivot;
@@ -383,8 +384,13 @@ async function commitSplitFromSlices(
 	const all = enumerateLegalActions(handle.game);
 	for (const action of all) {
 		if (action.from.col !== sel.col || action.from.row !== sel.row) continue;
-		const allIndices = action.runs.flatMap((r) => [...r.indices]).sort();
-		const target = [...selectedSlices].sort();
+		// Numeric sort — default `.sort()` lexicographic order would
+		// rank `[10, 2]` as `[10, 2]` (string compare) and falsely
+		// mismatch a stack of height ≥ 10 against the selected
+		// indices the radial sends as numbers.
+		const cmp = (a: number, b: number) => a - b;
+		const allIndices = action.runs.flatMap((r) => [...r.indices]).sort(cmp);
+		const target = [...selectedSlices].sort(cmp);
 		if (allIndices.length !== target.length) continue;
 		let match = true;
 		for (let i = 0; i < target.length; i += 1) {
@@ -499,18 +505,22 @@ function tick(): void {
 			inputCtx.refreshSelectionVisuals();
 			refreshSplitRadial();
 		}
-		if (match.turn !== priorTurn) {
+		// Detect the very first turn of a fresh match (or a freshly
+		// resumed one) — `priorTurn === null` means we haven't yet
+		// reacted to any turn for the current match. Without this,
+		// vs-AI matches where the AI wins the opening coin-flip
+		// deadlock: the turn never "flips" because it starts on the
+		// AI side, so the auto-dispatch branch below never fires.
+		const isFirstTurn = priorTurn === null;
+		if (isFirstTurn || match.turn !== priorTurn) {
 			priorTurn = match.turn;
-			// AI-vs-AI matches (humanColor === null): the board auto-
-			// tips on every turn-flip and the broker auto-dispatches
-			// the next ply. No human gesture in the loop.
-			//
 			// Three modes of turn-flip handling:
 			//   - AI-vs-AI sim (humanColor === null): auto-tip every
-			//     turn-flip, auto-dispatch next ply.
+			//     turn-flip + auto-dispatch the next ply.
 			//   - vs-AI (humanColor === "red" | "white"): auto-tip +
-			//     auto-dispatch only when the AI just finished (turn
-			//     flipped TO the human's colour). Human-side turn-end
+			//     auto-dispatch when it's the AI's turn (covers both
+			//     "AI just played, flip back to human" AND the opening
+			//     case where the AI moves first). Human-side turn-end
 			//     fires from endHumanTurn after the pivot gesture.
 			//   - Pass-and-Play (humanColor === "both"): NEVER auto-tip
 			//     here. The 180° handoff fires from endHumanTurn after
@@ -518,6 +528,7 @@ function tick(): void {
 			const hc = match.humanColor;
 			const isPap = hc === "both";
 			const isSim = hc === null;
+			const isAiTurn = !isPap && !isSim && match.turn !== hc;
 			const isAiSideTurnEnd = !isPap && !isSim && match.turn === hc;
 			if (isSim || isAiSideTurnEnd) {
 				const facing = match.turn === "red" ? -1 : 1;
@@ -525,6 +536,12 @@ function tick(): void {
 				if (isSim && !aiThinking && match.winner === null) {
 					void actions.stepTurn();
 				}
+			} else if (isAiTurn && !aiThinking && match.winner === null) {
+				// AI's turn in a vs-AI match (most commonly the opening
+				// move when the AI won the coin-flip). No board tip
+				// here — the human hasn't moved, so no pivot to
+				// reverse. Just dispatch.
+				void actions.stepTurn();
 			}
 		}
 		// Audio dispatch on ply change.
@@ -555,6 +572,13 @@ function tick(): void {
 		// the pre-lobby boot path that no longer exists.)
 		pieces.sync([]);
 		priorPiecesSig = "";
+		// Reset turn-flip cache so the next match's opening turn
+		// triggers the first-turn branch above (otherwise a restart
+		// where the next match opens on the same colour wouldn't
+		// dispatch the opening AI move).
+		priorTurn = null;
+		priorPlyCount = -1;
+		priorWinner = undefined;
 	}
 
 	const selSig = selectionSignature(sel);

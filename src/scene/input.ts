@@ -24,7 +24,7 @@
 import gsap from "gsap";
 import * as THREE from "three";
 import { tokens } from "@/design";
-import { type Action, enumerateLegalActions, type GameState } from "@/engine";
+import type { Action, GameState } from "@/engine";
 import type { SelectionSnapshot } from "@/sim/traits";
 
 const END_TURN_DRAG_THRESHOLD_PX = 80;
@@ -49,6 +49,12 @@ export interface InputContext {
 	readonly setSelection: (cell: { col: number; row: number } | null) => void;
 	readonly commitAction: (action: Action) => void;
 	readonly endHumanTurn: () => void;
+	/**
+	 * Engine `enumerateLegalActions` injected as a callback so the
+	 * scene layer doesn't directly import an engine runtime function
+	 * (architectural rule: scene depends on engine type-only).
+	 */
+	readonly enumerateLegalActions: (game: GameState) => readonly Action[];
 }
 
 export interface InputHandles {
@@ -160,7 +166,7 @@ export function installInput(ctx: InputContext): InputHandles {
 			.to(ringMat, { duration: 0.6, opacity: 0.55, ease: "sine.inOut" }, 0);
 		const game = ctx.getGameState();
 		if (!game) return;
-		const allActions = enumerateLegalActions(game);
+		const allActions = ctx.enumerateLegalActions(game);
 		const fromActions = allActions.filter(
 			(a) => a.from.col === sel.cell?.col && a.from.row === sel.cell?.row,
 		);
@@ -308,7 +314,12 @@ export function installInput(ctx: InputContext): InputHandles {
 		}
 
 		if (!game) return;
-		const action = findCommittableAction(game, sel.cell, cell);
+		const action = findCommittableAction(
+			game,
+			sel.cell,
+			cell,
+			ctx.enumerateLegalActions,
+		);
 		if (action) {
 			ctx.commitAction(action);
 			ctx.setSelection(null);
@@ -324,16 +335,40 @@ export function installInput(ctx: InputContext): InputHandles {
 		}
 	}
 
+	function onPointerCancel(e: PointerEvent): void {
+		// `pointercancel` fires on OS-level interruption (scroll
+		// gesture, palm rejection, app focus loss). Do NOT promote
+		// it to a completed gesture — never commit a selection or
+		// fire endHumanTurn. Just tear down local drag state and
+		// restore the board to its resting tilt.
+		dragStartY = null;
+		dragStartX = null;
+		try {
+			canvas.releasePointerCapture?.(e.pointerId);
+		} catch {
+			// Same defense as setPointerCapture above.
+		}
+		if (dragActive) {
+			const facing = humanFacingDirection();
+			gsap.to(boardGroup.rotation, {
+				duration: tokens.motion.boardTipMs / 1000,
+				x: -facing * tokens.scene.baseTiltMagnitude,
+				ease: "power2.out",
+			});
+			dragActive = false;
+		}
+	}
+
 	canvas.addEventListener("pointerdown", onPointerDown);
 	canvas.addEventListener("pointermove", onPointerMove);
 	canvas.addEventListener("pointerup", onPointerUp);
-	canvas.addEventListener("pointercancel", onPointerUp);
+	canvas.addEventListener("pointercancel", onPointerCancel);
 
 	function dispose(): void {
 		canvas.removeEventListener("pointerdown", onPointerDown);
 		canvas.removeEventListener("pointermove", onPointerMove);
 		canvas.removeEventListener("pointerup", onPointerUp);
-		canvas.removeEventListener("pointercancel", onPointerUp);
+		canvas.removeEventListener("pointercancel", onPointerCancel);
 		pulseTimeline?.kill();
 		clearMarkers();
 		ringGeom.dispose();
@@ -366,8 +401,9 @@ function findCommittableAction(
 	game: GameState,
 	from: { col: number; row: number },
 	to: { col: number; row: number },
+	enumerate: (game: GameState) => readonly Action[],
 ): Action | null {
-	const all = enumerateLegalActions(game);
+	const all = enumerate(game);
 	for (const action of all) {
 		if (action.from.col !== from.col || action.from.row !== from.row) continue;
 		// PRQ-T3+T4 commits FULL-STACK moves only — splits land in

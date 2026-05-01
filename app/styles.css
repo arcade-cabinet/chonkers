@@ -27,7 +27,7 @@
 	max-height: 80vh;
 	overflow-y: auto;
 	box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
-	font-family: "Lato", system-ui, sans-serif;
+	font-family: Lato, system-ui, sans-serif;
 }
 
 .ck-modal::backdrop {
@@ -88,7 +88,7 @@
 }
 
 .ck-lobby__title {
-	font-family: "Abril Fatface", "Lato", serif;
+	font-family: "Abril Fatface", Lato, serif;
 	font-size: 56px;
 	font-weight: 400;
 	margin: 0;
@@ -107,7 +107,7 @@
 .ck-settings__title,
 .ck-pause__title,
 .ck-endgame__title {
-	font-family: "Abril Fatface", "Lato", serif;
+	font-family: "Abril Fatface", Lato, serif;
 	font-size: 32px;
 	font-weight: 400;
 	margin: 0 0 24px 0;
@@ -153,7 +153,7 @@
 }
 
 .ck-card__title {
-	font-family: "Abril Fatface", "Lato", serif;
+	font-family: "Abril Fatface", Lato, serif;
 	font-size: 24px;
 	color: var(--ck-accent);
 }
@@ -182,7 +182,8 @@
 	gap: 8px;
 }
 
-.ck-settings legend {
+.ck-settings legend,
+.ck-settings__legend {
 	color: var(--ck-text-dim);
 	font-size: 14px;
 }
@@ -225,7 +226,7 @@
 .ck-hamburger svg {
 	width: 24px;
 	height: 24px;
-	fill: currentColor;
+	fill: currentcolor;
 }
 
 .ck-hamburger:hover {

@@ -25,6 +25,8 @@ export {
 	type Cell,
 	type Color,
 	cellsEqual,
+	enumerateLegalActions,
+	type GameState,
 	posToVector3,
 	type Run,
 	vector3ToPos,

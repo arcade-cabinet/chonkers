@@ -61,7 +61,7 @@ export function buildSplitRadial(opts: SplitRadialOptions): SplitRadialHandle {
 		holdTimer: number | null;
 		holdOriginX: number | null;
 		holdOriginY: number | null;
-		flashTimeline: gsap.core.Timeline | null;
+		flashTimeline: gsap.core.Tween | gsap.core.Timeline | null;
 	} | null = null;
 
 	function open(target: THREE.Object3D, stackHeight: number): void {
@@ -116,7 +116,7 @@ export function buildSplitRadial(opts: SplitRadialOptions): SplitRadialHandle {
 					if (!active) return;
 					active.holdTimer = null;
 					active.armed = true;
-					triggerArmedFlash(svg, selected);
+					active.flashTimeline = triggerArmedFlash(svg, selected);
 					opts.onArm?.();
 					try {
 						navigator.vibrate?.(200);
@@ -239,7 +239,10 @@ export function buildSplitRadial(opts: SplitRadialOptions): SplitRadialHandle {
 	};
 }
 
-function triggerArmedFlash(svg: SVGSVGElement, selected: Set<number>): void {
+function triggerArmedFlash(
+	svg: SVGSVGElement,
+	selected: Set<number>,
+): gsap.core.Tween {
 	for (const idx of selected) {
 		paintSlice(svg, idx, "holdReady");
 	}
@@ -248,7 +251,7 @@ function triggerArmedFlash(svg: SVGSVGElement, selected: Set<number>): void {
 		const el = svg.querySelector(`[data-slice-index="${idx}"]`);
 		if (el instanceof SVGPathElement) paths.push(el);
 	}
-	gsap.to(paths, {
+	return gsap.to(paths, {
 		duration: tokens.motion.uiFlashMs / 1000,
 		opacity: 0.5,
 		yoyo: true,

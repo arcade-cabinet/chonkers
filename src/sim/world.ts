@@ -269,16 +269,32 @@ export function buildSimActions(sim: SimWorld) {
 			const prior = sim.worldEntity.get(Match);
 			const humanColor = prior?.humanColor ?? null;
 			const priorPly = prior?.plyCount ?? 0;
+			// `isCurrent()` guards against stale-epoch writes — if
+			// `newMatch()` / `quitMatch()` / `resumeMatch()` supersedes
+			// the handle while a turn is in flight, the persistence
+			// hooks + AiThinking flip would otherwise corrupt the
+			// replacement match's state. Every async-callback site
+			// downstream needs the same guard.
+			const isCurrent = (): boolean =>
+				sim.epoch === epoch && sim.handle === handle;
 			sim.worldEntity.set(AiThinking, { value: true });
 			try {
 				const result = await playTurn(handle, {
 					mode: "live",
-					...(sim.onPlyCommit ? { onPlyCommit: sim.onPlyCommit } : {}),
+					...(sim.onPlyCommit
+						? {
+								onPlyCommit: (h) =>
+									isCurrent() ? sim.onPlyCommit?.(h) : undefined,
+							}
+						: {}),
 					...(sim.onMatchEnd
-						? { onTerminal: () => sim.onMatchEnd?.(handle) }
+						? {
+								onTerminal: () =>
+									isCurrent() ? sim.onMatchEnd?.(handle) : undefined,
+							}
 						: {}),
 				});
-				if (sim.epoch !== epoch || sim.handle !== handle) return;
+				if (!isCurrent()) return;
 				const newPly = result.persistedMove ? priorPly + 1 : priorPly;
 				syncMatchTraits(sim, { humanColor, plyCount: newPly });
 				if (result.terminal && handle.game.winner) {
@@ -287,7 +303,9 @@ export function buildSimActions(sim: SimWorld) {
 					});
 				}
 			} finally {
-				sim.worldEntity.set(AiThinking, { value: false });
+				if (isCurrent()) {
+					sim.worldEntity.set(AiThinking, { value: false });
+				}
 			}
 		},
 
@@ -302,13 +320,23 @@ export function buildSimActions(sim: SimWorld) {
 			const prior = sim.worldEntity.get(Match);
 			const humanColor = prior?.humanColor ?? null;
 			const priorPly = prior?.plyCount ?? 0;
+			const isCurrent = (): boolean =>
+				sim.epoch === epoch && sim.handle === handle;
 			const result = await applyHumanAction(handle, action, {
-				...(sim.onPlyCommit ? { onPlyCommit: sim.onPlyCommit } : {}),
+				...(sim.onPlyCommit
+					? {
+							onPlyCommit: (h) =>
+								isCurrent() ? sim.onPlyCommit?.(h) : undefined,
+						}
+					: {}),
 				...(sim.onMatchEnd
-					? { onTerminal: () => sim.onMatchEnd?.(handle) }
+					? {
+							onTerminal: () =>
+								isCurrent() ? sim.onMatchEnd?.(handle) : undefined,
+						}
 					: {}),
 			});
-			if (sim.epoch !== epoch || sim.handle !== handle) return;
+			if (!isCurrent()) return;
 			const newPly = result.persistedMove ? priorPly + 1 : priorPly;
 			syncMatchTraits(sim, { humanColor, plyCount: newPly });
 			sim.worldEntity.set(Selection, { cell: null });
@@ -331,8 +359,10 @@ export function buildSimActions(sim: SimWorld) {
 				...handle.game,
 				winner: newWinner,
 			};
-			if (sim.onMatchEnd) await sim.onMatchEnd(handle);
-			if (sim.epoch !== epoch || sim.handle !== handle) return;
+			const isCurrent = (): boolean =>
+				sim.epoch === epoch && sim.handle === handle;
+			if (sim.onMatchEnd && isCurrent()) await sim.onMatchEnd(handle);
+			if (!isCurrent()) return;
 			syncMatchTraits(sim, {
 				humanColor,
 				plyCount: prior?.plyCount ?? 0,
