@@ -91,6 +91,18 @@ describe("balance tuner — SPSA over aggressive + defensive weights", () => {
 			);
 			const BATCH = Number.parseInt(process.env.TUNE_BATCH ?? "12", 10);
 			const SEED = Number.parseInt(process.env.TUNE_SEED ?? "42", 10);
+			// Default to depth=1 (greedy) for SPSA inner loop — at
+			// depth=2 each match is ~7s, so a 5760-match tuner run is
+			// ~11h. Depth=1 is ~50-100ms/match → ~10min for the same
+			// run. Override with TUNE_DEPTH=2 for a faithful (slow)
+			// run. Best-seen weights are validated at TUNE_VALIDATE_DEPTH
+			// (default 2) at the end of the run, so the final scoreline
+			// reflects governor-tier evaluation.
+			const TUNE_DEPTH = Number.parseInt(process.env.TUNE_DEPTH ?? "1", 10);
+			const VALIDATE_DEPTH = Number.parseInt(
+				process.env.TUNE_VALIDATE_DEPTH ?? "2",
+				10,
+			);
 
 			const baseAggressive = getProfile("aggressive-easy");
 			const baseBalanced = getProfile("balanced-easy");
@@ -131,12 +143,13 @@ describe("balance tuner — SPSA over aggressive + defensive weights", () => {
 					matchesPerPairing: BATCH,
 					plyCap: 200,
 					outlierPenalty: 1.0,
+					depthOverride: TUNE_DEPTH,
 				});
 				return r.loss;
 			}
 
 			console.log(
-				`SPSA tuner: dim=${dim}, iterations=${ITERATIONS}, batch=${BATCH} matches per pairing per eval, total ~${BATCH * 6 * 2 * ITERATIONS} matches`,
+				`SPSA tuner: dim=${dim}, iterations=${ITERATIONS}, batch=${BATCH} matches per pairing per eval, depth=${TUNE_DEPTH}, total ~${BATCH * 6 * 2 * ITERATIONS} matches`,
 			);
 
 			const startTs = Date.now();
@@ -155,19 +168,23 @@ describe("balance tuner — SPSA over aggressive + defensive weights", () => {
 				onIteration,
 			});
 
-			// Validate the best-seen weights at a higher batch size for
-			// noise reduction.
+			// Validate the best-seen weights at higher batch size +
+			// validation depth (default 2). This is the "what would the
+			// real governor say" check on the tuner's chosen weights.
 			const validateBatch = Math.max(BATCH, 24);
 			const bestProfiles = profilesFromTheta(result.bestTheta);
 			const bestEval = evaluateLoss(bestProfiles, {
 				matchesPerPairing: validateBatch,
 				plyCap: 200,
+				depthOverride: VALIDATE_DEPTH,
 			});
 
 			const summary = {
 				iterations: ITERATIONS,
 				matchesPerPairing: BATCH,
 				validateBatch,
+				tuneDepth: TUNE_DEPTH,
+				validateDepth: VALIDATE_DEPTH,
 				seed: SEED,
 				durationSec: (Date.now() - startTs) / 1000,
 				startWeights: {

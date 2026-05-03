@@ -32,6 +32,14 @@ export interface LossOptions {
 	readonly plyCap?: number;
 	/** Seed prefix for deterministic batch generation. */
 	readonly seedPrefix?: string;
+	/**
+	 * Override AI search depth for this evaluation. Default uses the
+	 * profile's `knobs.search_depth` (2 for easy = ~7s/match). Pass
+	 * 1 for greedy lookahead (~50-100ms/match) — the SPSA inner loop
+	 * needs the speed; absolute win rates differ from depth=2 but
+	 * relative balance carries.
+	 */
+	readonly depthOverride?: number;
 }
 
 export interface LossResult {
@@ -62,6 +70,7 @@ export function evaluateLoss(
 	const outlierPenalty = options.outlierPenalty ?? 1.0;
 	const plyCap = options.plyCap ?? 200;
 	const seedPrefix = options.seedPrefix ?? "tu";
+	const depthOverride = options.depthOverride;
 
 	const dispositions: ReadonlyArray<
 		["aggressive" | "balanced" | "defensive", Profile]
@@ -100,6 +109,7 @@ export function evaluateLoss(
 					whiteProfile,
 					coinFlipSeed: seed,
 					maxPlies: plyCap,
+					...(depthOverride !== undefined ? { depthOverride } : {}),
 				});
 				if (result.outlier) outliers += 1;
 				else if (result.winner === "red") redWins += 1;
