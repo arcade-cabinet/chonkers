@@ -309,6 +309,22 @@ The defensive lift made it activist enough to deadlock against EVERY opponent ex
 2. Validate at smaller RUNS first (BETA_RUNS=90, ~2min, gives 10 matches per pairing) before committing to the full 1000-run gate
 3. Or replace heuristic tuning entirely with a gradient-descent loop over the weight space — beyond the scope of beta gate, but the right rc-stage answer
 
+### SPSA tuner attempt — depth-mismatch failure (2026-05-03)
+
+Built an SPSA gradient-descent tuner (PRs #17, #18) per the path 3 lesson above. Ran the default config: 40 iterations × 12 matches per pairing × depth=1 inner loop, ~34min.
+
+**Result**: at depth=1 the tuner hit a "best loss" of 6 (very low — every cross pairing at 50/50). But the depth=2 validation showed **100% outliers across every cross pairing** (24/24 deadlocks) at the chosen weights.
+
+The bestWeights were pinned to the tuner's bounds box corners (most weights either 0, 8, -8, or -30) — a sign that depth=1 evaluation has too little game knowledge to distinguish weight sets, so any extreme weight produces 50/50 noise. Depth=2 then uses the same extreme weights to look ahead, finds them coherent, and both sides build toward the same goals → deadlock.
+
+**Conclusion**: depth-1 inner loop DOES NOT carry to depth-2 evaluation for this game. The tradeoff baked into the tuner ("relative balance carries between depths") is wrong here.
+
+Two real paths remain for the beta gate:
+1. **Tune SPSA at the actual target depth (depth=2)** — accept the ~11h per tuner run cost; either parallelize across CI shards or run rare ad-hoc passes. Likely the right rc-stage answer.
+2. **Accept the imbalance for beta**, document it (here), defer "balanced AI-vs-AI play" to rc. The user-facing AI is already strong (alpha 100/100 finishers vs human-mode); cross-disposition AI-vs-AI imbalance only matters for sim/governor work, which is internal.
+
+The SPSA tuner code stays in main as infrastructure for the rc-stage attempt. **No weight changes applied** from this run.
+
 ### (next entries appended on each balance tune)
 
 Each entry records:
