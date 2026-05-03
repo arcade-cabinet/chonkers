@@ -28,7 +28,20 @@ export default defineConfig({
 						// e2e/governor.spec.ts 1000-run gate which was
 						// taking 4h+ for the same evaluation.
 						"src/**/__tests__/broker-1000-runs.test.ts",
+						// Balance tuner — long-running optimisation job
+						// (~30min default, up to 60min). Excluded from
+						// default node tier; run via `pnpm tune:balance`.
+						"src/ai/tuner/__tests__/balance-tuner.test.ts",
 					],
+				},
+			},
+			{
+				extends: true,
+				test: {
+					name: "tuner",
+					environment: "node",
+					include: ["src/ai/tuner/__tests__/balance-tuner.test.ts"],
+					testTimeout: 60 * 60 * 1000,
 				},
 			},
 			{
