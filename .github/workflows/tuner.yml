@@ -1,0 +1,86 @@
+name: Balance Tuner
+
+# SPSA gradient-descent over the aggressive + defensive weight
+# matrix at the actual target depth (depth=2). Long-running; manual
+# dispatch only.
+#
+# Default config: TUNE_ITERATIONS=30, TUNE_BATCH=6, TUNE_DEPTH=2.
+# Cost: 30 × 6 × 6 cross-pairings × 2 evals = 2160 matches at
+# ~7s/match = ~4.2h. Plus depth-2 validation at the end (24 batch
+# × 6 pairings = 144 matches, ~17min).
+#
+# The output JSON (`/tmp/chonkers-tuned-weights.json`) is uploaded
+# as `chonkers-tuned-weights` artifact. Operator decides whether to
+# commit the bestWeights into `src/ai/profiles.ts` based on the
+# bestEvalAtHigherBatch numbers.
+
+on:
+  workflow_dispatch:
+    inputs:
+      iterations:
+        description: "TUNE_ITERATIONS — SPSA outer-loop steps"
+        required: false
+        default: "30"
+      batch:
+        description: "TUNE_BATCH — matches per pairing per loss eval"
+        required: false
+        default: "6"
+      depth:
+        description: "TUNE_DEPTH — search depth for SPSA inner loop (use 2 for the real run)"
+        required: false
+        default: "2"
+      validate_depth:
+        description: "TUNE_VALIDATE_DEPTH — search depth for the final validation pass"
+        required: false
+        default: "2"
+      seed:
+        description: "TUNE_SEED — deterministic perturbation seed"
+        required: false
+        default: "42"
+
+permissions:
+  contents: read
+
+jobs:
+  tuner:
+    # Serialize so a manual dispatch while another is in flight queues
+    # rather than races. cancel-in-progress: false preserves any
+    # in-flight work.
+    concurrency:
+      group: tuner-${{ github.workflow }}
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    # 350min ≈ 5h50m. Free-tier ubuntu-latest hard cap is 6h; we
+    # leave a 10min margin. The default config (30×6 at depth=2) is
+    # ~4.2h + 17min validation ≈ 4.5h, comfortable.
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: pnpm/action-setup@903f9c1a6ebcba6cf41d87230be49611ac97822e # v6.0.3
+        with:
+          version: 10.33.0
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: SPSA tuner (depth-2)
+        env:
+          TUNE_ITERATIONS: ${{ github.event.inputs.iterations || '30' }}
+          TUNE_BATCH: ${{ github.event.inputs.batch || '6' }}
+          TUNE_DEPTH: ${{ github.event.inputs.depth || '2' }}
+          TUNE_VALIDATE_DEPTH: ${{ github.event.inputs.validate_depth || '2' }}
+          TUNE_SEED: ${{ github.event.inputs.seed || '42' }}
+        run: pnpm tune:balance
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: chonkers-tuned-weights
+          path: /tmp/chonkers-tuned-weights.json
+          if-no-files-found: ignore
