@@ -91,16 +91,12 @@ const AGGRESSIVE_WEIGHTS: FeatureWeights = {
 	opponent_home_row_tops: -25.0,
 	opponent_tall_stacks_unblocked: -1.0,
 	total_pieces_advancement: +1.0,
-	// Beta tune 1 (2026-05-01): partial 320/1000 governor showed
-	// aggressive losing 100% to balanced. Lifted mobile_threat (+5→+6)
-	// + cluster_density (+0.3→+0.6) so spread-out aggressive isn't
-	// trampled by balanced's mid-game pressure.
-	mobile_threat_count: +6.0,
+	mobile_threat_count: +5.0,
 	frontier_advance: +3.0,
 	even_trade_count: +6.0,
 	// Aggressive: low cluster (spreads to find weak points), no wall
 	// preference, HIGH funnel pressure (encircle + push).
-	cluster_density: +0.6,
+	cluster_density: +0.3,
 	longest_wall: +0.0,
 	funnel_pressure: +4.0,
 };
@@ -126,27 +122,22 @@ const BALANCED_WEIGHTS: FeatureWeights = {
 };
 
 const DEFENSIVE_WEIGHTS: FeatureWeights = {
-	// Beta tune 1 (2026-05-01): partial 320/1000 governor showed
-	// defensive losing 100% to BOTH aggressive AND balanced — was
-	// REFUSING to push (forward_progress 1.5 vs 2-3, chonk_op 1.0
-	// vs 2.5-4) and stalling. Lifted the offensive scoreline while
-	// preserving cluster + wall + blocker identity.
-	forward_progress: +2.5, // was +1.5
+	forward_progress: +1.5,
 	top_count: +2.0,
 	home_row_tops: +20.0,
-	chonk_opportunities: +2.5, // was +1.0
-	tall_stack_count: +1.2, // was +0.8
+	chonk_opportunities: +1.0,
+	tall_stack_count: +0.8,
 	blocker_count: +3.0,
 	chain_owed: -2.0,
 	opponent_forward_progress: -3.0,
 	opponent_home_row_tops: -25.0,
 	opponent_tall_stacks_unblocked: -3.5,
-	total_pieces_advancement: +1.0, // was +0.5
-	mobile_threat_count: +2.5, // was +2.0
-	frontier_advance: +2.0, // was +1.0
-	even_trade_count: +2.5, // was +2.0
+	total_pieces_advancement: +0.5,
+	mobile_threat_count: +2.0,
+	frontier_advance: +1.0,
+	even_trade_count: +2.0,
 	// Defensive: HIGH cluster + wall (mutual support, hard to break),
-	// low funnel (doesn't initiate encirclement) — IDENTITY preserved.
+	// low funnel (doesn't initiate encirclement).
 	cluster_density: +2.5,
 	longest_wall: +1.5,
 	funnel_pressure: +0.5,

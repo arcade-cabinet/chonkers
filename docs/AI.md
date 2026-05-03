@@ -289,6 +289,26 @@ Cluster + wall + blocker + funnel preserved at their identity-defining values (c
 
 **Sample signature**: governor run 25227640953 (cancelled at 320/1000, ~35 matches per pairing), 6 cross-pairings × 35-36 matches = 213 cross matches; per-pairing `redWinRate` 0% or 100% in every cell. Workflow timeout lifted 60→240min in the same commit so the next run completes.
 
+### beta tune 1 — REVERTED (2026-05-02)
+
+Validation governor (run 25230113233, ran the full 240min before being killed by the workflow timeout cap, completing 660/1000 matches) showed **tune 1 was a catastrophic over-correction**:
+
+| Metric | Pre-tune (run 25227640953, 320 matches) | Tune 1 (run 25230113233, 660 matches) |
+|---|---|---|
+| Outlier rate | 33% (3 of 9 pairings deadlocked) | **78%** (5 of 9 pairings deadlocked) |
+| Cross-pairings finished | 6 of 6 | **1 of 6** (only `bal v def` and `def v bal`) |
+| Same-disposition deadlocks | 3 (expected) | 3 (expected) |
+| `bal v def` win rate | 100% red | 100% red (no improvement) |
+
+The defensive lift made it activist enough to deadlock against EVERY opponent except balanced (which still beat it cleanly). The "more chonking + more push" change broke games that previously finished — both sides now want to chonk in the same spots, can't break the standoff.
+
+**Reverted** all tune 1 weight changes. `src/ai/profiles.ts` is back to the post-PRQ-B4 baseline. The original imbalance (bal > agg > def, all 100/0) stands as the alpha-baseline shape.
+
+**Lesson for future tunes**: weight tuning by hand against a 9-pairing balance gate is much harder than it looks. The next attempt should be:
+1. Lower-magnitude single-feature tunes (e.g. just `chonk_opportunities` defensive 1.0 → 1.5, leave everything else)
+2. Validate at smaller RUNS first (BETA_RUNS=90, ~2min, gives 10 matches per pairing) before committing to the full 1000-run gate
+3. Or replace heuristic tuning entirely with a gradient-descent loop over the weight space — beyond the scope of beta gate, but the right rc-stage answer
+
 ### (next entries appended on each balance tune)
 
 Each entry records:
