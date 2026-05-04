@@ -20,7 +20,7 @@ on:
       iterations:
         description: "TUNE_ITERATIONS — SPSA outer-loop steps"
         required: false
-        default: "30"
+        default: "20"
       batch:
         description: "TUNE_BATCH — matches per pairing per loss eval"
         required: false

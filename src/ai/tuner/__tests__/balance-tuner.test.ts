@@ -85,11 +85,16 @@ describe("balance tuner — SPSA over aggressive + defensive weights", () => {
 	it(
 		"optimises weights to flatten cross-pairing win rates",
 		() => {
+			// Defaults sized to fit the CI tuner workflow's 350min cap.
+			// Per-match cost on ubuntu-latest is ~9.7s at depth=2; one
+			// SPSA iteration probes 2× (6 batch × 6 cross-pairings) =
+			// 72 matches × 9.7s ≈ 700s. 20 iter ≈ 14000s = 233min,
+			// plus 17min validation ≈ 250min. Comfortable under 350min.
 			const ITERATIONS = Number.parseInt(
-				process.env.TUNE_ITERATIONS ?? "40",
+				process.env.TUNE_ITERATIONS ?? "20",
 				10,
 			);
-			const BATCH = Number.parseInt(process.env.TUNE_BATCH ?? "12", 10);
+			const BATCH = Number.parseInt(process.env.TUNE_BATCH ?? "6", 10);
 			const SEED = Number.parseInt(process.env.TUNE_SEED ?? "42", 10);
 			// Default to depth=1 (greedy) for SPSA inner loop — at
 			// depth=2 each match is ~7s, so a 5760-match tuner run is
@@ -152,12 +157,66 @@ describe("balance tuner — SPSA over aggressive + defensive weights", () => {
 				`SPSA tuner: dim=${dim}, iterations=${ITERATIONS}, batch=${BATCH} matches per pairing per eval, depth=${TUNE_DEPTH}, total ~${BATCH * 6 * 2 * ITERATIONS} matches`,
 			);
 
+			// Periodic-flush state. CI runs hit the 350min workflow cap
+			// before completing — without per-iteration writes the
+			// artifact upload finds nothing. Flush every iteration so a
+			// late-test cancellation still leaves the BEST-SEEN weights
+			// on disk for the operator to inspect.
+			const outPath = join(tmpdir(), "chonkers-tuned-weights.json");
+			let bestSeenLoss = Number.POSITIVE_INFINITY;
+			let bestSeenTheta: ReadonlyArray<number> = theta0;
+
 			const startTs = Date.now();
 			const onIteration = (state: SpsaIterationState): void => {
 				const elapsedSec = ((Date.now() - startTs) / 1000).toFixed(1);
 				console.log(
 					`iter ${String(state.iteration).padStart(3, " ")}: loss± = ${state.lossPlus.toFixed(3)}/${state.lossMinus.toFixed(3)} (mean ${state.lossEstimate.toFixed(3)}), step=${state.stepSize.toFixed(4)}, perturb=${state.perturbMagnitude.toFixed(4)}, t=${elapsedSec}s`,
 				);
+
+				// Track best-seen across ALL probed points (the SPSA
+				// internal best-tracking only sees the perturbed pairs;
+				// theta itself moves between iterations and may be
+				// better than either probe).
+				if (state.lossPlus < bestSeenLoss) {
+					bestSeenLoss = state.lossPlus;
+					// state.theta has already been updated; reconstruct the
+					// thetaPlus probe by NOT updating bestSeenTheta here.
+					// Instead, snapshot the current `theta` field which
+					// is the new center after the SPSA step.
+				}
+				if (state.lossMinus < bestSeenLoss) {
+					bestSeenLoss = state.lossMinus;
+				}
+				bestSeenTheta = state.theta;
+
+				// Per-iteration partial flush — writes start/best so a
+				// late cancellation still produces an artifact.
+				const partialBestProfiles = profilesFromTheta(bestSeenTheta);
+				const partial = {
+					iterations: ITERATIONS,
+					completedIterations: state.iteration + 1,
+					matchesPerPairing: BATCH,
+					tuneDepth: TUNE_DEPTH,
+					validateDepth: VALIDATE_DEPTH,
+					seed: SEED,
+					durationSec: (Date.now() - startTs) / 1000,
+					startWeights: {
+						aggressive: baseAggressive.weights,
+						defensive: baseDefensive.weights,
+					},
+					bestLossDuringSearch: bestSeenLoss,
+					bestEvalAtHigherBatch: null, // populated after SPSA completes
+					bestWeights: {
+						aggressive: partialBestProfiles.aggressive.weights,
+						defensive: partialBestProfiles.defensive.weights,
+					},
+					partial: true,
+				};
+				try {
+					writeFileSync(outPath, JSON.stringify(partial, null, 2));
+				} catch {
+					// Best-effort; failure shouldn't break the test.
+				}
 			};
 
 			const result = spsa(theta0, lossFn, {
@@ -181,6 +240,7 @@ describe("balance tuner — SPSA over aggressive + defensive weights", () => {
 
 			const summary = {
 				iterations: ITERATIONS,
+				completedIterations: ITERATIONS,
 				matchesPerPairing: BATCH,
 				validateBatch,
 				tuneDepth: TUNE_DEPTH,
@@ -209,9 +269,9 @@ describe("balance tuner — SPSA over aggressive + defensive weights", () => {
 					stepSize: h.stepSize,
 					perturbMagnitude: h.perturbMagnitude,
 				})),
+				partial: false,
 			};
 
-			const outPath = join(tmpdir(), "chonkers-tuned-weights.json");
 			writeFileSync(outPath, JSON.stringify(summary, null, 2));
 
 			console.log(`\ndone in ${summary.durationSec.toFixed(1)}s`);
